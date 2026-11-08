@@ -7,7 +7,7 @@ import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 import type { Question, QuestionOption } from '../types'
 import { t, type Lang } from './i18n'
 import type { HeldButtons } from './held'
-import { DIVIDER_COLUMNS, DIVIDER_HEIGHT, DIVIDER_PX, dividerSvg } from './divider'
+import { DIVIDER_COLUMNS, DIVIDER_HEIGHT, DIVIDER_PX, HEADER_RULE_HEIGHT, HEADER_RULE_SVG, dividerSvg } from './divider'
 import { DETAILS_FILL, LINK_MARK, URGENCY_COLOR } from './look'
 import { KEEPGLIDE_HEADER_SIZE, KEEPGLIDE_SUBMIT_SIZE, renderHistoryIcon, renderKeepGlide, renderLogo } from './logo-element'
 import {
@@ -133,6 +133,7 @@ export function renderPane(ui: Ui, view: PaneView, actions: PaneActions, lang: L
           {renderKeepGlide(ui, view.surface, 'keepglide-counter', KEEPGLIDE_HEADER_SIZE)}
         </Box>
       </Box>
+      {renderHeaderRule(ui, view.surface)}
       {view.groups.length > 0 && renderTree(tree)}
       {view.askWho && view.questions.length > 0 && renderAskWho(ui, lang, actions, held)}
       {view.damagedPauses?.map(id => renderDamagedPause(ui, lang, actions, held, id))}
@@ -566,6 +567,17 @@ function renderDetailsBlock(ui: Ui, lang: Lang, card: CardContext, sections: Sec
       {sections.map(section => renderSection(ui, section, isLeaving))}
     </Box>
   )
+}
+
+// The rule under the header (owner, 2026-11-08), as KeepAway Repo draws it: a 1px line across the pane on the desktop, a row of '─'
+// on the terminal.
+function renderHeaderRule(ui: Ui, surface: RenderSurface): RenderElement {
+  if (surface === 'desktop' && 'Svg' in ui) {
+    const { Svg } = ui
+    return <Svg key="header-rule" source={HEADER_RULE_SVG} alt="" height={HEADER_RULE_HEIGHT} />
+  }
+  const { Text } = ui
+  return <Text key="header-rule" dimColor>{'─'.repeat(DIVIDER_COLUMNS)}</Text>
 }
 
 // A divider rule: a 1px SVG rule on the desktop, a row of '─' on the terminal. It separates the options from the nav row,
