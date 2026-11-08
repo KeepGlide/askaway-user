@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.0`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.1`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -761,10 +761,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 552 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 553 |
 | CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at the 1.1.0 release commit, 2026-11-05. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at the 1.1.1 release commit, 2026-11-08. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -819,6 +819,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.0.2 | 2026-11-01 | Once every question of a round is answered, the pane scrolls back to its top. |
 | 1.0.3 | 2026-11-02 | The review highlights the group's own block in the tree, with Back and Submit all inside it, instead of copying its rows below. |
 | 1.1.0 | 2026-11-05 | A local marketplace installs the downloaded zip offline, and the plugin is renamed AskAway User (id askaway-user). |
+| 1.1.1 | 2026-11-08 | The tab title comes from the dictionary, and the header row matches KeepAway Repo's. |
 
 ## 🤝 Contributing
 
