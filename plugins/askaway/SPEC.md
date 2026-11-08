@@ -354,6 +354,7 @@ them (owner's call after 0.4.2). Risk kept in view: on the desktop a Button draw
 first click, the same finding as another mod's status list; if that comes back, the fix belongs in the press handling,
 not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
 
+- **Tab and header row** (owner, 2026-11-08: one design with KeepAway Repo): the tab title is `pane.title`, "AskAway User" in both languages, passed to `ui.open`. The header is one row that wraps, items centred (keys `header`, `brand`, `heading`, `header-end`, `counter`), the same row KeepAway Repo draws.
 - **Header**: the AskAway User logo, then "Questions waiting" ("Perguntas aguardando"; `pane.heading`, `hooks/i18n.ts`), with the counter on the right. The logo is the violet
   SVG on the desktop (`hooks/logo.ts`, `#8B5CF6`) and the bold "?" glyph on the terminal
   (`hooks/logo.ts`, `LOGO_GLYPH`, drawn by `hooks/logo-element.tsx`). The counter reads "<n> pending · <n> groups" ("<n> pendentes · <n> grupos"), or

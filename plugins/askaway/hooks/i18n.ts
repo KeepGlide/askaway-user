@@ -10,6 +10,7 @@ const LOCALE_VARS = ['LC_ALL', 'LC_MESSAGES', 'LANG', 'LANGUAGE'] as const
 
 // `{name}` marks a value that t() fills in.
 const EN = {
+  'pane.title': 'AskAway User',
   'pane.heading': 'Questions waiting',
   'counter.none': 'Nothing pending',
   'counter.pending.one': '{n} pending',
@@ -120,6 +121,7 @@ const EN = {
 export type MessageKey = keyof typeof EN
 
 const PT: Record<MessageKey, string> = {
+  'pane.title': 'AskAway User',
   'pane.heading': 'Perguntas aguardando',
   'counter.none': 'Nenhuma pendente',
   'counter.pending.one': '{n} pendente',

@@ -184,6 +184,8 @@ function stubHost(
   themeName: string | null = 'dark',
 ) {
   const toasts: string[] = []
+  // The tab titles each ui.open asked for, in order.
+  const titles: string[] = []
   // The lines a hook logs with $.ui.log, in order: a failed poll or action is logged here, not thrown.
   const logs: string[] = []
   const writes: string[] = []
@@ -233,7 +235,10 @@ function stubHost(
     logs.push(event.text)
     return { value: undefined }
   })
-  on('ui.open', () => ({ value: isPlaced ? { isPlaced: true } : { isPlaced: false, reason: 'narrow terminal' } }))
+  on('ui.open', (_$, e) => {
+    titles.push(e.title)
+    return { value: isPlaced ? { isPlaced: true } : { isPlaced: false, reason: 'narrow terminal' } }
+  })
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn beneath'] }))
   // Nothing beneath the plugin moves the focus ring: the move lands at once, as the engine's own stops do.
   on('ui.focus', () => ({}))
@@ -348,7 +353,7 @@ function stubHost(
     writes.push(path('a', id))
     return cliReply(JSON.stringify({ id, key, written: true }))
   })
-  return { toasts, writes, drafts, clearings, submits, clock, calls, ended, tokenCalls, registrations, logs, links }
+  return { toasts, writes, drafts, clearings, submits, clock, calls, ended, tokenCalls, registrations, logs, links, titles }
 }
 
 // The hook's reply with the result `$.process.run` gives for a child that exited (the fields the pane reads).
@@ -2760,6 +2765,17 @@ test('/askaway lang en switches the pane to English at once, and the choice is k
   expect((await run($, 'lang pt')).text).toBe('O idioma do AskAway User agora é Português.')
   expect((await run($, 'lang PT_BR')).text).toBe('O idioma do AskAway User agora é Português.')
   await clock.advance(0)
+})
+
+test('the pane opens with the product name from the dictionary as its tab title, in either language', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { titles } = stubHost(on, files)
+  await $.session.start(SESSION)
+  await run($, '')
+  await run($, 'lang en')
+  await run($, '')
+  expect(titles.length).toBeGreaterThanOrEqual(2)
+  expect(new Set(titles)).toEqual(new Set(['AskAway User']))
 })
 
 test('Gauntlet M69: /askaway lang re-registers /askaway with the new description', async ($, on) => {

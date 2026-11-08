@@ -8,6 +8,9 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+### Changed
+- The tab title comes from the dictionary (`pane.title`, "AskAway User"), and the header row wraps and centres its items like KeepAway Repo's, so both panes keep one design.
+
 ## [1.1.0] - 2026-11-05
 
 ### Added
