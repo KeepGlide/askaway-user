@@ -123,13 +123,13 @@ export function renderPane(ui: Ui, view: PaneView, actions: PaneActions, lang: L
   // is not drawn above the questions (renderHistory).
   const pane = (
     <Box flexDirection="column" gap={1}>
-      <Box flexDirection="row" justifyContent="space-between">
-        <Box flexDirection="row" gap={1}>
+      <Box key="header" flexDirection="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" gap={1}>
+        <Box key="brand" flexDirection="row" alignItems="center" gap={1}>
           {renderLogo(ui, view.surface)}
-          <Text bold>{t(lang, 'pane.heading')}</Text>
+          <Text key="heading" bold>{t(lang, 'pane.heading')}</Text>
         </Box>
-        <Box flexDirection="row" alignItems="center" gap={1}>
-          <Text>{`${counterText(lang, view.questions)}${view.away ? t(lang, 'list.awayOn') : ''}`}</Text>
+        <Box key="header-end" flexDirection="row" alignItems="center" gap={1}>
+          <Text key="counter">{`${counterText(lang, view.questions)}${view.away ? t(lang, 'list.awayOn') : ''}`}</Text>
           {renderKeepGlide(ui, view.surface, 'keepglide-counter', KEEPGLIDE_HEADER_SIZE)}
         </Box>
       </Box>

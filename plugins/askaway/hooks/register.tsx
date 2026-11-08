@@ -53,7 +53,6 @@ import * as flow from './wizard'
 import type { Group, Pick, Wizard } from './wizard'
 
 const PANE = 'askaway'
-const TITLE = 'AskAway User'
 const POLL_MS = 5000
 // A draft.json stamped more than this past the clock is pulled back to the clock: a far-future stamp would hold off later drafts.
 const DRAFT_SKEW_MS = 60_000
@@ -1305,8 +1304,10 @@ async function afterPendingOther($: EngineInterface, act: () => Promise<void>, r
 }
 
 // Opens the pane with focus; the result says whether it is drawn (a narrow terminal leaves it undrawn).
-function openPane($: EngineInterface): Promise<{ isPlaced: boolean }> {
-  return $.ui.open({ id: PANE, title: TITLE, focus: true })
+// The tab's title is the product name from the dictionary, the same rule as KeepAway Repo's pane (owner, 2026-11-08).
+async function openPane($: EngineInterface): Promise<{ isPlaced: boolean }> {
+  const lang = await read($, langAtom)
+  return $.ui.open({ id: PANE, title: t(lang, 'pane.title'), focus: true })
 }
 
 // Registers /askaway with the description of the language; /askaway lang calls it again (M69). Whether the engine
