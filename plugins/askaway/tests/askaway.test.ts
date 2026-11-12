@@ -1625,6 +1625,27 @@ test('the question card has one blank line under its nav row: paddingBottom 1, o
   }
 })
 
+test('a rule sits under the header, as in KeepAway Repo: a 1px SVG line across the pane on the desktop, a row of ─ on the terminal', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  for (const surface of SURFACES) {
+    const pane = await mountPane($, surface)
+    const nodes = nodesOf(await pane.drawn())
+    const headerAt = nodes.findIndex(node => keyOfNode(node) === 'header')
+    expect(headerAt).toBeGreaterThan(-1)
+    if (surface === 'desktop') {
+      const headerRule = (await pane.findAll({ type: 'Svg' })).find(found => found.props.alt === '' && found.props.height === 1)
+      expect(String(headerRule?.props.source)).toContain('width="4000" height="1"')
+      expect(headerRule?.props.width).toBeUndefined()
+    } else {
+      const ruleAt = nodes.findIndex(node => Array.isArray(node.children) && node.children.includes('─'.repeat(40)))
+      expect(ruleAt).toBeGreaterThan(headerAt)
+    }
+    await pane.unmount()
+  }
+})
+
 test('the nav row has a separator after the options and Other…: an SVG rule on the desktop, a row of ─ on the terminal', async ($, on) => {
   const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
   stubHost(on, files)
@@ -1632,13 +1653,14 @@ test('the nav row has a separator after the options and Other…: an SVG rule on
   for (const surface of SURFACES) {
     const pane = await mountPane($, surface)
     // The engine keeps keys on Box nodes only, so the Other field and the nav row are found by key, the rules by content.
-    // The details block has no rule above it: the separator before the nav row is the only rule drawn.
+    // The details block has no rule above it: the separator before the nav row is the only rule drawn in the card. The terminal
+    // also draws the header rule as the same row of ─ (the desktop draws that one 1px tall, so it is not a divider here).
     const nodes = nodesOf(await pane.drawn())
     const rule = '─'.repeat(40)
     const keyAt = (key: string): number => nodes.findIndex(node => keyOfNode(node) === key)
     const isRule = (node: Record<string, unknown>): boolean =>
       isDividerProps(node.props as Record<string, unknown> | undefined) || (Array.isArray(node.children) && node.children.includes(rule))
-    expect(nodes.filter(isRule)).toHaveLength(1)
+    expect(nodes.filter(isRule)).toHaveLength(surface === 'desktop' ? 1 : 2)
     const navRuleAt = nodes.map(isRule).lastIndexOf(true)
     const otherAt = keyAt('other-row-q-l1-aaaaaa')
     expect(otherAt).toBeGreaterThan(-1)

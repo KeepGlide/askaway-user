@@ -355,7 +355,7 @@ first click, the same finding as another mod's status list; if that comes back, 
 not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
 
 - **Tab and header row** (owner, 2026-11-08: one design with KeepAway Repo): the tab title is `pane.title`, "AskAway User" in both languages, passed to `ui.open`. The header is one row that wraps, items centred (keys `header`, `brand`, `heading`, `header-end`, `counter`), the same row KeepAway Repo draws.
-- **Header**: the AskAway User logo, then "Questions waiting" ("Perguntas aguardando"; `pane.heading`, `hooks/i18n.ts`), with the counter on the right. The logo is the violet
+- **Header**: the AskAway User logo, then "Questions waiting" ("Perguntas aguardando"; `pane.heading`, `hooks/i18n.ts`), with the counter on the right. Right under the header, a hairline rule across the pane (`HEADER_RULE_SVG`, `hooks/divider.ts`: a 1 px SVG line in `DIVIDER_COLOR`, markup 4000 px wide drawn with no width, so its slot cuts it to the pane; a dim row of 40 `─` on the terminal), as KeepAway Repo draws it (owner, 2026-11-08). The logo is the violet
   SVG on the desktop (`hooks/logo.ts`, `#8B5CF6`) and the bold "?" glyph on the terminal
   (`hooks/logo.ts`, `LOGO_GLYPH`, drawn by `hooks/logo-element.tsx`). The counter reads "<n> pending · <n> groups" ("<n> pendentes · <n> grupos"), or
   "Nothing pending" ("Nenhuma pendente") when no question is open (`counterText`, `hooks/model.ts`); while away mode is on, ", away mode on" (", modo ausente ligado", `list.awayOn`) follows it. The pane draws that suffix from its `away` flag, which the register sets from away.json (`hooks/pane.tsx`, `hooks/register.tsx`).

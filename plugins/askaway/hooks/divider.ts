@@ -11,6 +11,15 @@ export const DIVIDER_HEIGHT = 21
 export const DIVIDER_PX = 320
 export const DIVIDER_COLUMNS = 40
 
+// The rule under the pane header (owner, 2026-11-08), as KeepAway Repo draws it: markup wider than any pane, drawn with no width, so
+// its slot cuts it to the pane's width; only the 1px line, since the pane's gap gives the air.
+export const HEADER_RULE_HEIGHT = 1
+const HEADER_RULE_MARKUP_PX = 4000
+export const HEADER_RULE_SVG =
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${HEADER_RULE_MARKUP_PX}" height="${HEADER_RULE_HEIGHT}" ` +
+  `viewBox="0 0 ${HEADER_RULE_MARKUP_PX} ${HEADER_RULE_HEIGHT}" preserveAspectRatio="none">` +
+  `<rect x="0" y="0" width="${HEADER_RULE_MARKUP_PX}" height="${HEADER_RULE_HEIGHT}" fill="${DIVIDER_COLOR}"/></svg>`
+
 export function dividerSvg(width: number): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${DIVIDER_HEIGHT}" viewBox="0 0 ${width} ${DIVIDER_HEIGHT}" ` +

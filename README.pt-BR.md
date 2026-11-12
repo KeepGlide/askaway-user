@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.1`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`1.1.2`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -761,10 +761,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 553 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 554 |
 | CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit da versão 1.1.1, em 2026-11-08. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit da versão 1.1.2, em 2026-11-08. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -820,6 +820,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.0.3 | 2026-11-02 | A revisão destaca o próprio bloco do grupo na árvore, com Voltar e Enviar tudo dentro dele, em vez de copiar as linhas embaixo. |
 | 1.1.0 | 2026-11-05 | Um marketplace local instala o zip baixado sem rede, e o plugin passa a se chamar AskAway User (id askaway-user). |
 | 1.1.1 | 2026-11-08 | O título da aba vem do dicionário, e a linha do cabeçalho fica igual à do KeepAway Repo. |
+| 1.1.2 | 2026-11-08 | Uma linha fina fica logo abaixo do cabeçalho do painel, como no KeepAway Repo. |
 
 ## 🤝 Contribuição
 
