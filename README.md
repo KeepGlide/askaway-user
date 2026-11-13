@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.2`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.3`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -744,7 +744,7 @@ Report a vulnerability privately, not in a public issue. [SECURITY.md](SECURITY.
 
 ## 🐞 Known issues
 
-No open issue carries the `bug` label as of 2026-10-22 (`gh issue list -R KeepGlide/askaway --state open --label bug`). These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
+No open issue carries the `bug` label as of 2026-11-13 (`gh issue list -R KeepGlide/askaway --state open --label bug`). These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
 
 - **Windows is not handled.** The Claude Desktop session folder is `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (default `~/.config`) on Linux and `~/Library/Application Support/Claude/claude-code-sessions` on macOS (`desktop_sessions_root`, `scripts/askaway.py`), so on Windows it points at a folder Claude Desktop does not use. It is not tested there. Workaround: none.
 - **Desktop Groups on macOS may need the config path set.** The default config path is `~/.config/Claude/claude_desktop_config.json` on every platform (`desktopConfigPathOf`, `hooks/register.tsx`). If Desktop Groups are missing on macOS, set `ASKAWAY_DESKTOP_CONFIG` to the config file's path. Questions still group by family or project.
@@ -765,7 +765,7 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 | Mod (TypeScript), `plugins/askaway/tests/` | 560 |
 | CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at the 1.1.2 release commit, 2026-11-08. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at the 1.1.3 release commit, 2026-11-13. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -822,6 +822,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.0 | 2026-11-05 | A local marketplace installs the downloaded zip offline, and the plugin is renamed AskAway User (id askaway-user). |
 | 1.1.1 | 2026-11-08 | The tab title comes from the dictionary, and the header row matches KeepAway Repo's. |
 | 1.1.2 | 2026-11-08 | A hairline rule sits under the pane header, as in KeepAway Repo. |
+| 1.1.3 | 2026-11-13 | The panel's state writes no longer need GNU `mv -fT` (not yet run on macOS), and a dead window's draft lock is removed after two minutes on Linux. |
 
 ## 🤝 Contributing
 

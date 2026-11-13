@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.2`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`1.1.3`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -744,7 +744,7 @@ Relate uma vulnerabilidade em privado, não numa issue pública. [SECURITY.md](S
 
 ## 🐞 Problemas conhecidos
 
-Nenhuma issue aberta traz o rótulo `bug` em 2026-10-22 (`gh issue list -R KeepGlide/askaway --state open --label bug`). Estas limitações vêm do código, do CHANGELOG e desta página; os limites sem contorno estão em [Limites](#-limites):
+Nenhuma issue aberta traz o rótulo `bug` em 2026-11-13 (`gh issue list -R KeepGlide/askaway --state open --label bug`). Estas limitações vêm do código, do CHANGELOG e desta página; os limites sem contorno estão em [Limites](#-limites):
 
 - **O Windows não é tratado.** A pasta de sessões do Claude Desktop é `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (padrão `~/.config`) no Linux e `~/Library/Application Support/Claude/claude-code-sessions` no macOS (`desktop_sessions_root`, `scripts/askaway.py`), então no Windows ela aponta para uma pasta que o Claude Desktop não usa. Isso não foi testado lá. Contorno: nenhum.
 - **Grupos do Desktop no macOS podem precisar do caminho da configuração.** O caminho padrão da configuração é `~/.config/Claude/claude_desktop_config.json` em todas as plataformas (`desktopConfigPathOf`, `hooks/register.tsx`). Se os grupos do Desktop faltarem no macOS, defina `ASKAWAY_DESKTOP_CONFIG` com o caminho do arquivo de configuração. As perguntas continuam agrupadas por família ou projeto.
@@ -765,7 +765,7 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 | Mod (TypeScript), `plugins/askaway/tests/` | 560 |
 | CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit da versão 1.1.2, em 2026-11-08. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit da versão 1.1.3, em 2026-11-13. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -822,6 +822,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.0 | 2026-11-05 | Um marketplace local instala o zip baixado sem rede, e o plugin passa a se chamar AskAway User (id askaway-user). |
 | 1.1.1 | 2026-11-08 | O título da aba vem do dicionário, e a linha do cabeçalho fica igual à do KeepAway Repo. |
 | 1.1.2 | 2026-11-08 | Uma linha fina fica logo abaixo do cabeçalho do painel, como no KeepAway Repo. |
+| 1.1.3 | 2026-11-13 | As gravações de estado do painel deixam de precisar do `mv -fT` do GNU (ainda não testadas no macOS), e a trava de rascunho de uma janela morta sai depois de dois minutos no Linux. |
 
 ## 🤝 Contribuição
 
