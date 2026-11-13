@@ -88,7 +88,7 @@ export type PaneActions = {
   saveWho: (text: string) => void
   skipWho: () => void
   pick: (id: string, choice: Pick) => void
-  focusOther: (id: string) => void
+  pressOther: (id: string) => void
   submitOne: (id: string) => void
   jump: (id: string) => void
   typeOther: (id: string, text: string) => void
@@ -707,13 +707,15 @@ function renderOption(ui: Ui, lang: Lang, actions: PaneActions, card: CardContex
 
 // "Other…": the last row under the options, a link drawn with its letter: "C · Other…" in the terminal, a plain link
 // (otherLetterOf); on the desktop a Button with the letter as its hotkey chip after the label, as the options draw it. Its field sits on the row under it, under the same "└ " branch glyph the option sub-rows
-// draw. The field is always open, ready to type. Typing keeps the text in the
-// pane's memory (typeOther), with no redraw. Keep (Enter)
-// moves the text to the link, which then draws "C · <label>", picks it and empties the field; the focus goes to the link.
-// A press on the link with a label picks it, else it only focuses the field. Text typed and not kept is recorded as the
-// pick when the field loses focus or before a nav action. A pick never moves the card. The link is bold once Other is the
-// pick, and with a kept label that is the pick it is the primary button (see isKeptChosen). A surface with no Input
-// (mobile) draws no field, so no Other option either.
+// draw. The field is always open, ready to type. Typing keeps the text in the pane's memory (onInput, no redraw).
+// Keep (Enter) moves the text to the link as its label, picks it and empties the field; the focus goes to the link.
+// Typed text that is not yet picked is committed as the Other pick when the ring leaves the field for a stop that is not
+// one of the pane's own Buttons (commitsOnFocus), when one of those Buttons is pressed (afterPendingOther), and when the
+// pane closes (ui.close). A ring move onto one of those Buttons commits nothing; its press does.
+// A pick of Other is drawn chosen whatever its text: the primary button, "✓ <letter> · <text>", bold. Otherwise a kept
+// label draws "<letter> · <label>" underlined, and no label draws "<letter> · Other…". A press only names the question: the
+// action decides once the pending text is committed (pressOther), from the wizard it then reads. A pick never moves the card. A surface with no Input (mobile) draws no
+// field, so no Other option either.
 function renderOther(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext): RenderElement | false {
   if (!('Input' in ui)) return false
   const { Box, Button, Input, Text } = ui
@@ -721,25 +723,26 @@ function renderOther(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext
   const isDisabled = isLeaving || isMoveLocked
   const pick = wizard.picks[question.id]
   const kept: string | undefined = wizard.labels[question.id]
-  // With a kept label, the Other button is chosen only for that text: the drawn label and the pick never disagree.
-  const isChosen = pick?.key === OTHER_KEY && (kept === undefined || pick.text === kept)
+  // An Other pick is drawn chosen with its own text, so the drawn text and the reply sent always agree; otherwise the link
+  // draws the kept label, or "Other…" when there is none.
+  const chosenText: string | undefined = pick?.key === OTHER_KEY ? pick.text : undefined
+  const isChosen = chosenText !== undefined
+  const shownText = chosenText ?? kept
   const key = otherButtonKey(question.id)
   const letter = otherLetterOf(question.options)
-  const linkText = kept === undefined ? t(lang, 'option.other') : singleLine(kept)
+  const linkText = shownText === undefined ? t(lang, 'option.other') : singleLine(shownText)
   const bareLabel = letter === undefined ? linkText : `${letterPrefixOf(card, letter.toUpperCase(), letter)}${linkText}`
-  // A chosen kept label is drawn as a picked option is: the primary button, its label starting "✓ ", bold. Unpicked, or with
-  // no label, it stays the plain link.
-  const isKeptChosen = isChosen && kept !== undefined
-  const label = isKeptChosen ? `✓ ${bareLabel}` : bareLabel
+  // A chosen Other is drawn as a picked option is: the primary button, its label starting "✓ ", bold. Otherwise it is the
+  // underlined link.
+  const label = isChosen ? `✓ ${bareLabel}` : bareLabel
   const hotkey = letter
   const onPress = () => {
     if (isDisabled) return
-    if (kept === undefined) actions.focusOther(question.id)
-    else actions.pick(question.id, { key: OTHER_KEY, text: kept })
+    actions.pressOther(question.id)
   }
   // The desktop draws a plain Button's hotkey cue before its label and any other Button's after it, so there the link is not
   // plain: its letter sits at the end, as the options' letters do. The terminal draws no cue and keeps the plain link.
-  const isPlain = !isKeptChosen && card.surface !== 'desktop'
+  const isPlain = !isChosen && card.surface !== 'desktop'
   return (
     <Box key={`other-row-${question.id}`} flexDirection="column">
       {held.hold(key, [label, isChosen, isLeaving, isMoveLocked, hotkey, isPlain], onPress, press => (
@@ -747,13 +750,13 @@ function renderOther(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext
           key={key}
           label={label}
           plain={isPlain ? true : undefined}
-          variant={isKeptChosen ? 'primary' : 'secondary'}
+          variant={isChosen ? 'primary' : 'secondary'}
           dimColor={isDisabled}
           hotkey={hotkey}
           onPress={press}
         >
-          {!isKeptChosen && <Text dimColor>{`${LINK_MARK} `}</Text>}
-          <Text underline={!isKeptChosen} bold={isChosen} dimColor={isLeaving}>{label}</Text>
+          {!isChosen && <Text dimColor>{`${LINK_MARK} `}</Text>}
+          <Text underline={!isChosen} bold={isChosen} dimColor={isLeaving}>{label}</Text>
         </Button>
       ))}
       {/* The branch glyph stays on the field's first row however tall the field grows; the field runs to the pane's edge.

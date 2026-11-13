@@ -11,16 +11,14 @@ import { detectLang, resolveLang, t, type Lang } from './i18n'
 import { renderPane, type PaneActions, type PaneView } from './pane'
 import {
   EMPTY_BOARD,
-  OTHER_INPUT_PREFIX,
   OTHER_KEY,
-  SUBMIT_ALL_KEY,
   ageLabel,
   answerWho,
   footerText,
   groupBySession,
   isOpenIn,
+  isOwnButtonKey,
   leadOf,
-  leavesOtherField,
   listText,
   openQuestions,
   otherButtonKey,
@@ -1256,6 +1254,20 @@ async function focusOther($: EngineInterface, id: string): Promise<void> {
   await $.ui.focus({ requestId: PANE, key: otherInputKey(id, (await read($, wizardAtom)).fieldRound) })
 }
 
+// The "Other…" link's press, run after the pending text is committed (afterPendingOther), so it reads the wizard the person
+// left. An Other pick already there stays. A kept label is picked, under the move lock like any pick. No label focuses the
+// field.
+async function pressOther($: EngineInterface, id: string): Promise<void> {
+  const { wizard } = await snapshot($)
+  if (wizard.picks[id]?.key === OTHER_KEY) return
+  const kept = wizard.labels[id]
+  if (kept === undefined) {
+    await focusOther($, id)
+    return
+  }
+  moveOnce($, () => report($, pickOption($, id, { key: OTHER_KEY, text: kept })))
+}
+
 // The tree's press on a question: the card on screen becomes that question, as if the wizard had walked there with Next or
 // Back, and its group becomes the group on screen; then the card scrolls into view. A question that is fading out takes
 // nothing.
@@ -1270,30 +1282,28 @@ async function jumpToQuestion($: EngineInterface, id: string): Promise<void> {
 }
 
 // The Other text typed but not recorded yet, by question id. Typing keeps it here, not in the store, so a key does not
-// redraw the pane; it is recorded when the field loses focus and before a nav action (recordPendingOther), and Keep drops it.
+// redraw the pane; it is recorded when the ring leaves the field (commitsOnFocus), before the pane's own button presses, and
+// when the pane closes (recordPendingOther). Keep drops it.
 const pendingOther = new Map<string, string>()
 // The height last drawn for each Other field (otherRowsAtom), so a key that keeps the height does not redraw.
 const fieldRows = new Map<string, number>()
 
-// How a typed Other text becomes the pick: the label rule (flow.submittedOther) or Submit all's (flow.submittedTypedOther).
-type OtherRecord = typeof flow.submittedOther
-
 // The key the pane's focus ring stood on last, as the ui.focus hook saw it: undefined for one of the engine's own stops.
 let focusedKey: string | undefined
 
-// True when a focus move takes the typed Other text off the ring. From Submit all it counts for an element that is not an
-// Other field: Submit all's own press records the text, but a move off it must not drop the text the pane then clears.
-function leavesOtherText(previous: string | undefined, next: string | undefined): boolean {
-  if (previous === SUBMIT_ALL_KEY) return next !== SUBMIT_ALL_KEY && next?.startsWith(OTHER_INPUT_PREFIX) !== true
-  return leavesOtherField(previous, next) && next !== SUBMIT_ALL_KEY
+// True when a focus move commits the typed Other text: text is pending, the ring moves, and it does not land on one of the
+// pane's own Buttons (its press commits the text). A move onto an Other field or an Input commits too.
+function commitsOnFocus(previous: string | undefined, next: string | undefined): boolean {
+  return pendingOther.size > 0 && next !== previous && !isOwnButtonKey(next)
 }
 
-// The text of an "Other…" field recorded as the pick, not kept: blank text takes the pick away. A question
-// that is not open, or fading out, takes nothing.
-async function submitOther($: EngineInterface, id: string, text: string, record: OtherRecord): Promise<void> {
-  const { open, leaving: fading } = await snapshot($)
+// The text of an "Other…" field committed as the pick (flow.typedOther): blank text clears the label and an Other pick. A
+// question that is not open, or fading out, takes nothing. A commit that changes nothing writes and redraws nothing.
+async function submitOther($: EngineInterface, id: string, text: string): Promise<void> {
+  const { open, leaving: fading, wizard } = await snapshot($)
   if (fading[id] !== undefined || !open.some(question => question.id === id)) return
-  await changeWizard($, prev => record(prunedWizard(prev, open), id, text))
+  if (flow.typedOther(wizard, id, text) === wizard) return
+  await changeWizard($, prev => flow.typedOther(prunedWizard(prev, open), id, text))
   await forgetUndelivered($, id)
 }
 
@@ -1302,36 +1312,42 @@ const samePick = (first: Pick | undefined, second: Pick | undefined): boolean =>
   first?.key === second?.key && first?.text === second?.text
 
 // Keep in the "Other…" field (Enter) moves its text to the question's label, picks it, and empties the
-// field: the focus goes to the Other button, which now draws the label chosen. The card stays. Blank text keeps nothing and
-// leaves the field as it is. A question that is not open, or fading out, takes nothing.
+// field: the focus goes to the Other button, which now draws the label chosen. The card stays. Blank text is not kept here:
+// the keepOther action decides it. A question that is not open, or fading out, takes nothing.
 async function keepOther($: EngineInterface, id: string, text: string): Promise<void> {
   const { open, leaving: fading, wizard: before } = await snapshot($)
-  if (fading[id] !== undefined || !open.some(question => question.id === id) || text.trim() === '') return
+  if (fading[id] !== undefined || !open.some(question => question.id === id)) return
   await changeWizard($, prev => flow.keptOther(prunedWizard(prev, open), id, text))
   // Keeping the text the failed pick already had is not a change: the not-delivered line stays until the pick changes.
   if (!samePick(before.picks[id], (await snapshot($)).wizard.picks[id])) await forgetUndelivered($, id)
   await $.ui.focus({ requestId: PANE, key: otherButtonKey(id) })
 }
 
-// Records every pending Other text through submitOther, one after another. An entry whose question is no longer open is
-// dropped, not recorded: the card it was typed on is gone. On a blur (`keepsSetAside`), a text a kept label sets aside
-// (flow.setsTypedOtherAside) stays pending, as its field is still on screen, so a later Submit all sends the text the field
-// shows (SPEC, Other; pane-exec3-1). A nav action drops it: Next and Back take the field off screen, and a pick, a jump or a
-// row's Submit chooses something else.
-async function recordPendingOther($: EngineInterface, record: OtherRecord, keepsSetAside = false): Promise<void> {
-  const { open, wizard } = await snapshot($)
+// The recordings queue on one chain, as the draft writes do: a press that follows a blur waits for the blur's write, so the
+// action reads the pick the person typed. An entry whose question is no longer open is dropped, not recorded: the card it
+// was typed on is gone.
+let pendingRecords: Promise<unknown> = Promise.resolve()
+
+// Records every pending Other text through submitOther, one after another, and clears each entry as it is taken. The
+// chain runs the recording after an earlier one; the returned promise settles once this one is written.
+function recordPendingOther($: EngineInterface): Promise<void> {
+  const run = pendingRecords.then(() => recordPendingNow($))
+  pendingRecords = run.catch(() => undefined)
+  return run
+}
+
+async function recordPendingNow($: EngineInterface): Promise<void> {
+  const { open } = await snapshot($)
   for (const [id, text] of [...pendingOther]) {
-    const isOpen = open.some(question => question.id === id)
-    if (keepsSetAside && isOpen && flow.setsTypedOtherAside(wizard, id)) continue
     pendingOther.delete(id)
-    if (isOpen) await submitOther($, id, text, record)
+    if (open.some(question => question.id === id)) await submitOther($, id, text)
   }
 }
 
-// A nav action records the pending Other text first, so the move or the write reads the pick the person typed. A failure
-// is logged, and the action goes on. Submit all passes its own record (a kept label does not stop the typed answer).
-async function afterPendingOther($: EngineInterface, act: () => Promise<void>, record: OtherRecord = flow.submittedOther): Promise<void> {
-  await recordPendingOther($, record).catch((error: unknown) => logFailure($, error))
+// A nav action, an option press or a submit records the pending Other text first, so the move or the write reads the pick
+// the person typed. A failure is logged, and the action goes on.
+async function afterPendingOther($: EngineInterface, act: () => Promise<void>): Promise<void> {
+  await recordPendingOther($).catch((error: unknown) => logFailure($, error))
   await act()
 }
 
@@ -1398,7 +1414,7 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
   dismissEndedForced: id => report($, dismissOrSay($, id, true)),
   dismissDamagedUnforced: id => report($, dismissOrSay($, id, false)),
   pick: (id, choice) => moveOnce($, () => report($, afterPendingOther($, () => pickOption($, id, choice)))),
-  focusOther: id => report($, afterPendingOther($, () => focusOther($, id))),
+  pressOther: id => report($, afterPendingOther($, () => pressOther($, id))),
   submitOne: id => report($, afterPendingOther($, () => submitOne($, id))),
   jump: id => report($, afterPendingOther($, () => jumpToQuestion($, id))),
   typeOther: (id, text) => {
@@ -1411,15 +1427,24 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
     }
   },
   keepOther: (id, text) => {
-    pendingOther.delete(id)
+    const wasTyped = pendingOther.delete(id)
     fieldRows.delete(id)
     report($, update($, otherRowsAtom, ({ [id]: _, ...rest }) => rest))
-    report($, keepOther($, id, text))
+    if (text.trim() !== '') {
+      report($, keepOther($, id, text))
+      return
+    }
+    // A blank Enter after real typing commits the blank text, queued as a typed entry: it clears the label and an Other pick.
+    // With no typing it changes nothing.
+    if (wasTyped) {
+      pendingOther.set(id, text)
+      report($, recordPendingOther($))
+    }
   },
   back: () => moveOnce($, () => report($, afterPendingOther($, () => moveWizard($, (current, group) => flow.back(current, group))))),
   next: () => moveOnce($, () => report($, afterPendingOther($, () => nextOrReview($)))),
-  submit: () => report($, afterPendingOther($, () => submitCurrent($), flow.submittedTypedOther)),
-  leaveReview: () => moveOnce($, () => report($, leaveReview($))),
+  submit: () => report($, afterPendingOther($, () => submitCurrent($))),
+  leaveReview: () => moveOnce($, () => report($, afterPendingOther($, () => leaveReview($)))),
   saveWho: text => report($, saveWho($, text)),
   skipWho: () => report($, saveWho($, '')),
 })
@@ -1529,21 +1554,22 @@ export const register: Register = on => {
     return renderPane($.ui.resolve(e), view, actionsFor($), lang, heldFor(e.surface, e.requestId))
   })
 
-  // The ring leaving the Other field: the move is passed on first, then the field's pending text is recorded, so a person
-  // who never pressed Keep keeps it; a text a kept label sets aside stays pending for Submit all (recordPendingOther). A move onto Submit all records nothing: its press records the text as the answer
-  // (submittedTypedOther), a kept label included. The hook never blocks, rewrites or re-targets the move.
+  // The ring moving off the Other text commits it: the move is passed on first, then the pending text is recorded. A move
+  // onto one of the pane's own Buttons commits nothing; that button's press commits it (afterPendingOther). The hook never
+  // blocks, rewrites or re-targets the move.
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    const isLeavingOther = leavesOtherText(focusedKey, e.element)
+    const isCommitting = commitsOnFocus(focusedKey, e.element)
     focusedKey = e.element
     const result = await next(e)
-    if (isLeavingOther) await recordPendingOther($, flow.submittedOther, true).catch((error: unknown) => logFailure($, error))
+    if (isCommitting) await recordPendingOther($).catch((error: unknown) => logFailure($, error))
     return result
   })
 
-  // Closing the pane drops the pending Other drafts and the remembered ring: their field leaves with the pane.
-  on('ui.close', { id: PANE }, (_$, e, next) => {
-    pendingOther.clear()
+  // Closing the pane commits the pending Other text first (fire and forget; a failure is logged), so the text typed in its
+  // field is not lost with the pane. The recording takes its entries from the queue, so nothing is cleared here.
+  on('ui.close', { id: PANE }, ($, e, next) => {
     focusedKey = undefined
+    recordPendingOther($).catch((error: unknown) => logFailure($, error))
     return next(e)
   })
 

@@ -159,7 +159,8 @@ declare module 'claude-code' {
         step: number
         questionId: string | null
         picks: Record<string, { key: string; text?: string }>
-        // The kept Other labels by question id: the text the Other button draws (draft.json `labels`).
+        // The Other labels by question id: the text the Other button draws, typed or kept (draft.json `labels`). While the
+        // pick is Other, the label equals the pick's text; a blank commit removes it.
         labels: Record<string, string>
         // The Other field round: Keep moves on to a new one, so the field empties.
         fieldRound: number

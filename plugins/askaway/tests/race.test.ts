@@ -456,6 +456,30 @@ test('race: an option press and a blur record fired with no await between them: 
   await pane.unmount()
 })
 
+test('race: a blur that commits the typed Other text, then an option press fired with no await between them: no write reports this window\'s lock, and the press lands last', async ($, on) => {
+  const files = new Map([[path('q', QUESTION), question(QUESTION, 1000)]])
+  const holds: Holds = {}
+  const { drafts, logs, clock } = stubHost(on, files, holds)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, `other-input-${QUESTION}`)
+  await $.ui.input({ plugin: 'askaway-user', key: `other-input-${QUESTION}`, text: 'Use a fork', kind: 'change' })
+  // The first draft.lock mkdir is held: the blur's write owns the lock while the press is fired behind it.
+  const lockFree = gate()
+  holds.lockOnce = lockFree.promise
+  const blur = moveRing($)
+  await clock.settle()
+  const press = pane.press({ key: `opt-${QUESTION}-B` })
+  await clock.settle()
+  lockFree.open()
+  await Promise.all([blur, press])
+  await clock.settle()
+  expect(logs.filter(line => line.includes('locked by another window'))).toEqual([])
+  // The blur's text was written before the press: the option press is the last pick, not the Other text.
+  expect(picksOf(drafts.at(-1))).toEqual({ [QUESTION]: { key: 'B' } })
+  await pane.unmount()
+})
+
 test('race: a draft.lock left by a crashed window is removed once stale, and the pick is written at the next poll', async ($, on) => {
   const files = new Map([[path('q', QUESTION), question(QUESTION, 1000)]])
   // The lock a crashed window left behind is 121 s old, past the stale age on GNU and BSD alike: the pick's write removes it, and waits for the next poll.

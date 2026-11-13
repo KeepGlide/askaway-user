@@ -900,14 +900,17 @@ export const otherInputKey = (questionId: string, round: number): string =>
 // The key of a question's "Other…" button, which draws the kept label once there is one.
 export const otherButtonKey = (questionId: string): string => `other-${questionId}`
 
-// The key of the Submit all button: a focus move onto it leaves the pending Other text for the press to record.
+// The key of the Submit all button.
 export const SUBMIT_ALL_KEY = 'submit-all'
 
-// True when a focus move takes the ring off the Other field: the element it stood on was a field of that prefix, and the
-// ring moves to another element or to one of the engine's own stops (no element). The register records the field's text then.
-export function leavesOtherField(previous: string | undefined, next: string | undefined): boolean {
-  return previous?.startsWith(OTHER_INPUT_PREFIX) === true && next !== previous
-}
+// The keys of the pane's own Buttons (options, Other, navigation, Submit all, dismiss, the who skip, history clear, and the
+// tree links). A focus move onto one of them does not commit the Other text: its press does. An Input is not a Button (the
+// who field and the Other fields are left out), so a move onto one of them commits.
+const OWN_BUTTON_KEY = new RegExp(
+  `^(opt-|(?!${OTHER_INPUT_PREFIX})other-|nav-(back|next)$|review-back$|submit-all$|dismiss-|who-skip$|history-clear$|tree-jump-|tree-submit-)`,
+)
+
+export const isOwnButtonKey = (key: string | undefined): boolean => key !== undefined && OWN_BUTTON_KEY.test(key)
 
 // The pieces of an explanation text: plain runs, and the names a reader may act on, drawn in bold. A name
 // is a slash command (`/reload-plugins`, `/askaway lang pt` up to its first space) or anything the agent wrote between
