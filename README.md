@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.3`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.4`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -312,9 +312,9 @@ While questions are open, a band sits above the prompt: `2 questions waiting · 
 1. Press `1` from an empty prompt, or click **Answer** on the band, to open the pane. The header shows the AskAway User logo, the heading **Questions waiting** and the counter, such as `2 pending · 1 group`.
 2. The tree lists every Desktop Group and session family with open questions, one under the other, each one's name in bold: the Group's name from the Desktop sidebar, or a family's root title. Under a Group, each session draws its own row with its questions. Under a family's root title, the questions of the root session itself sit right under that title (the title is never repeated as a session row); under them, the family's derived sessions (`├` or `└`) hold their questions. A mark shows where each question stands: `●` the one on screen, `○` waiting. A question with a picked option shows `✓ - ▪ Submit Answer` after its text: that **Submit Answer** sends only that question's answer, at once, and the card stays on the question on screen; the other picks wait for **Submit all**, which still returns the card to the group's first question. Nothing is sent until one of them is pressed. Family and session names are text, not buttons; each question row is a link, drawn dotted and underlined on the Desktop, and pressing one jumps to its card.
 3. Click an option to record it. The pane moves to the next question without an answer, wrapping to the start if needed, or to the last question once every question has one. Nothing is sent yet.
-4. For your own answer, the field under **Other…** is always open: click into it and type. Press Enter (the field's button reads **Apply**) to put the text on the **Other** button as its label; the card stays where it is, so press **Next** or **Submit all** when you are ready. Until a label is kept, the text is recorded as your answer when the field loses focus and on **Submit all**, and a blank field takes the answer away. While a label is kept, leaving the field, **Next** or **← Back** records nothing from it, a blank field changes nothing, and the label is picked by a click on its button; **Submit all** still records the text typed in the field. The **Other…** link only moves the focus to the field.
+4. For your own answer, the field under **Other…** is always open: click into it and type. The typed text is the answer without Enter: it counts when the focus leaves the field, when you press any button of the panel and when the panel closes; Enter also confirms it. An emptied field clears the Other answer: an option you picked stays, and with no pick the question reads **No answer**. While the text counts, the **Other** button shows it as its label, drawn chosen (`✓ C · text`). The card stays where it is, so press **Next** or **Submit all** when you are ready. The **Other…** link only moves the focus to the field.
 5. **← Back** goes to the previous question. **Next →** goes to the next one, with or without an answer. It is on every question but the last.
-6. On the group's last question, the forward button is **Submit all (N)**, where N is the number of questions of the group on screen. It is pressable only once every question has an answer. Pressing it sends every answer of the group to the sessions that asked. Nothing is sent before this button.
+6. On the group's last question, the forward button is **Submit all (N)**, where N is the number of questions of the group on screen. It is dimmed until every question has an answer; a press before that shows a toast naming the first question without an answer and moves the card to it. Pressing it once every question is answered sends every answer of the group to the sessions that asked. Nothing is sent before this button.
 
 ### History
 
@@ -564,8 +564,8 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | Tree rows are links, with no hotkeys. | Rows as buttons with digits | The engine's Markdown takes no hotkey. | [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
 | Submit all sends one group's round, a row's Submit Answer sends one, and nothing is sent before a press. | Sending on pick | The user reviews before sending. | [beta.12](CHANGELOG.md#040-beta12---2026-10-18), [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
 | Option letters are hotkeys; Back, Next and Submit all are `z`, `x`, `w` on the terminal and `p`, `f`, `w` on the desktop; the band's Answer is `1`. | `b`, `n`, `s` | Those clash with options B, N and S. | [beta.8](CHANGELOG.md#040-beta8---2026-10-18), [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
-| The Other field is always open; its text is recorded on blur, on navigation and on Submit all, never per keystroke; Apply makes it the Other button's label. | Recording per keystroke; on Enter only | Keystroke redraws flickered and dropped characters. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18), [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
-| A pick, Next or Back starts a visible 350 ms move lock. | No lock | A double click skipped a question. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
+| The Other field is always open; its text is the answer without Enter, recorded when the focus leaves the field, on any button press and on close, never per keystroke; the Other button shows the text as its label. | Recording per keystroke; on Enter only | Keystroke redraws flickered and dropped characters. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18), [beta.32](CHANGELOG.md#040-beta32---2026-10-21), [1.1.4](CHANGELOG.md#114---2026-11-13) |
+| A repeat of the same move (the same pick on a question, Next or Back) within 350 ms is dropped; the lock is never drawn. | Any move within 350 ms dropped, drawn as a dim | A double click skipped a question; a pick then Next lost the Next (#34). | [beta.30](CHANGELOG.md#040-beta30---2026-10-20), [1.1.4](CHANGELOG.md#114---2026-11-13) |
 | An answered card stays dimmed until its reply is written and undims at once on failure. | A fixed 250 ms fade | The dim tells the truth about the write. | [beta.38](CHANGELOG.md#040-beta38---2026-10-22) |
 | Picks are shared by every session through `draft.json` (merged per id, newest wins); a draft stamped ahead of the clock is pulled back. | Per-session picks | One answer board in every window. | [beta.24](CHANGELOG.md#040-beta24---2026-10-18) |
 | A delivered History line stays until Clear history. | A 30 s fade | The user decides when the history goes. | [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
@@ -661,7 +661,7 @@ Each line names the value AskAway User chose and the one it gave up.
 - **Theme fidelity over brand colour.** The accent colour is never used for text, and the details fill is the engine's own theme key.
 - **Measured readability over subtle styling.** The footer and option sub-rows are plain, not dim.
 - **Honest feedback over fixed timing.** A card stays dimmed until its reply is written; a failure undims it at once.
-- **Deliberate moves over speed.** A 350 ms lock after a pick, Next or Back stops double-click skips.
+- **Deliberate moves over speed.** A 350 ms lock on a repeat of the same move (a pick, Next or Back) stops double-click skips; a different move is never dropped.
 - **Last good state over an empty screen.** A failed listing keeps the last board and the last Desktop Groups, so the view can be one poll stale but never blank.
 - **TTL simplicity over clock robustness.** No second time reference is kept, so a machine idle for more than 7 days may deliver an overdue answer once.
 - **A neutral default over the owner's language.** English is the default; pt-BR users set a locale or `/askaway lang`.
@@ -697,7 +697,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 | Unread-answer TTL | 7 days |
 | Prune | 30 days by default (`ASKAWAY_PRUNE_DAYS`), at most once a day; token files are cleared after a day |
 | Panel token | One use, at most 120 s old |
-| Pane | Polls every 5 s; re-checks ended sessions at most every 30 s; 350 ms move lock; hands an idle session answers at least 5 s old |
+| Pane | Polls every 5 s; re-checks ended sessions at most every 30 s; 350 ms lock on a repeat of the same move; hands an idle session answers at least 5 s old |
 | `wait` | Polls every 0.5 s; 300 s timeout by default |
 | Hooks | 5 s timeout each |
 | High-risk write | 4 attempts, 50 ms apart |
@@ -762,10 +762,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 560 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 581 |
 | CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at the 1.1.3 release commit, 2026-11-13. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit 79d4c4b (the 1.1.4 fix), 2026-11-13. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -823,6 +823,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.1 | 2026-11-08 | The tab title comes from the dictionary, and the header row matches KeepAway Repo's. |
 | 1.1.2 | 2026-11-08 | A hairline rule sits under the pane header, as in KeepAway Repo. |
 | 1.1.3 | 2026-11-13 | The panel's state writes no longer need GNU `mv -fT` (not yet run on macOS), and a dead window's draft lock is removed after two minutes on Linux. |
+| 1.1.4 | 2026-11-13 | Typed Other text is the answer without Enter; a window's draft writes run in order on one chain; the move lock drops only a repeat of the same move; Submit all with an unanswered question names it. |
 
 ## 🤝 Contributing
 
