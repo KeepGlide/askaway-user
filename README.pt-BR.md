@@ -197,10 +197,10 @@ Passo a passo:
 | Plataforma | Status | Observações |
 |---|---|---|
 | Linux | ✅ | Testado com o Claude Code 2.1.296 e o Python 3.12.3. Os passos de shell da spec de instalação foram verificados só aqui. |
-| macOS | ⚠️ | A pasta de sessões do Claude Desktop é `~/Library/Application Support/Claude/claude-code-sessions` desde a 0.4.0-beta.37, coberta só por testes de unidade (`scripts/tests/test_platform_paths.py`). |
+| macOS | ⚠️ | A pasta de sessões do Claude Desktop é `~/Library/Application Support/Claude/claude-code-sessions` desde a 0.4.0-beta.37, coberta só por testes de unidade (`scripts/tests/test_platform_paths.py`). Desde a 1.1.3, as gravações de estado do painel usam `mv -f` portátil e uma idade de trava antiga por plataforma; os testes rodaram só no Linux, e a conferência à mão no macOS está pendente. |
 | Windows | ❌ | Não testado. O código não tem caminho para Windows na pasta de sessões do Claude Desktop (`DESKTOP_SESSIONS_ROOT` e `desktop_sessions_root`, `scripts/askaway.py`). |
 
-O painel só roda no Linux: as gravações de estado usam `mv -fT` do GNU, e a checagem de trava antiga usa `find -mmin` do GNU, que trunca a idade. O suporte ao macOS da 0.4.0-beta.37 cobre só a busca da sessão do Claude Desktop pela CLI.
+Desde a 1.1.3, as chamadas de shell do painel usam só opções POSIX ou documentadas pelo BSD (`mv -f` no lugar do `mv -fT` do GNU; uma idade de trava antiga que nenhuma trava nova casa, nem no `find -mmin` do GNU nem no do BSD), e os testes rodaram só no Linux. O suporte ao macOS da 0.4.0-beta.37 cobre só a busca da sessão do Claude Desktop pela CLI.
 
 ## 🚀 Instalação
 
@@ -667,7 +667,7 @@ Cada linha nomeia o valor que o AskAway User escolheu e o que ele abriu mão.
 - **Um padrão neutro em vez do idioma da dona.** O inglês é o padrão; quem usa pt-BR define um locale ou `/askaway lang`.
 - **Traduções escritas pelo agente em vez de tradução pelo painel.** Uma pergunta sem `translations` fica no próprio idioma.
 - **Links em vez de teclas de atalho nas linhas da árvore.** Não há salto pelo teclado até uma linha.
-- **Linux primeiro em vez de portabilidade.** O painel usa `mv -fT` e `find -mmin` do GNU, então só roda no Linux.
+- **Linux primeiro em vez de portabilidade.** Desde a 1.1.3, as chamadas de shell do painel usam opções POSIX ou documentadas pelo BSD (`mv -f`, `find -mmin`), mas só execuções no Linux foram conferidas.
 - **Testes locais em vez de CI.** Nenhum GitHub Actions roda; quem contribui roda as duas suítes.
 
 ## 🚧 Limites
@@ -678,7 +678,7 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 
 - **Python 3.12 ou mais novo.** Abaixo dele, toda chamada e todo gancho imprimem um erro de versão no stderr e saem com 0, então a pausa e o guarda de Bash e de arquivos não seguram nada.
 - **Claude Code 2.1.295 ou mais recente.** O guarda de pausa só bloqueia uma chamada no próprio timeout ou queda pelo `"onFailure": "block"`; num Claude Code mais antigo, um guarda de pausa que estoura o tempo ou cai deixa a chamada passar.
-- **POSIX e Linux.** A CLI precisa de POSIX (travas `fcntl`). O painel só roda no Linux (`mv -fT` e `find -mmin` do GNU). No macOS só a busca da sessão do Desktop pela CLI é coberta; o Windows não é tratado.
+- **POSIX e Linux.** A CLI precisa de POSIX (travas `fcntl`). Desde a 1.1.3, as chamadas de shell do painel usam opções POSIX ou documentadas pelo BSD, mas só o Linux foi testado. No macOS só a busca da sessão do Desktop pela CLI é coberta por testes; o Windows não é tratado.
 - **Os grupos do Desktop** são lidos só do caminho de configuração do Linux ou de `ASKAWAY_DESKTOP_CONFIG`. O formato é o do próprio Desktop, privado e sem documentação, e um arquivo acima de 4 MiB mantém os últimos grupos lidos.
 
 <details>
@@ -748,6 +748,7 @@ Nenhuma issue aberta traz o rótulo `bug` em 2026-10-22 (`gh issue list -R KeepG
 
 - **O Windows não é tratado.** A pasta de sessões do Claude Desktop é `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (padrão `~/.config`) no Linux e `~/Library/Application Support/Claude/claude-code-sessions` no macOS (`desktop_sessions_root`, `scripts/askaway.py`), então no Windows ela aponta para uma pasta que o Claude Desktop não usa. Isso não foi testado lá. Contorno: nenhum.
 - **Grupos do Desktop no macOS podem precisar do caminho da configuração.** O caminho padrão da configuração é `~/.config/Claude/claude_desktop_config.json` em todas as plataformas (`desktopConfigPathOf`, `hooks/register.tsx`). Se os grupos do Desktop faltarem no macOS, defina `ASKAWAY_DESKTOP_CONFIG` com o caminho do arquivo de configuração. As perguntas continuam agrupadas por família ou projeto.
+- **O painel no macOS não foi conferido à mão.** Desde a 1.1.3, as gravações de estado e a checagem de trava usam opções POSIX ou documentadas pelo BSD, e os testes simulam o shell no Linux. Uma trava que uma janela deixou para trás é removida depois de cerca de um minuto no macOS e de dois minutos no Linux, então os salvamentos do rascunho podem esperar esse tempo; as escolhas ficam pendentes até lá. Contorno: nenhum.
 - **API de acesso antecipado.** A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar. Contorno: fique no Claude Code 2.1.296, que foi testado, ou volte a uma versão com tag ([Fixar e voltar a versão](#fixar-e-voltar-a-versão)).
 - **Uma execução do Codex não pode ser pausada.** Nada segura uma execução do Codex, então o script dela precisa esperar a resposta por conta própria. Contorno: [Pelo Codex](#-pelo-codex).
 - **O guarda de Bash é um desestímulo.** Ele nega `askaway.py answer` na chamada de Bash do próprio agente, mas a chamada de CLI do painel não é uma chamada de ferramenta, e o hook não a vê. A CLI também confia em `CLAUDE_CODE_SESSION_ID`, e um processo do mesmo usuário que consiga gravar a pasta de estado pode gerar um token do painel ([SECURITY.md](SECURITY.md#known-limits)). Contorno: um login por pasta de estado.
@@ -761,7 +762,7 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 554 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 560 |
 | CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
 Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit da versão 1.1.2, em 2026-11-08. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
