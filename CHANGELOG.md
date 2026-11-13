@@ -8,6 +8,21 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-13
+
+### Fixed
+- A window's draft.json writes run in order on one promise chain (`draftWrites`, `writeUnsaved`, `retryDraft`): two writes of one window no longer meet their own draft.lock, and a pick is not lost while that lock is held by an earlier write of the same window (#32).
+- Typed Other text is the answer without Enter: it is committed when the focus leaves the field, on a press of any pane Button and when the pane closes. An emptied field clears the Other answer (#33).
+- A pick then Next keeps the Next: the move lock drops only a repeat of the same move within 350 ms (`moveOnce`) (#34).
+- Submit all with an unanswered question shows a toast naming the first such question and moves the card to it, instead of returning silently (`toast.unanswered`) (#34).
+
+### Changed
+- The move lock is no longer drawn: the option, Other, Next and Back Buttons keep their look during it, and a dim Submit all still sends its press so the toast can show (#34).
+- The Other Button is drawn chosen with its text as `✓ <letter> · <text>` whenever the pick is Other, and the field's placeholder says the text counts on leaving the field or pressing a button; Enter also confirms (#33).
+
+### Not yet
+- Committing Other text on the first key or on an idle timer (#55) is not built: it waits for the desktop repro (#31). The by-hand check of #32, #33 and #34 on Claude Desktop is pending.
+
 ## [1.1.3] - 2026-11-13
 
 ### Fixed
@@ -930,7 +945,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/KeepGlide/askaway/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/KeepGlide/askaway/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/KeepGlide/askaway/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/KeepGlide/askaway/compare/v1.1.0...v1.1.1
