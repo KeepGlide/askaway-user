@@ -67,6 +67,8 @@ type Holds = {
   write?: Promise<void>
   draftWrite?: Promise<void>
   draftWriteOnce?: Promise<void>
+  // Holds only the reply to the next `mkdir` (the draft.lock of the next write); the lock itself is taken at once.
+  lockOnce?: Promise<void>
   draftFull?: boolean
   onTempWrite?: (file: string) => void
   // The age in seconds of each lock folder. `find -mmin +N` reports a lock whose age is above N whole minutes (Gauntlet 5 review R8).
@@ -86,6 +88,7 @@ function stubHost(on: On, files: Map<string, string>, holds: Holds = {}) {
   const draftAttempts: string[] = []
   const drafts: string[] = []
   const submits: string[] = []
+  const logs: string[] = []
   const locks = new Set<string>()
   // The argv of each stale-temp sweep (a find with -delete), in order.
   const sweeps: string[][] = []
@@ -104,6 +107,11 @@ function stubHost(on: On, files: Map<string, string>, holds: Holds = {}) {
     return { text: event.text }
   })
   on('ui.toast', () => ({ value: undefined }))
+  on('ui.focus', () => ({}))
+  on('ui.log', (_$, event) => {
+    logs.push(event.text)
+    return { value: undefined }
+  })
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.render', () => ({ type: 'Text', props: {}, children: ['drawn beneath'] }))
   on('fs.list', (_$, event) => {
@@ -169,6 +177,10 @@ function stubHost(on: On, files: Map<string, string>, holds: Holds = {}) {
     if (event.argv[0] === 'mkdir') {
       if (locks.has(event.argv[1] ?? '')) return cliReply('', 1)
       locks.add(event.argv[1] ?? '')
+      // The lock is taken at once; only the reply to the window is held, as a slow host would hold it.
+      const held = holds.lockOnce
+      holds.lockOnce = undefined
+      await held
       return cliReply('')
     }
     if (event.argv[0] === 'rmdir') {
@@ -199,7 +211,7 @@ function stubHost(on: On, files: Map<string, string>, holds: Holds = {}) {
     writes.push(path('a', id))
     return cliReply(JSON.stringify({ id, key, written: true }))
   })
-  return { attempts, writes, draftAttempts, drafts, submits, reads, clock, locks, sweeps, links }
+  return { attempts, writes, draftAttempts, drafts, submits, reads, logs, clock, locks, sweeps, links }
 }
 
 // The hook's reply with the result `$.process.run` gives for a child that exited (the fields the pane reads).
@@ -414,6 +426,33 @@ test('race: a pick made while another draft.json write is in flight is not lost:
   await clock.advance(5000)
   expect(picksOf(drafts.at(-1))).toEqual({ [QUESTION]: { key: 'B' }, [OTHER_QUESTION]: { key: 'A' } })
   expect(Object.keys(picksOf(drafts.at(-1)))).toHaveLength(2)
+  await pane.unmount()
+})
+
+// The ring moves through the engine's own ui.focus event, as the person's Tab or click does (see askaway.test.ts).
+const moveRing = ($: Engine, element?: string) =>
+  $.ui.focus({ component: 'Pane', requestId: 'askaway', origin: { kind: 'person' }, ...(element === undefined ? {} : { element }) })
+
+test('race: an option press and a blur record fired with no await between them: no write reports this window\'s lock, and draft.json holds the final pick', async ($, on) => {
+  const files = new Map([[path('q', QUESTION), question(QUESTION, 1000)]])
+  const holds: Holds = {}
+  const { drafts, logs, clock } = stubHost(on, files, holds)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, `other-input-${QUESTION}`)
+  // The first draft.lock mkdir is held: the press's write owns the lock while the blur's text is recorded.
+  const lockFree = gate()
+  holds.lockOnce = lockFree.promise
+  const press = pane.press({ key: `opt-${QUESTION}-B` })
+  await clock.settle()
+  await $.ui.input({ plugin: 'askaway-user', key: `other-input-${QUESTION}`, text: 'Use a fork', kind: 'change' })
+  const blur = moveRing($)
+  await clock.settle()
+  lockFree.open()
+  await Promise.all([press, blur])
+  await clock.settle()
+  expect(logs.filter(line => line.includes('locked by another window'))).toEqual([])
+  expect(picksOf(drafts.at(-1))).toEqual({ [QUESTION]: { key: 'other', text: 'Use a fork' } })
   await pane.unmount()
 })
 

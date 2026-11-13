@@ -135,8 +135,9 @@ const unsaved: DraftChanges = { picks: new Map(), labels: new Map() }
 let draftFailing = false
 // The text of the last draft.json save failure logged, undefined once a save lands (see logDraftSaveFailure).
 let draftSaveFailure: string | undefined
-// The draft.json saves of this window in flight: the poll's retry skips its turn meanwhile rather than meet their draft.lock.
-let draftSaves = 0
+// The draft.json writes of this window, one after the other (the pollAfterRunning chain): a write never meets the draft.lock
+// of an earlier one of this window, so "locked by another window" always means another window. It never rejects.
+let draftWrites: Promise<unknown> = Promise.resolve()
 // The poll running now, undefined when none: a tick that comes meanwhile starts no second poll (the `handing` pattern), and
 // a poll asked for meanwhile (Dismiss) runs after it, so two polls never read `seen` or take draft.lock at once.
 let polling: Promise<void> | undefined
@@ -1051,17 +1052,21 @@ function forgetLanded<V>(queue: Map<string, V>, landed: ReadonlyMap<string, V>):
 }
 
 // Writes the picks and labels not yet on draft.json. Returns whether the write landed; a failure is logged and they stay pending.
-async function writeUnsaved($: EngineInterface, home: string): Promise<boolean> {
+// The write waits for the writes queued before it; its batch is taken when its turn comes, so picks queued meanwhile ride it.
+function writeUnsaved($: EngineInterface, home: string): Promise<boolean> {
+  const run = draftWrites.then(() => writeUnsavedNow($, home))
+  draftWrites = run.catch(() => undefined)
+  return run
+}
+
+async function writeUnsavedNow($: EngineInterface, home: string): Promise<boolean> {
   if (unsaved.picks.size === 0 && unsaved.labels.size === 0) return true
   const batch: DraftChanges = { picks: new Map(unsaved.picks), labels: new Map(unsaved.labels) }
-  draftSaves += 1
   try {
     await saveDraft($, home, batch)
   } catch (error: unknown) {
     logDraftSaveFailure($, error)
     return false
-  } finally {
-    draftSaves -= 1
   }
   draftSaveFailure = undefined
   forgetLanded(unsaved.picks, batch.picks)
@@ -1081,9 +1086,6 @@ function logDraftSaveFailure($: EngineInterface, error: unknown): void {
 // The poll's retry of the pending picks (H2). The person is told once while the write keeps failing; a write that lands
 // clears the mark.
 async function retryDraft($: EngineInterface, home: string): Promise<void> {
-  // A save of this window holds draft.lock now: the retry would only meet that lock and report a failure (pane-conc5-2). The
-  // changes the save did not take stay queued for the next poll.
-  if (draftSaves > 0) return
   if (await writeUnsaved($, home)) {
     draftFailing = false
     return
