@@ -1494,6 +1494,66 @@ test('Back keeps the picks: the picked option stays the primary button when the 
   await pane.unmount()
 })
 
+// Issue #34: the move lock drops only a repeat of the same action inside its window. A pick then Next is two actions, so the
+// Next is not lost; the Next button keeps its element object through the lock, so it is not drawn twice.
+test('#34: a pick then Next inside the move lock window still moves on, and the Next button keeps its press handle through the lock', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  // The Button's element is the one the held table keeps while its look is unchanged; its press handle shows that (see the held suite).
+  const nextBefore = buttonHandles(await pane.drawn())['nav-next']
+  await clock.advance(350)
+  expect(buttonHandles(await pane.drawn())['nav-next']).toBe(nextBefore)
+  await pane.unmount()
+})
+
+test('#34: a repeat of the same Next inside the move lock window is dropped, so one press moves one question', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('q', 'q-l3-cccccc'), question('q-l3-cccccc', 3000)],
+  ])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'nav-next' })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l3-cccccc')
+  await pane.unmount()
+})
+
+test('#34: Submit all with an unanswered question gives one toast naming it and moves the card to that question', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { toasts, writes, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'nav-next' })
+  await pane.press({ key: 'opt-q-l2-bbbbbb-B' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Revise as suas respostas')
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([])
+  expect(toasts).toEqual(['Enviar tudo espera: Title q-l1-aaaaaa ainda não tem resposta.'])
+  const drawn = await textsOf(pane)
+  expect(drawn).toContain('Title q-l1-aaaaaa')
+  expect(drawn).not.toContain('Revise as suas respostas')
+  await pane.unmount()
+})
+
 test('two projects are two groups: submit-all answers the first group, and the card then shows the next group\'s first question', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
@@ -3701,7 +3761,7 @@ test('Submit all drawn off with an Other text on one of two questions records th
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
   ])
-  const { writes, clock } = stubHost(on, files)
+  const { writes, toasts, clock } = stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
   await pane.press({ key: 'nav-next' })
@@ -3714,9 +3774,13 @@ test('Submit all drawn off with an Other text on one of two questions records th
   expect((await pane.find({ type: 'Button', key: 'submit-all' }))?.props.dimColor).toBe(true)
   await pane.press({ key: 'submit-all' })
   expect(writes).toEqual([])
-  // Back to the last card, a blank text typed over the field, then Next: the Other pick goes away, and nothing is written.
+  // Submit all with q-l1-aaaaaa unanswered: one toast names it, and the wizard jumps to that question.
+  expect(toasts).toEqual(['Enviar tudo espera: Title q-l1-aaaaaa ainda não tem resposta.'])
+  expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
+  expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
+  // Next walks on to the last card, a blank text typed over its field, then Next: the Other pick goes away, and nothing is written.
   await clock.advance(350)
-  await pane.press({ key: 'review-back' })
+  await pane.press({ key: 'nav-next' })
   await clock.advance(350)
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l2-bbbbbb', text: '   ', kind: 'change' })
   await pane.press({ key: 'nav-next' })
@@ -4055,7 +4119,7 @@ test('draft.json has no labels key while no Other text is kept, and writes the l
   await pane.unmount()
 })
 
-test('the move lock dims option, Other, Next and Back for 350 ms after a move, presses do nothing then, and they work after the window', async ($, on) => {
+test('the move lock draws nothing: no button dims after a move, a repeat of a move inside the window does nothing, and every move works after the window', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -4066,28 +4130,28 @@ test('the move lock dims option, Other, Next and Back for 350 ms after a move, p
   const pane = await mountPane($)
   await pane.press({ key: 'other-q-l1-aaaaaa' })
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'Use a fork' })
-  // A pick is a move: it locks the moves for 350 ms, and the card stays on its question.
+  // A pick is a move, and it draws nothing: no button is dimmed for its window, and the card stays on its question.
   await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
   for (const key of ['opt-q-l1-aaaaaa-B', 'other-q-l1-aaaaaa', 'nav-next']) {
-    expect((await pane.find({ type: 'Button', key }))?.props.dimColor).toBe(true)
+    expect((await pane.find({ type: 'Button', key }))?.props.dimColor).not.toBe(true)
   }
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  await pane.press({ key: 'nav-next' })
-  expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
-  expect((await pane.find({ type: 'Button', key: 'opt-q-l1-aaaaaa-B' }))?.props.variant).not.toBe('primary')
-  await clock.advance(350)
-  expect((await pane.find({ type: 'Button', key: 'nav-next' }))?.props.dimColor).toBe(false)
+  // Next is another move than the pick, so it goes through inside the window. Its repeat does not: a second Next would open
+  // question 3, so the card stays on question 2.
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
-  // Back works once the window has lifted; its move locks the links on question 1 again.
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l3-cccccc')
+  // Back works once the window has lifted; two Backs walk to question 1, and its Other link picks the kept label.
+  await clock.advance(350)
+  await pane.press({ key: 'nav-back' })
   await clock.advance(350)
   await pane.press({ key: 'nav-back' })
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
-  expect((await pane.find({ type: 'Button', key: 'other-q-l1-aaaaaa' }))?.props.dimColor).toBe(true)
-  await pane.press({ key: 'other-q-l1-aaaaaa' })
-  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
-  await clock.advance(350)
+  expect((await pane.find({ type: 'Button', key: 'other-q-l1-aaaaaa' }))?.props.dimColor).not.toBe(true)
   await pane.press({ key: 'other-q-l1-aaaaaa' })
   expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
   await clock.advance(350)
@@ -4516,7 +4580,7 @@ test('a one-question group drawn after a submitted two-question group shows no r
   await pane.unmount()
 })
 
-test('Back on the review is under the move lock: dim and no-op for 350 ms after the pick that drew it, then it leaves the review', async ($, on) => {
+test('Back on the review is not dimmed: its Back goes through right after the Next that drew it, and a repeat of the card Back inside the window is dropped', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -4532,14 +4596,17 @@ test('Back on the review is under the move lock: dim and no-op for 350 ms after 
   await clock.advance(350)
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Revise as suas respostas')
-  expect((await pane.find({ type: 'Button', key: 'review-back' }))?.props.dimColor).toBe(true)
-  await pane.press({ key: 'review-back' })
-  expect(await textsOf(pane)).toContain('Revise as suas respostas')
-  await clock.advance(350)
-  expect((await pane.find({ type: 'Button', key: 'review-back' }))?.props.dimColor).toBe(false)
+  expect((await pane.find({ type: 'Button', key: 'review-back' }))?.props.dimColor).not.toBe(true)
+  // The review Back is a 'back' action, not the 'next' that drew the review, so it goes through at once.
   await pane.press({ key: 'review-back' })
   expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
   expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
+  // The card Back shares the 'back' key with the review Back: a repeat inside the window is dropped.
+  await pane.press({ key: 'nav-back' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-back' })
+  expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
   await pane.unmount()
 })
 
@@ -5631,8 +5698,9 @@ for (const surface of SURFACES) {
     await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
     const after = buttonHandles(await pane.drawn())
     expect(after['opt-q-l1-aaaaaa-A']).not.toBe(before['opt-q-l1-aaaaaa-A'])
-    // The pick starts the move lock (SPEC, Move lock), which dims every option and nav button, so their handles renew with
-    // it. Once the window ends, the handles are stable across a redraw again.
+    // The move lock draws nothing (SPEC, Move lock), so the unpicked option keeps its element and its handle. The nav
+    // handles may renew, because their labels show the answer. Once the window ends, the handles are stable across a redraw.
+    expect(after['opt-q-l1-aaaaaa-B']).toBe(before['opt-q-l1-aaaaaa-B'])
     await clock.advance(350)
     const settled = buttonHandles(await pane.drawn())
     await pane.redraw()
@@ -6448,28 +6516,36 @@ test('Gauntlet M52: a far-ahead draft applies every pick it holds, the one made 
   await pane.unmount()
 })
 
-test('Gauntlet M64: a second option press inside the move lock is ignored, and the press after MOVE_LOCK_MS is taken', async ($, on) => {
-  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
-  const { clock } = stubHost(on, files)
-  await $.session.start(SESSION)
-  const pane = await mountPane($)
-  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'A' } } })
-  // The lock lower bound (Gauntlet 5 B3 M54): at 349 ms the lock still holds, and the press at 350 ms is taken.
-  await clock.advance(349)
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'A' } } })
-  await clock.advance(1)
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'B' } } })
-  await pane.unmount()
-})
-
-test('Gauntlet M64: Back and Next presses inside the move lock are ignored; the press after the window is taken', async ($, on) => {
+test('Gauntlet M64: a repeat of the same move inside the move lock is ignored, and the one after MOVE_LOCK_MS is taken', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  // A pick then another option of the same question are two different actions, so both are taken: the draft holds B.
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'B' } } })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  // The lock lower bound (Gauntlet 5 B3 M54): a repeat of Next at 349 ms is dropped, so no review opens; at 350 ms it is taken.
+  await clock.advance(349)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
+  await clock.advance(1)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Revise as suas respostas')
+  await pane.unmount()
+})
+
+test('Gauntlet M64: a repeat of Next inside the move lock is dropped, a Back right after is taken, and Next walks on after the window', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('q', 'q-l3-cccccc'), question('q-l3-cccccc', 3000)],
   ])
   const { clock } = stubHost(on, files)
   await $.session.start(SESSION)
@@ -6480,16 +6556,18 @@ test('Gauntlet M64: Back and Next presses inside the move lock are ignored; the 
   await clock.advance(350)
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
-  await pane.press({ key: 'nav-back' })
-  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
-  await clock.advance(350)
-  await pane.press({ key: 'nav-back' })
-  expect(await textsOf(pane)).toContain('Which way for q-l1-aaaaaa?')
-  await pane.press({ key: 'nav-next' })
-  expect(await textsOf(pane)).toContain('Which way for q-l1-aaaaaa?')
-  await clock.advance(350)
+  // The repeated Next is dropped and the card stays on q-l2; the Back is another action, so it goes through at once.
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  await pane.press({ key: 'nav-back' })
+  expect(await textsOf(pane)).toContain('Which way for q-l1-aaaaaa?')
+  // After the window the Next walks on again, one question per press.
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l3-cccccc?')
   await pane.unmount()
 })
 
@@ -6632,7 +6710,27 @@ test('Gauntlet B1 H19: a second session start keeps the card on screen and its s
   }
 })
 
-// Gauntlet 5 B3 M16 (probe, part 1 of 2): the hook module keeps moveLocked and pendingOther between presses. This test ends
+// #34: a session start clears the move lock. Next takes the `next` lock; a new session inside its window walks on at once.
+test('#34 a session start clears the move lock, so a Next right after a reload is taken', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('q', 'q-l3-cccccc'), question('q-l3-cccccc', 3000)],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  await pane.unmount()
+  await $.session.start(SESSION)
+  const again = await mountPane($)
+  await again.press({ key: 'nav-next' })
+  expect(await textsOf(again)).toContain('Which way for q-l3-cccccc?')
+  await again.unmount()
+})
+
+// Gauntlet 5 B3 M16 (probe, part 1 of 2): the hook module keeps the move lock and pendingOther between presses. This test ends
 // with a move lock still running (its timer never fires) and an Other text typed on the second card but not recorded.
 test('Gauntlet 5 B3 M16 probe: a pick, then an Other text typed on the next card, and the test ends with both open', async ($, on) => {
   const files = new Map([
@@ -6652,8 +6750,10 @@ test('Gauntlet 5 B3 M16 probe: a pick, then an Other text typed on the next card
   await pane.unmount()
 })
 
-// Gauntlet 5 B3 M16 (probe, part 2 of 2): the test right after the one above starts clean. A leaked move lock would ignore
-// its first pick; a leaked pending Other text would be recorded as a pick by it. Its draft is then exactly the one pick.
+// Gauntlet 5 B3 M16 (probe, part 2 of 2): the test right after the one above starts clean. Part 1 ends with the `next` move
+// lock open, so a leaked lock would drop this test's Next at once; a leaked pending Other text would be recorded as a pick
+// by that Next. The card walks to the second question and the draft is exactly the one pick. The reset inside one session
+// start is proved by the "#34 a session start clears the move lock" test.
 test('Gauntlet 5 B3 M16 probe: the next test starts with no move lock and no pending Other text', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
@@ -6663,6 +6763,8 @@ test('Gauntlet 5 B3 M16 probe: the next test starts with no move lock and no pen
   await $.session.start(SESSION)
   const pane = await mountPane($)
   await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
   expect(JSON.parse(drafts.at(-1) ?? '{}')).toEqual({ ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'A' } } })
   await pane.unmount()
 })

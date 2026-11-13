@@ -59,7 +59,8 @@ const DRAFT_SKEW_MS = 60_000
 // (ceil(age) > N, so over one minute). `+1` therefore never matches a fresh lock on either.
 const DRAFT_LOCK_STALE_MINUTES = 1
 const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES}`
-// A pick, Next or Back locks the moves for this long: a second press inside the window (a double click) does nothing.
+// A move (a pick, Next or Back) drops a repeat of the same action for this long: a second press of that action inside the window
+// (a double click) does nothing. A different action goes through at once.
 const MOVE_LOCK_MS = 350
 // The `list --open` run that finds the ended sessions repeats at most this often while the linked open questions do not change.
 const ENDED_RECHECK_MS = 30_000
@@ -109,8 +110,6 @@ const damagedAtom = atom({ plugin: 'askaway-user', key: 'damagedPauses' } as con
 const whoAtom = atom({ plugin: 'askaway-user', key: 'who' } as const, null as string | null)
 const quietAtom = atom({ plugin: 'askaway-user', key: 'quiet' } as const, false)
 const wizardAtom = atom({ plugin: 'askaway-user', key: 'wizard' } as const, flow.EMPTY_WIZARD)
-// Whether a move (a pick, Next or Back) ran within MOVE_LOCK_MS: the pane draws its buttons disabled meanwhile.
-const moveLockAtom = atom({ plugin: 'askaway-user', key: 'moveLock' } as const, false)
 // The question set (reviewKeyOf) the review (every chosen answer, Back and Submit all) is drawn for in place of the card, or null:
 // set by Next on the last question of a group of two or more, cleared by Back on the review (leaveReview), a move, a jump, a
 // submit, and a poll that finds the group's questions changed (closeChangedReview).
@@ -122,8 +121,8 @@ const undeliveredAtom = atom({ plugin: 'askaway-user', key: 'undelivered' } as c
 const otherRowsAtom = atom({ plugin: 'askaway-user', key: 'otherRows' } as const, {} as Record<string, number>)
 // The ts of the picks this session last wrote to draft.json or applied from it. A draft with a newer ts is applied.
 let draftTs = 0
-// Whether a move (a pick, Next or Back) ran within MOVE_LOCK_MS; cleared by the timer set in moveOnce. The atom mirrors it.
-let moveLocked = false
+// The move that holds the lock, or undefined. Module-level only: nothing is drawn from it (moveOnce).
+let moveLock: { key: string } | undefined
 // The changes to draft.json, by question id: a pick or a kept label, undefined when it was removed.
 type DraftChanges = { picks: Map<string, Pick | undefined>; labels: Map<string, string | undefined> }
 // The picks and kept labels whose draft.json write has not landed yet. Each poll retries them (H2), so a failed write
@@ -1131,6 +1130,17 @@ async function setUndelivered($: EngineInterface, asked: readonly string[], sett
   await update($, undeliveredAtom, prev => [...prev.filter(id => !asked.includes(id)), ...failed])
 }
 
+// Submit all with a question still unanswered (Issue #34): one toast names the first such question, and the card moves to it
+// (jumpToQuestion draws the card and closes the review). Nothing is written.
+async function sayUnanswered($: EngineInterface, group: Group): Promise<void> {
+  const { wizard } = await snapshot($)
+  const first = group.questions.find(question => wizard.picks[question.id] === undefined)
+  if (first === undefined) return
+  const lang = await read($, langAtom)
+  $.ui.toast(t(lang, 'toast.unanswered', { title: questionLabel(localizedQuestion(first, lang)) }))
+  await jumpToQuestion($, first.id)
+}
+
 // Submit all: the draft other windows wrote is applied first (H5), then each question of the group gets its answer through the
 // answer path, and the picks that settled are cleared with the step back on the first question. Nothing is written unless
 // every question has a pick.
@@ -1141,7 +1151,10 @@ async function submitGroup($: EngineInterface, group: Group): Promise<void> {
   try {
     await applyDraft($, folder)
     const items = flow.submittable(group, (await snapshot($)).wizard)
-    if (items === undefined) return
+    if (items === undefined) {
+      await sayUnanswered($, group)
+      return
+    }
     // Each answer takes the pick on screen when its turn comes: a pick changed during the earlier writes is the one sent.
     for (const { id } of items) {
       const pick: Pick | undefined = (await snapshot($)).wizard.picks[id]
@@ -1265,7 +1278,7 @@ async function pressOther($: EngineInterface, id: string): Promise<void> {
     await focusOther($, id)
     return
   }
-  moveOnce($, () => report($, pickOption($, id, { key: OTHER_KEY, text: kept })))
+  moveOnce($, `other:${id}`, () => report($, pickOption($, id, { key: OTHER_KEY, text: kept })))
 }
 
 // The tree's press on a question: the card on screen becomes that question, as if the wizard had walked there with Next or
@@ -1394,18 +1407,16 @@ async function dismissOrSay($: EngineInterface, id: string, force: boolean): Pro
   })
 }
 
-// Sets the move lock: the flag the guard reads, and the atom the pane draws its buttons disabled from (so the pane redraws).
-function setMoveLock($: EngineInterface, locked: boolean): Promise<void> {
-  moveLocked = locked
-  return update($, moveLockAtom, () => locked)
-}
-
-// Runs a move (a pick, Next, Back or the review's Back) unless one ran within MOVE_LOCK_MS; while the lock holds, the pane
-// draws those buttons disabled. Submit and the other actions are not moves.
-function moveOnce($: EngineInterface, move: () => void): void {
-  if (moveLocked) return
-  report($, setMoveLock($, true))
-  $.clock.after(MOVE_LOCK_MS, () => report($, setMoveLock($, false)))
+// Runs a move (a pick, Next, Back or the review's Back) unless the same action (its key) ran within MOVE_LOCK_MS. A different
+// action goes through and takes the lock. The timer clears only the lock it set, so an older timer never frees a newer lock.
+// Submit and the other actions are not moves.
+function moveOnce($: EngineInterface, key: string, move: () => void): void {
+  if (moveLock?.key === key) return
+  const lock = { key }
+  moveLock = lock
+  $.clock.after(MOVE_LOCK_MS, () => {
+    if (moveLock === lock) moveLock = undefined
+  })
   move()
 }
 
@@ -1413,7 +1424,7 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
   clearHistory: () => report($, clearHistory($)),
   dismissEndedForced: id => report($, dismissOrSay($, id, true)),
   dismissDamagedUnforced: id => report($, dismissOrSay($, id, false)),
-  pick: (id, choice) => moveOnce($, () => report($, afterPendingOther($, () => pickOption($, id, choice)))),
+  pick: (id, choice) => moveOnce($, `pick:${id}:${choice.key}`, () => report($, afterPendingOther($, () => pickOption($, id, choice)))),
   pressOther: id => report($, afterPendingOther($, () => pressOther($, id))),
   submitOne: id => report($, afterPendingOther($, () => submitOne($, id))),
   jump: id => report($, afterPendingOther($, () => jumpToQuestion($, id))),
@@ -1441,10 +1452,10 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
       report($, recordPendingOther($))
     }
   },
-  back: () => moveOnce($, () => report($, afterPendingOther($, () => moveWizard($, (current, group) => flow.back(current, group))))),
-  next: () => moveOnce($, () => report($, afterPendingOther($, () => nextOrReview($)))),
+  back: () => moveOnce($, 'back', () => report($, afterPendingOther($, () => moveWizard($, (current, group) => flow.back(current, group))))),
+  next: () => moveOnce($, 'next', () => report($, afterPendingOther($, () => nextOrReview($)))),
   submit: () => report($, afterPendingOther($, () => submitCurrent($))),
-  leaveReview: () => moveOnce($, () => report($, afterPendingOther($, () => leaveReview($)))),
+  leaveReview: () => moveOnce($, 'back', () => report($, afterPendingOther($, () => leaveReview($)))),
   saveWho: text => report($, saveWho($, text)),
   skipWho: () => report($, saveWho($, '')),
 })
@@ -1470,7 +1481,7 @@ export const register: Register = on => {
     await update($, wizardAtom, prev => (hasWizardData(prev) ? prev : flow.EMPTY_WIZARD))
     // A session starts with no draft seen: the awaited first poll below applies the picks the folder holds.
     draftTs = 0
-    await setMoveLock($, false)
+    moveLock = undefined
     const folder = await folderOf($)
     poller?.cancel()
     if (folder !== undefined) {
@@ -1545,7 +1556,6 @@ export const register: Register = on => {
       active,
       wizard,
       screen,
-      moveLocked: await read($, moveLockAtom),
       review: await read($, reviewAtom),
       undelivered: await read($, undeliveredAtom),
       otherRows: await read($, otherRowsAtom),
