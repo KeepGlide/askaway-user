@@ -90,6 +90,8 @@ function stubHost(on: On, files: Map<string, string>, hold: Hold = {}) {
   })
   // The CLI's `answer` (create_once): the call is held at its write, then lands only if no answer exists yet.
   on('process.run', async (_$, e) => {
+    // `test -d target` is exit 0 only for a folder the stub holds (a file under that path): writeAtomic's folder check.
+    if (e.argv[0] === 'test') return cliReply('', [...files.keys()].some(file => file.startsWith(`${e.argv[2] ?? ''}/`)) ? 0 : 1)
     if (e.argv[0] !== 'python3') return cliReply('') // the token folder and mode
     calls.push({ argv: [...e.argv], env: e.init?.env })
     const [, , , id, key] = e.argv

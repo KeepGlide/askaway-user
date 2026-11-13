@@ -155,6 +155,10 @@ type Holds = {
   onLink?: (marker: string) => void
   // The stdout of `list --open` when it exits 0 but prints no list (Gauntlet 6 review R3).
   listStdout?: string
+  // A `mv` whose target is this path fails, its stderr naming the temp file it could not move (the host's mv does the same).
+  failingMoveTo?: string
+  // The temp file of each move that `failingMoveTo` failed, in order: the attempts the test counts.
+  failedMoveTemps?: string[]
 }
 
 // A question fixture that names no `lang` is written in the language the test's pane reads in (pt-BR when LANG says pt, else
@@ -297,10 +301,17 @@ function stubHost(
   on('process.run', async (_$, e) => {
     // The token folder and mode are set by two plain commands; only the calls to askaway.py are the pane's CLI calls.
     if (e.argv[0] !== 'python3') {
+      // `test -d target` is exit 0 only for a folder the stub holds (a file under that path); the stub's write targets are files.
+      if (e.argv[0] === 'test') return cliReply('', [...files.keys()].some(file => file.startsWith(`${e.argv[2] ?? ''}/`)) ? 0 : 1)
       if (e.argv[0] === 'install' || e.argv[0] === 'chmod') tokenCalls.push([...e.argv])
       // A failing `install` says which file it could not make, as the host's install does.
       if (e.argv[0] === 'install' && e.argv[1] === '-m' && holds.installExit !== undefined) {
         return { value: { exitCode: holds.installExit, stdout: '', stderr: `install: cannot create regular file '${e.argv[4] ?? ''}': No such file or directory`, isStdoutTruncated: false, isStderrTruncated: false } }
+      }
+      // A move the test fails: its stderr names the temp file it could not move, as the host's mv does, so each attempt names its own.
+      if (e.argv[0] === 'mv' && holds.failingMoveTo !== undefined && e.argv[3] === holds.failingMoveTo) {
+        holds.failedMoveTemps?.push(e.argv[2] ?? '')
+        return { value: { exitCode: 1, stdout: '', stderr: `mv: rename ${e.argv[2] ?? ''} to ${e.argv[3]}: Permission denied`, isStdoutTruncated: false, isStderrTruncated: false } }
       }
       // gauntlet 4, B1: `mv -f from to` renames in the stub's folder; the target is recorded as the write it stands for.
       // The draft and cleared files are recorded apart, as the writes they are.
@@ -2548,32 +2559,49 @@ test('/askaway away toggles away.json and reports the new state', async ($, on) 
   expect(readJson(files, `${STATE}/away.json`)).toMatchObject({ on: false })
 })
 
-// One `mv` the folder engine ran: its argv and the exit code it gave.
-type MoveCall = { argv: string[]; exitCode: number }
+// One shell call the folder engine ran: its argv and the exit code it gave.
+type ShellCall = { argv: string[]; exitCode: number }
 
-// The file calls writeAtomic makes, on an in-memory folder: a write records its path, and `mv from to` renames within the
-// folder and fails when `from` is gone, as the host does. As GNU mv does, `mv -T` refuses a folder at `to`, and a plain `mv`
-// moves `from` into that folder. Each `mv` is recorded in `moves`. The test engine has no $.fs of its own.
-function folderEngine(files: Map<string, string>, temps: string[], moves: MoveCall[] = [], folders = new Set<string>()): EngineInterface {
+// The shell and file calls writeAtomic makes, on an in-memory folder. A write records its path. `test -d` is exit 0 only for a
+// folder the test declares. `mv -f from to` renames within the folder as the host does: a `to` that is a folder takes `from`
+// inside it (a plain mv does that), and the move fails when `from` is gone or `failMoves` is set, its stderr naming `from`.
+// `rm -f` deletes. Every call is recorded in `calls`; a command the fake does not model throws, so an unmodelled call fails.
+// The test engine has no $.fs of its own.
+function folderEngine(
+  files: Map<string, string>,
+  temps: string[],
+  calls: ShellCall[],
+  options: { folders?: Set<string>; failMoves?: boolean; failTempWrite?: boolean } = {},
+): EngineInterface {
+  const folders = options.folders ?? new Set<string>()
+  const answer = (argv: string[], exitCode: number, stderr = ''): { exitCode: number; stdout: string; stderr: string } => {
+    calls.push({ argv: [...argv], exitCode })
+    return { exitCode, stdout: '', stderr }
+  }
   return {
     fs: {
       write: async (file: string, text: string) => {
         if (file.endsWith('.tmp')) temps.push(file)
+        if (options.failTempWrite && file.endsWith('.tmp')) throw new Error(`ENOSPC: no space left on device, open '${file}'`)
         files.set(file, text)
       },
     },
     process: {
       run: async (argv: string[]) => {
-        const [from = '', to = ''] = argv.slice(2)
-        const text = files.get(from)
-        // The flags are one word (`-fT`): the T letter is the -T option.
-        const refused = folders.has(to) && (argv[1] ?? '').includes('T')
-        const exitCode = text === undefined || refused ? 1 : 0
-        moves.push({ argv: [...argv], exitCode })
-        if (exitCode !== 0) return { exitCode, stdout: '', stderr: `mv: cannot move ${from} to ${to}` }
-        files.delete(from)
-        files.set(folders.has(to) ? `${to}/${from.slice(from.lastIndexOf('/') + 1)}` : to, text ?? '')
-        return { exitCode: 0, stdout: '', stderr: '' }
+        const [command, flag, operand = '', target = ''] = argv
+        if (command === 'test' && flag === '-d') return answer(argv, folders.has(operand) ? 0 : 1)
+        if (command === 'rm' && flag === '-f') {
+          files.delete(operand)
+          return answer(argv, 0)
+        }
+        if (command === 'mv' && flag === '-f') {
+          const text = files.get(operand)
+          if (text === undefined || options.failMoves) return answer(argv, 1, `mv: rename ${operand} to ${target}: Permission denied`)
+          files.delete(operand)
+          files.set(folders.has(target) ? `${target}/${operand.slice(operand.lastIndexOf('/') + 1)}` : target, text)
+          return answer(argv, 0)
+        }
+        throw new Error(`folderEngine does not model: ${argv.join(' ')}`)
       },
     },
   } as unknown as EngineInterface
@@ -2582,8 +2610,8 @@ function folderEngine(files: Map<string, string>, temps: string[], moves: MoveCa
 test('two windows write one target at once: both writes land, and each temp file is dot-prefixed and ends in .tmp', async () => {
   const files = new Map<string, string>()
   const temps: string[] = []
-  const moves: MoveCall[] = []
-  const engine = folderEngine(files, temps, moves)
+  const calls: ShellCall[] = []
+  const engine = folderEngine(files, temps, calls)
   const target = `${STATE}/away.json`
   await Promise.all([writeAtomic(engine, target, 'first\n'), writeAtomic(engine, target, 'second\n')])
   expect(['first\n', 'second\n']).toContain(files.get(target))
@@ -2592,25 +2620,118 @@ test('two windows write one target at once: both writes land, and each temp file
     expect.stringMatching(/\/\.away\.json\.[0-9a-f]+\.tmp$/),
   ])
   expect(temps[0]).not.toBe(temps[1])
-  // Both moves run as `mv -fT temp target` and exit 0, so each write lands.
-  expect(moves.map(move => move.argv)).toEqual(temps.map(temp => ['mv', '-fT', temp, target]))
+  // Both moves run as `mv -f temp target` and exit 0, so each write lands.
+  const moves = calls.filter(call => call.argv[0] === 'mv')
+  expect(moves.map(move => move.argv)).toEqual(temps.map(temp => ['mv', '-f', temp, target]))
   expect(moves.map(move => move.exitCode)).toEqual([0, 0])
 })
 
-test('an atomic write refuses a folder at its target: mv -T fails, the folder stays, and writeAtomic throws', async () => {
+test('an atomic write never runs mv with -T or -fT, and its move is mv -f temp target', async () => {
   const files = new Map<string, string>()
   const temps: string[] = []
-  const moves: MoveCall[] = []
+  const calls: ShellCall[] = []
+  const target = `${STATE}/cleared.json`
+  await writeAtomic(folderEngine(files, temps, calls), target, 'text\n')
+  const argvs = calls.map(call => call.argv)
+  expect(argvs.flat().some(word => word === '-T' || word === '-fT')).toBe(false)
+  expect(argvs).toEqual([['test', '-d', target], ['mv', '-f', temps[0], target]])
+  expect(files.get(target)).toBe('text\n')
+})
+
+test('an atomic write refuses a folder at its target before any temp file: test -d says so, the folder stays, and writeAtomic throws', async () => {
+  const files = new Map<string, string>()
+  const temps: string[] = []
+  const calls: ShellCall[] = []
   const target = `${STATE}/away.json`
   const folders = new Set([target])
-  const outcome = await writeAtomic(folderEngine(files, temps, moves, folders), target, 'text\n').then(
+  const outcome = await writeAtomic(folderEngine(files, temps, calls, { folders }), target, 'text\n').then(
     () => 'written',
     (error: unknown) => (error instanceof Error ? error.message : 'not an Error'),
   )
-  expect(outcome).toContain('could not move')
-  expect(moves.map(move => move.exitCode)).toEqual([1])
+  expect(outcome).toBe(`could not write ${target}: it is a folder`)
+  expect(calls.map(call => call.argv)).toEqual([['test', '-d', target]])
+  expect(temps).toEqual([])
+  expect([...files.keys()]).toEqual([])
   expect(folders.has(target)).toBe(true)
-  expect([...files.keys()]).toEqual(temps)
+})
+
+test('a failed move removes its own temp file, and the thrown message names the target, not the temp file', async () => {
+  const files = new Map<string, string>()
+  const temps: string[] = []
+  const calls: ShellCall[] = []
+  const target = `${STATE}/away.json`
+  const outcome = await writeAtomic(folderEngine(files, temps, calls, { failMoves: true }), target, 'text\n').then(
+    () => 'written',
+    (error: unknown) => (error instanceof Error ? error.message : 'not an Error'),
+  )
+  const [temp = ''] = temps
+  expect(calls.map(call => call.argv)).toEqual([['test', '-d', target], ['mv', '-f', temp, target], ['rm', '-f', temp]])
+  expect([...files.keys()]).toEqual([])
+  expect(outcome).toBe(`could not write ${target}: mv: rename the temp file to ${target}: Permission denied`)
+  expect(outcome).not.toContain(temp)
+})
+
+test('a draft.json move that keeps failing is logged once across the polls, and again after a save lands and a new failure', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const holds: Holds = { failingMoveTo: `${STATE}/draft.json`, failedMoveTemps: [] }
+  const { drafts, logs, clock } = stubHost(on, files, true, {}, holds, { LANG: '' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const saveFailures = (): string[] => logs.filter(line => line.includes('could not write'))
+  const message = `askaway-user: could not write ${STATE}/draft.json: mv: rename the temp file to ${STATE}/draft.json: Permission denied`
+  // The press is the first attempt; each 5 s poll retries it with a new temp file, and each attempt's stderr names that temp file.
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.advance(5000)
+  await clock.advance(5000)
+  await clock.advance(5000)
+  // Four attempts (the press and three polls), each with its own temp file, before the failure is released.
+  expect(new Set(holds.failedMoveTemps).size).toBeGreaterThanOrEqual(4)
+  expect(saveFailures()).toEqual([message])
+  expect(drafts).toEqual([])
+  expect([...files.keys()].filter(file => file.endsWith('.tmp'))).toEqual([])
+  holds.failingMoveTo = undefined
+  await clock.advance(5000)
+  expect(drafts).toHaveLength(1)
+  holds.failingMoveTo = `${STATE}/draft.json`
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  expect(saveFailures()).toEqual([message, message])
+  await pane.unmount()
+})
+
+test('a failed temp write removes its temp file, and the thrown message names the target and the temp file by a token, not its path', async () => {
+  const files = new Map<string, string>()
+  const temps: string[] = []
+  const calls: ShellCall[] = []
+  const target = `${STATE}/away.json`
+  const outcome = await writeAtomic(folderEngine(files, temps, calls, { failTempWrite: true }), target, 'text\n').then(
+    () => 'written',
+    (error: unknown) => (error instanceof Error ? error.message : 'not an Error'),
+  )
+  const [temp = ''] = temps
+  expect(outcome).toBe(`could not write ${target}: ENOSPC: no space left on device, open 'the temp file'`)
+  expect(outcome).not.toContain(temp)
+  expect(calls.map(call => call.argv)).toEqual([['test', '-d', target], ['rm', '-f', temp]])
+  expect([...files.keys()]).toEqual([])
+})
+
+test('a draft.json temp write that keeps failing is logged once across the polls, and its message names no temp file', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const holds: Holds = { failingWriteTo: 'draft.json' }
+  const { drafts, logs, clock } = stubHost(on, files, true, {}, holds, { LANG: '' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  // The press is the first attempt; each 5 s poll retries it, and each attempt's temp file fails with its own name.
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.advance(5000)
+  await clock.advance(5000)
+  await clock.advance(5000)
+  // The reason is the kit's wording for a hook that throws; the unit test above pins the temp-file token. Only the dedupe is claimed here.
+  const saveFailures = logs.filter(line => line.includes('could not write'))
+  expect(saveFailures).toHaveLength(1)
+  expect(saveFailures[0]?.startsWith(`askaway-user: could not write ${STATE}/draft.json: `)).toBe(true)
+  expect(drafts).toEqual([])
+  expect([...files.keys()].filter(file => file.endsWith('.tmp'))).toEqual([])
+  await pane.unmount()
 })
 
 test('/askaway opens the pane, or answers the text list when the pane waits undrawn', async ($, on) => {
