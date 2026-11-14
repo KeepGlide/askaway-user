@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.6`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`1.1.7`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -88,7 +88,7 @@ O AskAway User não:
 | **Sessão** (*session*) | Uma sessão do Claude Code. Cada pergunta registra a sessão que perguntou, e a resposta volta para essa sessão. |
 | **Recomendada** (*recommended*) | A opção que o agente marca como padrão. Ele segue trabalhando nela até você responder, e a sua resposta a substitui. |
 | **Risco** (*risk*) | Quão arriscado é aceitar a opção recomendada: `low`, `medium` ou `high`. Só `high` pausa. |
-| **Pausa** (*pause*) | Uma retenção do agente que perguntou uma pergunta `high` (a thread principal ou um subagente): as edições, os comandos de shell e as outras chamadas de ferramenta que alteram algo ficam bloqueadas até a resposta ser entregue à sessão dele. |
+| **Pausa** (*pause*) | Uma retenção do agente que perguntou uma pergunta `high` (a thread principal ou um subagente): as chamadas de ferramenta dele ficam bloqueadas, exceto as só de leitura, até a resposta ser entregue à sessão dele. |
 | **Aderência** (*fit*) | A estimativa do próprio agente, de 0 a 100, de quão bem uma opção serve à tarefa. O AskAway User não mede nem verifica essa nota. |
 
 ## 🎁 O que entrega
@@ -133,7 +133,7 @@ flowchart LR
     agent["Agente: thread principal ou subagente"] -->|"ask --json"| cli["CLI: scripts/askaway.py"]
     cli -->|"grava a pergunta"| q[("q/ perguntas")]
     stamp["gancho stamp-asker, depois do Bash"] -->|"grava asker numa pausa nova"| q
-    guard["gancho pause-guard, antes das ferramentas que alteram"] -->|"lê"| q
+    guard["gancho pause-guard, antes de cada chamada de ferramenta"] -->|"lê"| q
     guard -->|"cópia congelada primeiro, depois o leitor, e segura quem perguntou"| agent
     q -->|"consulta a cada 5 s"| panel["Painel: faixa, aviso, árvore, um cartão"]
     panel -->|"gera um token de uso único"| tokens[("panel-tokens/")]
@@ -158,7 +158,7 @@ sequenceDiagram
     Agent->>Folder: ask grava a pergunta em q/
     Note over Agent: a CLI responde pause
     Hooks->>Folder: stamp-asker grava asker
-    Agent->>Hooks: próxima chamada de ferramenta que altera algo
+    Agent->>Hooks: próxima chamada de ferramenta
     Hooks-->>Agent: pause-guard a nega enquanto a pausa vale
     Panel->>Folder: consulta a cada 5 s
     Panel-->>You: botão da faixa e aviso
@@ -181,9 +181,9 @@ Passo a passo:
 1. **Teste de ausência.** Uma sessão está ausente com `bypassPermissions`, com o modo ausente ligado ou com `CLAUDE_CODE_SESSION_ATTENDED=0`. Enquanto ausente, `hook ask-guard` nega `AskUserQuestion` e devolve um esqueleto de `ask` por pergunta; nada é guardado.
 2. **Registro.** `ask --json` confere cada campo e cita todas as lacunas num só `refile`. Lê o título da sessão e a família do Desktop e então, sob `.ask.lock`, procura uma duplicata aberta, grava `q/<id>.json` e responde `continue`, `pause`, `open` ou `refile`.
 3. **Marca de autor.** Depois da chamada de `ask`, `hook stamp-asker` grava `asker` (o `agent_id` de quem chamou, ou `main`) na pausa nova, sob `.ask.lock`. Uma pausa sem `asker` segura a sessão inteira.
-4. **Guarda e retenção.** `hook pause-guard` roda antes de Edit, Write, NotebookEdit, MultiEdit, Bash, PowerShell, Monitor, Agent e de toda ferramenta `mcp__`, com timeout de 5 s e `"onFailure": "block"`. Ele tem duas funções:
+4. **Guarda e retenção.** `hook pause-guard` roda antes de toda chamada de ferramenta (matcher `.*`), com timeout de 5 s e `"onFailure": "block"`. Ele tem duas funções:
    - **O guarda de Bash e de arquivos**, em toda sessão, ausente ou não: uma cópia congelada de um guarda anterior (`scripts/askaway_guard_baseline.py`) decide primeiro, depois o leitor atual, então o guarda nunca nega menos do que aquela cópia negava. Um erro em qualquer dos dois nega, um comando com mais de 64K caracteres é negado, um evento que o gancho não consegue ler é negado, e com o diretório de trabalho apagado todo alvo relativo de gravação é recusado.
-   - **A retenção:** enquanto uma pergunta `high` desta sessão espera a entrega a quem perguntou, as chamadas que alteram algo desse agente são negadas. Uma chamada simples de `ask`, `status`, `list`, `wait` ou `export` e as ferramentas MCP só de leitura passam.
+   - **A retenção:** enquanto uma pergunta `high` desta sessão espera a entrega a quem perguntou, as chamadas de ferramenta desse agente são negadas, exceto uma chamada simples de `ask`, `status`, `list`, `wait` ou `export`, as ferramentas de `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, `Skill`, as de lista de tarefas e de plano) e as ferramentas MCP só de leitura. Toda outra ferramenta é retida, `WebFetch` incluída, e também uma ferramenta que o Claude Code adicionar depois, até ser listada em `READ_ONLY_TOOLS`. Sem pausa em arquivo, o gancho sai antes dos imports pesados.
 5. **Resposta.** As escolhas são compartilhadas pelo `draft.json`. No Enviar tudo ou no Enviar resposta de uma linha, o painel gera um token de uso único em `panel-tokens/` (32 caracteres hex, modo 600, válido por 120 s) e roda `answer <id> <key> --by panel --strict` com ele em `ASKAWAY_PANEL_TOKEN`. A CLI publica `a/<id>.json` com um link exclusivo, então vale a primeira resposta, e o cartão fica esmaecido até a resposta ser gravada.
 6. **Entrega, uma cópia por destinatário.** O gancho `deliver` (SessionStart, UserPromptSubmit e PostToolUse) lê e julga todas as respostas primeiro, depois reivindica cada cópia devida com um link que não sobrescreve e imprime a linha da resposta, em inglês, como contexto do gancho. A thread principal reivindica `d/<id>.json` (`"recipient": "main"`); um subagente reivindica só as respostas das perguntas que o próprio `ask` registrou, em `s/<id>.json`, e a pausa dele só termina com essa cópia ou um vencimento. Uma sessão ociosa recebe as respostas pelo painel: ele grava as marcas `d/` (`via: "prompt"`) e envia um prompt por sessão que perguntou. Uma execução do Codex lê a resposta com `wait --strict` ([Pelo Codex](#-pelo-codex)).
 7. **Liberação.** Uma resposta não lida vence quando o Claude Desktop liberou a sessão dela (`session-ended`) ou depois de 7 dias (`ttl`). No máximo uma vez por dia, o gancho deliver remove itens fechados mais antigos que `ASKAWAY_PRUNE_DAYS` (30 dias).
@@ -349,7 +349,7 @@ O rótulo de risco é o risco de aceitar a opção recomendada, como o agente av
 
 - **✅ risco baixo:** seguro de aceitar e fácil de mudar depois.
 - **⚠️ risco médio:** reversível, mas mudar custa retrabalho.
-- **🛑 risco alto:** irreversível, ou toca arquivos reais, credenciais ou dinheiro. Uma pergunta de risco alto pausa o agente que perguntou (a thread principal ou um subagente; uma pergunta sem autor registrado pausa a sessão inteira): as edições, os comandos de shell e as outras chamadas de ferramenta que alteram algo ficam bloqueados até a resposta ser entregue a essa sessão, no próximo disparo de hook dela. O agente ainda pode ler e encerrar o turno.
+- **🛑 risco alto:** irreversível, ou toca arquivos reais, credenciais ou dinheiro. Uma pergunta de risco alto pausa o agente que perguntou (a thread principal ou um subagente; uma pergunta sem autor registrado pausa a sessão inteira): as chamadas de ferramenta dele ficam bloqueadas, exceto as só de leitura, até a resposta ser entregue a essa sessão, no próximo disparo de hook dela. O agente ainda pode ler e encerrar o turno.
 
 ### Teclas
 
@@ -496,7 +496,7 @@ A pasta de estado pertence a um usuário, e todas as sessões do Claude Code que
 - **Ganchos** (`plugins/askaway/hooks/command-hooks.json`) leem a entrada do hook pela entrada padrão: id da sessão, modo de permissão, diretório de trabalho, nome e entrada da ferramenta.
   - `SessionStart` (em `startup`, `resume`, `clear` ou `compact`), `UserPromptSubmit` e `PostToolUse` rodam `hook deliver`: ele lê `q/`, `a/`, `d/` e `s/`, grava uma marca de entrega para cada resposta que entrega (em `d/` para a sessão principal, em `s/` para o subagente cujo próprio `ask` registrou a pergunta), e coloca o texto da resposta no contexto daquela sessão.
   - `PreToolUse` em `AskUserQuestion` roda `hook ask-guard`: lê o estado ausente e não grava nada.
-  - `PreToolUse` em `^(Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|Monitor|Agent)$|^mcp__` roda `hook pause-guard`: lê `q/`, `a/`, `d/` e `s/`; a única gravação dele é a marca `clock_mark` na pasta de estado, quando uma pausa tem uma resposta ainda sem marca.
+  - `PreToolUse` em `.*` (toda ferramenta) roda `hook pause-guard`: sai logo quando não há pausa em arquivo; senão lê `q/`, `a/`, `d/` e `s/`; a única gravação dele é a marca `clock_mark` na pasta de estado, quando uma pausa tem uma resposta ainda sem marca.
   - `PostToolUse` em `Bash` roda `hook stamp-asker`: depois de uma chamada de `ask`, grava `asker` (o `agent_id` de quem chamou, ou `main`) na pausa que a chamada registrou, e não altera outro campo.
 - **Títulos de sessão:** ao registrar uma pergunta, `ask` procura o transcrito da sessão que perguntou, `<sessão>.jsonl`, em qualquer pasta de projeto sob `~/.claude/projects/`, e guarda só as suas entradas de título (`custom-title`, `agent-name`, `ai-title`). Não lê prompts nem respostas. O título dá nome à sessão no cartão.
 - **Registros de sessão do Claude Desktop:** a cada `ask`, lê os registros `$XDG_CONFIG_HOME/Claude/claude-code-sessions/*/*/local_*.json` (`~/.config` quando `XDG_CONFIG_HOME` não está definido; no macOS, em `~/Library/Application Support`) para achar a sessão e a família do Desktop da sessão que perguntou.
@@ -766,9 +766,9 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 | Categoria | Testes |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 602 |
-| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1717 |
+| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1758 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit 9817b35 (as correções de repasse da 1.1.6), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit 64eb563 (o guarda de pausa da 1.1.7), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -829,6 +829,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.4 | 2026-11-13 | O texto digitado em Outra é a resposta sem Enter; as gravações de rascunho de uma janela rodam em ordem numa só fila; a trava de movimento só descarta a repetição do mesmo movimento; Enviar tudo com uma pergunta sem resposta a nomeia. |
 | 1.1.5 | 2026-11-14 | Os detalhes do cartão recolhem por padrão atrás de um botão com a contagem; a cor da urgência vem só de `urgency_level`, sem palavra-chave; a faixa e o contador mostram as pausadas. |
 | 1.1.6 | 2026-11-14 | Um turno de subagente em segundo plano não marca mais a sessão como ocupada, então o repasse na ociosidade não fica retido; um repasse de pergunta recusado remove as marcas e é tentado de novo, e cada resposta é entregue uma vez. |
+| 1.1.7 | 2026-11-14 | O guarda de pausa retém toda chamada de ferramenta, salvo as da lista só de leitura, então uma ferramenta nova também fica retida; o guarda de ask avisa quando a pergunta era de seleção múltipla; os exemplos de ask da documentação são testados contra o validador. |
 
 ## 🤝 Contribuição
 

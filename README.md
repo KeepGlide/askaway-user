@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.6`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.7`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -88,7 +88,7 @@ AskAway User does not:
 | **Session** | One Claude Code session. Each question records the session that asked, and its answer goes back to that session. |
 | **Recommended** | The option the agent marks as its default. It keeps working on it until you answer, and your answer overrides it. |
 | **Risk** | How risky accepting the recommended option is: `low`, `medium` or `high`. Only `high` pauses. |
-| **Pause** | A hold on the agent that asked a `high` question (the main thread or one subagent): its edits, shell commands and other changing tool calls are blocked until the answer is delivered to its session. |
+| **Pause** | A hold on the agent that asked a `high` question (the main thread or one subagent): its tool calls are blocked, except the read-only ones, until the answer is delivered to its session. |
 | **Fit** | The agent's own 0-100 estimate of how well an option suits the task. AskAway User does not measure or check it. |
 
 ## 🎁 What it delivers
@@ -133,7 +133,7 @@ flowchart LR
     agent["Agent: main thread or subagent"] -->|"ask --json"| cli["CLI: scripts/askaway.py"]
     cli -->|"writes the question"| q[("q/ questions")]
     stamp["stamp-asker hook, after Bash"] -->|"writes asker on a new pause"| q
-    guard["pause-guard hook, before changing tools"] -->|"reads"| q
+    guard["pause-guard hook, before each tool call"] -->|"reads"| q
     guard -->|"frozen copy first, then the scanner, and holds the asker"| agent
     q -->|"poll every 5 s"| panel["Panel: band, toast, tree, one card"]
     panel -->|"mints a one-shot token"| tokens[("panel-tokens/")]
@@ -158,7 +158,7 @@ sequenceDiagram
     Agent->>Folder: ask writes the question to q/
     Note over Agent: the CLI replies pause
     Hooks->>Folder: stamp-asker writes asker
-    Agent->>Hooks: next changing tool call
+    Agent->>Hooks: next tool call
     Hooks-->>Agent: pause-guard denies it while the pause holds
     Panel->>Folder: poll every 5 s
     Panel-->>You: band button and toast
@@ -181,9 +181,9 @@ Step by step:
 1. **Away test.** A session is away under `bypassPermissions`, with away mode on, or with `CLAUDE_CODE_SESSION_ATTENDED=0`. While away, `hook ask-guard` denies `AskUserQuestion` and hands back one `ask` skeleton per question; nothing is stored.
 2. **File.** `ask --json` checks every field and names every gap in one `refile`. It reads the session title and the Desktop family, then, under `.ask.lock`, checks for an open duplicate, writes `q/<id>.json` and replies `continue`, `pause`, `open` or `refile`.
 3. **Stamp.** After the `ask` call, `hook stamp-asker` writes `asker` (the caller's `agent_id`, or `main`) onto the new pause, under `.ask.lock`. A pause with no `asker` holds the whole session.
-4. **Guard and hold.** `hook pause-guard` runs before Edit, Write, NotebookEdit, MultiEdit, Bash, PowerShell, Monitor, Agent and every `mcp__` tool, with a 5 s timeout and `"onFailure": "block"`. It has two jobs:
+4. **Guard and hold.** `hook pause-guard` runs before every tool call (matcher `.*`), with a 5 s timeout and `"onFailure": "block"`. It has two jobs:
    - **The Bash and file guard**, in every session, away or not: a frozen copy of an earlier guard (`scripts/askaway_guard_baseline.py`) decides first, then the current scanner, so the guard never denies less than that copy did. An error in either denies, a command over 64K characters is denied, an event the hook cannot read is denied, and with a deleted working directory every relative write target is refused.
-   - **The hold:** while a `high` question of this session waits for delivery to its asker, the asker's changing calls are denied. One simple `ask`, `status`, `list`, `wait` or `export` call and read-only MCP tools pass.
+   - **The hold:** while a `high` question of this session waits for delivery to its asker, the asker's tool calls are denied, except one simple `ask`, `status`, `list`, `wait` or `export` call, the tools of `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, `Skill`, the task-list and plan tools) and read-only MCP tools. Every other tool is held, `WebFetch` included, and so is a tool that Claude Code adds later until it is listed in `READ_ONLY_TOOLS`. With no pause on file, the hook exits before its heavy imports.
 5. **Answer.** Picks are shared through `draft.json`. On Submit all or a row's Submit Answer, the pane mints a one-shot token in `panel-tokens/` (32 hex characters, mode 600, valid for 120 s) and runs `answer <id> <key> --by panel --strict` with it in `ASKAWAY_PANEL_TOKEN`. The CLI publishes `a/<id>.json` with an exclusive link, so the first answer wins, and the card stays dimmed until the reply is written.
 6. **Deliver, one copy per recipient.** The `deliver` hook (SessionStart, UserPromptSubmit and PostToolUse) reads and judges every answer first, then claims each due copy with a no-clobber link and prints the English answer line as hook context. The main thread claims `d/<id>.json` (`"recipient": "main"`); a subagent claims only the answers to the questions its own `ask` filed, in `s/<id>.json`, and its pause ends only on that copy or a lapse. An idle session gets its answers from the pane: it writes the `d/` markers (`via: "prompt"`) and submits one prompt per asking session. A Codex run reads its answer with `wait --strict` ([From Codex](#-from-codex)).
 7. **Release.** An unread answer lapses when Claude Desktop has released its session (`session-ended`) or after 7 days (`ttl`). At most once a day, the deliver hook removes closed items older than `ASKAWAY_PRUNE_DAYS` (30 days).
@@ -349,7 +349,7 @@ The risk label is the risk of accepting the recommended option, as the agent jud
 
 - **✅ low risk:** safe to accept and easy to change later.
 - **⚠️ medium risk:** reversible, but changing it costs rework.
-- **🛑 high risk:** irreversible, or it touches real files, credentials or money. A high-risk question pauses the agent that asked it (the main thread, or one subagent; a question with no recorded asker pauses the whole session): its edits, shell commands and other changing tool calls are blocked until the answer is delivered to that session, at its next hook run. The agent can still read and end its turn.
+- **🛑 high risk:** irreversible, or it touches real files, credentials or money. A high-risk question pauses the agent that asked it (the main thread, or one subagent; a question with no recorded asker pauses the whole session): its tool calls are blocked, except the read-only ones, until the answer is delivered to that session, at its next hook run. The agent can still read and end its turn.
 
 ### Hotkeys
 
@@ -496,7 +496,7 @@ The state folder belongs to one user, and every Claude Code session that runs as
 - **Hooks** (`plugins/askaway/hooks/command-hooks.json`) read the hook input from stdin: session id, permission mode, working directory, tool name and tool input.
   - `SessionStart` (on `startup`, `resume`, `clear` or `compact`), `UserPromptSubmit` and `PostToolUse` run `hook deliver`: it reads `q/`, `a/`, `d/` and `s/`, writes a delivery marker for each answer it hands over (to `d/` for the main session, to `s/` for the subagent whose own `ask` filed the question), and puts the answer text into that session's context.
   - `PreToolUse` on `AskUserQuestion` runs `hook ask-guard`: it reads the away state and writes nothing.
-  - `PreToolUse` on `^(Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|Monitor|Agent)$|^mcp__` runs `hook pause-guard`: it reads `q/`, `a/`, `d/` and `s/`; its only write is the `clock_mark` stamp in the state folder, when a pause has an answer that is not marked yet.
+  - `PreToolUse` on `.*` (every tool) runs `hook pause-guard`: it exits at once when no pause is on file; otherwise it reads `q/`, `a/`, `d/` and `s/`; its only write is the `clock_mark` stamp in the state folder, when a pause has an answer that is not marked yet.
   - `PostToolUse` on `Bash` runs `hook stamp-asker`: after an `ask` call it writes `asker` (the caller's `agent_id`, or `main`) onto the pause that call filed, and changes no other field.
 - **Session titles:** when a question is filed, `ask` finds the asking session's transcript, `<session>.jsonl`, in any project folder under `~/.claude/projects/`, and keeps only its title entries (`custom-title`, `agent-name`, `ai-title`). It does not read prompts or replies. The title labels the session on the card.
 - **Claude Desktop session records:** every `ask` reads the records `$XDG_CONFIG_HOME/Claude/claude-code-sessions/*/*/local_*.json` (`~/.config` when `XDG_CONFIG_HOME` is unset; on macOS, under `~/Library/Application Support`) to find the Desktop session and family of the asking session.
@@ -766,9 +766,9 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 | Category | Tests |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 602 |
-| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1717 |
+| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1758 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit 9817b35 (the 1.1.6 hand-off fixes), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit 64eb563 (the 1.1.7 pause guard), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -829,6 +829,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.4 | 2026-11-13 | Typed Other text is the answer without Enter; a window's draft writes run in order on one chain; the move lock drops only a repeat of the same move; Submit all with an unanswered question names it. |
 | 1.1.5 | 2026-11-14 | The card's details fold by default behind a toggle with its count; the urgency colour comes only from `urgency_level`, with no keyword guess; the band and the counter show the paused count. |
 | 1.1.6 | 2026-11-14 | A subagent's background turn no longer marks the session busy, so the idle hand-off is not held; a refused prompt hand-off removes its markers and is retried, so each answer is handed over once. |
+| 1.1.7 | 2026-11-14 | The pause guard holds every tool call except a read-only allow-list, so a tool added later is held too; the ask-guard names a multi-select question; the documented ask examples are tested against the validator. |
 
 ## 🤝 Contributing
 

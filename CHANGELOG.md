@@ -8,6 +8,18 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-11-14
+
+### Added
+- The documented `ask --json` examples (inline, fenced and heredoc forms) are fed to the ask validator by `scripts/tests/test_doc_examples.py`, so a doc example the validator refuses fails the suite (#40).
+
+### Changed
+- The pause guard exits before its heavy imports when no pause is on file: `hook pause-guard` reads the `q/` files first (`_exit_if_nothing_to_hold`, `_nothing_to_hold`) and exits with no output when none is a pause and the tool is not one the tamper check reads; any doubt takes the full path (#42).
+
+### Fixed
+- The pause guard holds every tool call by default: the PreToolUse matcher is `.*` (`hooks/command-hooks.json`), and `_exempt_call` passes only the simple inbox call, the read-only MCP tools and the tools of `READ_ONLY_TOOLS` (`scripts/askaway.py`: `Read`, `Grep`, `Glob`, `Skill`, the task-list and plan tools, and others). `WebFetch` is held, and a tool that Claude Code adds later is held until it is listed (#41).
+- The ask-guard deny message names a multi-select question: `askuser_reason` puts `MULTI_SELECT_NOTE` before that question's skeleton, since the pane takes one pick per question (#43).
+
 ## [1.1.6] - 2026-11-14
 
 ### Fixed
@@ -972,7 +984,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.6...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.7...HEAD
+[1.1.7]: https://github.com/KeepGlide/askaway/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/KeepGlide/askaway/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/KeepGlide/askaway/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/KeepGlide/askaway/compare/v1.1.3...v1.1.4
