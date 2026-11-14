@@ -3,10 +3,12 @@
 All notable changes to AskAway User are recorded here, newest first. Entries before the rename name the plugin
 Askaway, its old id and its old skill name. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The version in
-`plugins/askaway/.claude-plugin/plugin.json` is 1.1.0, set by the 1.1.0 release commit.
+`plugins/askaway/.claude-plugin/plugin.json` is set by each release commit.
 Commit hashes name the change in `git log`.
 
 ## [Unreleased]
+
+## [1.1.8] - 2026-11-14
 
 ### Fixed
 - **Wait fits the tool time limit**: the default wait is 110 seconds, under the 120-second limit of the Bash tool, so an agent that waits without a timeout gets the answer's JSON and exit code instead of being cut off.
@@ -995,7 +997,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.7...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.8...HEAD
+[1.1.8]: https://github.com/KeepGlide/askaway/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/KeepGlide/askaway/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/KeepGlide/askaway/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/KeepGlide/askaway/compare/v1.1.4...v1.1.5

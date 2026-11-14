@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.7`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.8`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -832,6 +832,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.5 | 2026-11-14 | The card's details fold by default behind a toggle with its count; the urgency colour comes only from `urgency_level`, with no keyword guess; the band and the counter show the paused count. |
 | 1.1.6 | 2026-11-14 | A subagent's background turn no longer marks the session busy, so the idle hand-off is not held; a refused prompt hand-off removes its markers and is retried, so each answer is handed over once. |
 | 1.1.7 | 2026-11-14 | The pause guard holds every tool call except a read-only allow-list, so a tool added later is held too; the ask-guard names a multi-select question; the documented ask examples are tested against the validator. |
+| 1.1.8 | 2026-11-14 | Every run of the pane has a time limit, so a slow run no longer holds a press; a stale dim expires after 60 s; a failed session id read is retried; a press on a narrow terminal explains itself; the `wait` default stays under the Bash tool limit. |
 
 ## 🤝 Contributing
 

@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.7`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`1.1.8`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -832,6 +832,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.5 | 2026-11-14 | Os detalhes do cartão recolhem por padrão atrás de um botão com a contagem; a cor da urgência vem só de `urgency_level`, sem palavra-chave; a faixa e o contador mostram as pausadas. |
 | 1.1.6 | 2026-11-14 | Um turno de subagente em segundo plano não marca mais a sessão como ocupada, então o repasse na ociosidade não fica retido; um repasse de pergunta recusado remove as marcas e é tentado de novo, e cada resposta é entregue uma vez. |
 | 1.1.7 | 2026-11-14 | O guarda de pausa retém toda chamada de ferramenta, salvo as da lista só de leitura, então uma ferramenta nova também fica retida; o guarda de ask avisa quando a pergunta era de seleção múltipla; os exemplos de ask da documentação são testados contra o validador. |
+| 1.1.8 | 2026-11-14 | Cada execução do painel tem um tempo limite, então uma execução lenta não segura mais um clique; um apagamento antigo expira após 60 s; uma leitura de id de sessão que falhou é tentada de novo; um clique em terminal estreito explica o motivo; o padrão de `wait` fica abaixo do limite da ferramenta Bash. |
 
 ## 🤝 Contribuição
 
