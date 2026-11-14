@@ -445,7 +445,7 @@ Todo comando imprime uma linha JSON, exceto `export`, que imprime o seu document
 | `answer <id> <key> [--by <source>] [--text <text>]` | Registra uma resposta (agentes não devem chamá-lo). `--strict` sai com 1 quando a resposta é recusada ou inválida. |
 | `status <id>` | Imprime o estado (`open`, `answered`, `delivered`, `expired`, `damaged` ou `damaged answer`), a chave e, quando houver, `who` e `by`, e `text` numa resposta Other. `--table` imprime uma tabela alinhada. `--strict` como em `ask`. |
 | `list [--open or --answered] [--since <when>]` | Lista as perguntas com o estado. `--since` precisa de `--answered` e mantém as respostas dadas desde `<quando>`. `--table` imprime uma tabela alinhada. |
-| `wait <id> [--timeout 300] [--strict]` | Consulta a cada 0,5 s até a resposta existir, e então imprime `"status": "answered"` com a chave, ou `"status": "timeout"` quando os segundos acabam. `--strict` sai com 0 quando respondida ou entregue, 2 no timeout e 1 num erro ou em qualquer outro estado, como `expired` ou `damaged`; sem ele, a saída é 0. Um id desconhecido sai com 1 de qualquer modo. |
+| `wait <id> [--timeout 110] [--strict]` | Consulta a cada 0,5 s até a resposta existir, e então imprime `"status": "answered"` com a chave, ou `"status": "timeout"` quando os segundos acabam. `--strict` sai com 0 quando respondida ou entregue, 2 no timeout e 1 num erro ou em qualquer outro estado, como `expired` ou `damaged`; sem ele, a saída é 0. Um id desconhecido sai com 1 de qualquer modo. |
 | `export [--since <when>] [--format json, jsonl or csv]` | Grava cada pergunta com a sua resposta, da mais nova para a mais antiga. `--since` mantém as perguntas feitas desde `<quando>`. |
 | `away on`, `away off` or `away status` | Liga ou desliga o modo ausente, ou informa o estado. O Bash do agente não consegue rodar `away on` nem `away off`: o guarda do Bash nega. Você liga ou desliga pelo painel ou por `/askaway away`. |
 | `prune [--days N] [--dry-run]` | Remove itens entregues e expirados mais antigos que N dias. O padrão é `ASKAWAY_PRUNE_DAYS`, senão 30. Com `--dry-run`, imprime os ids que removeria (`would_remove_ids`) e não remove nada. Seja qual for N, também remove arquivos `q/` danificados, respostas ilegíveis sem marca de entrega e respostas órfãs. `--id <id>` remove uma pergunta aberta cuja sessão já terminou, com os seus arquivos; `--id <id> --force` remove também uma cuja sessão não tem marca de fim. `--strict` sai com 1 numa recusa de `--id`. |
@@ -462,10 +462,10 @@ Uma execução do Codex não tem id de sessão do Claude Code, então nenhum gan
 2. Para uma pergunta de risco `high`, a saída traz `"action": "pause"`. Nada segura uma execução do Codex, então o script precisa esperar a resposta antes de agir na opção recomendada:
 
 ```bash
-python3 "<askaway>/scripts/askaway.py" wait <id> --strict
+python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ```
 
-   `<askaway>` é a pasta `plugins/askaway` instalada, e `<id>` é o `id` que a saída de `ask` trouxe. `--timeout` define os segundos de espera (padrão 300).
+   `<askaway>` é a pasta `plugins/askaway` instalada, e `<id>` é o `id` que a saída de `ask` trouxe. `--timeout` define os segundos de espera (padrão 110, abaixo do limite de 120 s da ferramenta Bash, que encerra uma chamada mais longa; uma espera maior exige um timeout maior no Bash).
 3. Leia o código de saída: `0` respondida ou entregue (a saída traz a `key`, e o `text` para a chave `other`); `2` sem resposta até o timeout; `1` erro, ou uma resposta expirada ou danificada.
 
 ## 🗂️ Pasta de estado
@@ -701,7 +701,7 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 | Limpeza | 30 dias por padrão (`ASKAWAY_PRUNE_DAYS`), no máximo uma vez por dia; os arquivos de token saem depois de um dia |
 | Token do painel | Uso único, no máximo 120 s de idade |
 | Painel | Consulta a cada 5 s; reconfere sessões encerradas no máximo a cada 30 s; trava de 350 ms numa repetição do mesmo movimento; entrega a uma sessão ociosa respostas com pelo menos 5 s |
-| `wait` | Consulta a cada 0,5 s; timeout padrão de 300 s |
+| `wait` | Consulta a cada 0,5 s; timeout padrão de 110 s |
 | Ganchos | Timeout de 5 s cada |
 | Gravação de risco alto | 4 tentativas, com 50 ms entre elas |
 

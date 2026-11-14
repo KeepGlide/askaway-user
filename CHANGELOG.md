@@ -8,6 +8,9 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+### Fixed
+- `wait` defaults to 110 s, under the 120 s limit of the Bash tool, so an agent that runs `wait <id> --strict` with no `--timeout` gets its JSON and exit code instead of being killed; every `wait` example in the README pair, SPEC.md and the question playbook carries `--timeout`, and `scripts/tests/test_doc_wait_examples.py` checks it (#47).
+
 ## [1.1.7] - 2026-11-14
 
 ### Added

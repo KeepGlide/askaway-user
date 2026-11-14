@@ -220,8 +220,9 @@ writes its document instead). Exit codes: 0 for a reply; 1 for a usage error (un
   also exits 2 on a timeout and 1 on any status other than `answered` or `delivered`. The JSON line is printed as
   usual. Without the flag the exit code stays 0 (usage errors exit 1 either way). A repeated `answer` that loses the
   first-writer race (`written:false`) is not an error.
-- `wait <id> [--timeout 300] [--strict]` — polls every 0.5 s until the question leaves `open` or the timeout (seconds,
-  finite, zero or more; `0` checks once) passes. It returns the reply `status` gives for the item
+- `wait <id> [--timeout 110] [--strict]` — polls every 0.5 s until the question leaves `open` or the timeout (seconds,
+  finite, zero or more; `0` checks once) passes. The default, 110 s, stays under the Bash tool's 120 s limit, so a
+  `wait` with no flag returns before the tool kills it. It returns the reply `status` gives for the item
   (`{"id","status","key"?,"text"?,"who"?,"by"?,"line"?}`; `line` is the delivery line of the answer, see "Hook modes"): an answer past the TTL reads `expired`, not `answered`; an answer
   already delivered reads `delivered`. `{"id","status":"timeout"}` when nothing arrives. When it returns an
   `answered` item, it writes the delivery marker `d/<id>.json` that the deliver hook writes when the call comes from the asking session, or the question has no session, so the pane and `status`

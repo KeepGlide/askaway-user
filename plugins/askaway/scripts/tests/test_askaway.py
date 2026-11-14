@@ -3031,6 +3031,15 @@ def test_wait_rejects_a_timeout_that_is_not_finite_and_not_negative(home, capsys
     assert usage_error(capsys, "wait", item, "--timeout", timeout) == {"error": REFUSED_TIMEOUT}
 
 
+BASH_TOOL_TIMEOUT_S = 120  # the Bash tool kills a call that runs longer; a wait with no --timeout must return before
+
+
+def test_wait_default_timeout_is_below_the_bash_tool_timeout():
+    default = askaway.build_parser().parse_args(["wait", "q-missing-000000"]).timeout
+    assert default == askaway.WAIT_DEFAULT_S
+    assert default < BASH_TOOL_TIMEOUT_S
+
+
 # ---- --strict ------------------------------------------------------------
 
 def test_strict_ask_refile_exits_1_and_still_prints_the_refile(home, capsys):
