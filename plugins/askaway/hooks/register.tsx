@@ -681,7 +681,7 @@ async function handDue($: EngineInterface, home: string, session: string, now: n
   } finally {
     for (const id of ids) handing.delete(id)
   }
-  // A marker may already be written and $.fs cannot remove it, so say so instead of failing silently.
+  // The answers the submit refused are reported, so the person knows to answer them again in the session.
   if (undelivered.length === 0) return
   const lang = await read($, langAtom)
   for (const answer of undelivered) {
@@ -691,8 +691,9 @@ async function handDue($: EngineInterface, home: string, session: string, now: n
 
 // The delivery marker of each answer first, published only when no marker is there, then ONE submit with the lines of the
 // markers this call published. An answer whose marker write fails has no line; an answer another window or the CLI marked
-// first is skipped and is not returned. If the submit fails after the markers, they stay, and the answers this call marked
-// are returned with the unmarked ones, for the caller to report. A later poll sees the markers and never repeats the submit.
+// first is skipped and is not returned. If the submit fails, the markers this call published are removed, so the answers are
+// not marked delivered and a later poll hands them over again; only the answers whose marker could not be removed are
+// returned with the unmarked ones, for the caller to report, since the others are handed over again. A submit that goes through keeps its markers, so the lines are never handed twice.
 async function handOne(
   $: EngineInterface,
   home: string,
@@ -701,6 +702,7 @@ async function handOne(
 ): Promise<Answer[]> {
   const lines: string[] = []
   const marked: Answer[] = []
+  const published: string[] = []
   const unmarked: Answer[] = []
   for (const { answer, text } of items) {
     const marker = `${home}/d/${answer.id}.json`
@@ -711,6 +713,7 @@ async function handOne(
       if (await publishMarker($, marker, answer.id, `${JSON.stringify(stamp)}\n`)) {
         lines.push(text)
         marked.push(answer)
+        published.push(marker)
       }
     } catch (error: unknown) {
       logFailure($, error)
@@ -722,9 +725,26 @@ async function handOne(
     await $.prompt.submit({ text: lines.join('\n') })
   } catch (error: unknown) {
     logFailure($, error)
-    return [...unmarked, ...marked]
+    const kept = await unpublishMarkers($, published)
+    return [...unmarked, ...marked.filter((_, index) => kept.has(published[index]!))]
   }
   return unmarked
+}
+
+// Removes the markers a refused submit left behind, by their literal paths, so the next poll hands those answers over again.
+// Each removal that fails is logged and never thrown; it returns the markers that stay, whose answers are not handed over again.
+async function unpublishMarkers($: EngineInterface, markers: readonly string[]): Promise<Set<string>> {
+  const kept = new Set<string>()
+  for (const marker of markers) {
+    try {
+      const run = await $.process.run(['rm', '-f', marker])
+      if (run.exitCode !== 0) throw new Error(`could not remove ${marker}: ${(run.stderr || run.stdout).trim()}`)
+    } catch (error: unknown) {
+      logFailure($, error)
+      kept.add(marker)
+    }
+  }
+  return kept
 }
 
 // Answers the question with the chosen option, or with "Other…" and its free text, through the CLI (answerViaCli). First

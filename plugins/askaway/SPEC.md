@@ -645,9 +645,11 @@ joined by "\n". The d/ markers (`via:"prompt"`) are written first, only where ab
 
 - Never twice: the marker is the guard, and an in-flight guard covers overlapping polls.
 - A busy session gets nothing until its turn completes.
-- If the submit fails after the markers are written, the answers stay marked delivered, the failure is logged, and
-  a toast says each answer was not delivered (`toast.undelivered`: "Answer <key> for <id> was not delivered; answer
-  again in the session."). No retry.
+- If the submit fails, the markers this call published are removed with `rm -f` by their literal paths (`unpublishMarkers`,
+  `hooks/register.tsx`), so the answers are not marked delivered and the next poll hands them over again, with no toast. The submit failure
+  is logged. Each removal that fails is logged, throws nothing and leaves its marker in place: that answer is not handed over
+  again and `status` reads it delivered, so a toast says it was not delivered (`toast.undelivered`: "Answer <key> for <id> was
+  not delivered; answer again in the session."). No retry inside the poll; the next poll is the retry.
 
 ## Model-facing lines (English, never translated; `_delivery_line` and `deliveryLine` stay identical, and both suites read `tests/delivery-lines.ts`, one JSON literal exported as `DELIVERY_LINES`; a lone surrogate in an Other text is written as `\udXXX`, as `JSON.stringify` does; the Other text is capped at 500 code points with no ellipsis, in storage and in the line.)
 

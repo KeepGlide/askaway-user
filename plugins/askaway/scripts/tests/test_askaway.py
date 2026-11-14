@@ -5352,6 +5352,20 @@ def test_a_pane_marker_written_before_the_cli_links_its_claim_suppresses_the_lin
     assert stored(home, "d", item) == pane_marker
 
 
+def test_a_pane_prompt_marker_removed_after_a_refused_submit_hands_the_answer_over_once(home, capsys, monkeypatch):
+    # #39: the pane removes the markers of a submit it could not deliver, so the answer reads as answered again.
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    item = ask_item(capsys)
+    cli(capsys, "answer", item, "B")
+    write_raw(home, "d", item, json.dumps({"id": item, "session": SESSION, "ts": askaway.now_ms(), "via": "prompt"}))
+    assert cli(capsys, "status", item)["status"] == "delivered"
+    (home / "d" / f"{item}.json").unlink()
+    assert cli(capsys, "status", item)["status"] == "answered"
+    assert item in hook_json(capsys, monkeypatch, "deliver", deliver_event())["hookSpecificOutput"]["additionalContext"]
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
+    assert cli(capsys, "status", item)["status"] == "delivered"
+
+
 def test_write_atomic_renames_a_complete_dot_temp_beside_the_target(home, monkeypatch):
     target = home / "q" / "q-x-000000.json"
     seen: list[tuple[str, bool, dict]] = []

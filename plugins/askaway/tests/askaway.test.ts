@@ -152,6 +152,8 @@ type Holds = {
   // The next prompt.submit fails. A hook that throws counts as skipped, so the host's own answer stands: with none, the
   // submit rejects and the pane logs the failure. The fault then clears.
   failSubmitOnce?: boolean
+  // The `rm` of this marker path fails, its stderr naming the path, so the marker stays after a refused submit (#39).
+  failRemoveOf?: string
   // Runs when a link is made, with the target it names: a test writes another window's marker at that moment (Gauntlet 5 review R12).
   onLink?: (marker: string) => void
   // The stdout of `list --open` when it exits 0 but prints no list (Gauntlet 6 review R3).
@@ -334,6 +336,9 @@ function stubHost(
         if (files.has(to)) return cliReply('', 1)
         files.set(to, files.get(from) ?? '')
         writes.push(to)
+      }
+      if (e.argv[0] === 'rm' && holds.failRemoveOf !== undefined && e.argv[2] === holds.failRemoveOf) {
+        return { value: { exitCode: 1, stdout: '', stderr: `rm: cannot remove '${e.argv[2]}': Permission denied`, isStdoutTruncated: false, isStderrTruncated: false } }
       }
       if (e.argv[0] === 'rm') files.delete(e.argv[2] ?? '')
       return cliReply('')
@@ -7582,7 +7587,7 @@ test('Gauntlet 5 B2 M12: a marker write that fails after another marker landed s
   expect(submits[1]).toContain('q-l2-bbbbbb')
 })
 
-test('Gauntlet 5 B3 M18: a hand-off whose submit throws keeps its markers, toasts each reply once, submits once and logs the failure', async ($, on) => {
+test('Gauntlet 5 B3 M18: a hand-off whose submit throws removes its markers, toasts nothing (the next poll retries) and logs the failure; the next poll hands the lines over once', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 0, { session: SELF })],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 0, { session: SELF })],
@@ -7594,18 +7599,25 @@ test('Gauntlet 5 B3 M18: a hand-off whose submit throws keeps its markers, toast
   await $.session.start(SESSION)
   await clock.advance(5000)
   expect(submits).toHaveLength(1)
-  expect(files.has(path('d', 'q-l1-aaaaaa'))).toBe(true)
-  expect(files.has(path('d', 'q-l2-bbbbbb'))).toBe(true)
-  expect(toasts).toHaveLength(2)
-  expect(toasts).toContain(t('en', 'toast.undelivered', { key: 'B', id: 'q-l1-aaaaaa' }))
-  expect(toasts).toContain(t('en', 'toast.undelivered', { key: 'A', id: 'q-l2-bbbbbb' }))
+  // #39: the refused submit removes the markers this call published, so neither answer is marked delivered.
+  expect(files.has(path('d', 'q-l1-aaaaaa'))).toBe(false)
+  expect(files.has(path('d', 'q-l2-bbbbbb'))).toBe(false)
+  // The answers are handed over again by the next poll, so no toast tells the person to answer again.
+  expect(toasts).toEqual([])
   // The failed submit is logged once, and the log names the call that failed (the engine's wording for it is not pinned).
   expect(logs).toHaveLength(1)
   expect(logs[0]).toMatch(/^askaway-user: .*prompt\.submit/)
-  // No retry: the markers are there, so the next poll hands nothing and submits nothing.
+  // The next poll hands both lines again; the submit goes through this time (failSubmitOnce has cleared), and it writes the markers.
   await clock.advance(5000)
-  expect(submits).toHaveLength(1)
-  expect(toasts).toHaveLength(2)
+  expect(submits).toHaveLength(2)
+  expect(submits[1]).toBe(submits[0])
+  expect(files.has(path('d', 'q-l1-aaaaaa'))).toBe(true)
+  expect(files.has(path('d', 'q-l2-bbbbbb'))).toBe(true)
+  expect(toasts).toEqual([])
+  // Delivered once: the markers are there now, so a further poll submits nothing.
+  await clock.advance(5000)
+  expect(submits).toHaveLength(2)
+  expect(logs).toHaveLength(1)
 })
 
 // Gauntlet 5 review R4: the marker is published by one no-clobber link (`ln temp marker`). A `-f` would clobber another window's marker.
@@ -7622,8 +7634,8 @@ test('Gauntlet 5 review R4: a delivery marker is published by ln temp marker, wi
 })
 
 // Gauntlet 5 review R12: a reply whose marker another window wrote after the board was read is skipped, so a failed submit
-// toasts only the reply this window marked.
-test('Gauntlet 5 review R12: a hand-off whose submit throws toasts only the replies it marked, not one another window marked first', async ($, on) => {
+// toasts nothing for the reply another window marked.
+test('Gauntlet 5 review R12: a hand-off whose submit throws never toasts a reply another window marked first', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 0, { session: SELF })],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 0, { session: SELF })],
@@ -7640,7 +7652,39 @@ test('Gauntlet 5 review R12: a hand-off whose submit throws toasts only the repl
   await $.session.start(SESSION)
   await clock.advance(5000)
   expect(submits).toHaveLength(1)
+  expect(toasts).toEqual([])
+  // #39: the refused submit removes only this window's marker; the other window's marker is not ours to remove.
+  expect(files.has(path('d', 'q-l1-aaaaaa'))).toBe(false)
+  expect(files.has(path('d', 'q-l2-bbbbbb'))).toBe(true)
+})
+
+// #39: a marker the refused submit cannot remove stays, its failed removal is logged once and throws nothing, and the next poll
+// hands only the line whose marker went.
+test('Gauntlet 5 #39: a refused submit whose marker cannot be removed logs that once, keeps the marker and throws nothing', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 0, { session: SELF })],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 0, { session: SELF })],
+    [path('a', 'q-l1-aaaaaa'), answer('q-l1-aaaaaa', 'B', 0)],
+    [path('a', 'q-l2-bbbbbb'), answer('q-l2-bbbbbb', 'A', 0)],
+  ])
+  const holds: Holds = { failSubmitOnce: true, failRemoveOf: path('d', 'q-l1-aaaaaa') }
+  const { submits, toasts, logs, clock } = stubHost(on, files, true, {}, holds, { LANG: '' })
+  await $.session.start(SESSION)
+  await clock.advance(5000)
+  expect(submits).toHaveLength(1)
+  expect(files.has(path('d', 'q-l1-aaaaaa'))).toBe(true)
+  expect(files.has(path('d', 'q-l2-bbbbbb'))).toBe(false)
+  // Only the answer whose marker stays is toasted: it is not handed over again, so the person must answer it again.
   expect(toasts).toEqual([t('en', 'toast.undelivered', { key: 'B', id: 'q-l1-aaaaaa' })])
+  expect(logs).toHaveLength(2)
+  expect(logs[0]).toMatch(/^askaway-user: .*prompt\.submit/)
+  expect(logs[1]).toMatch(/^askaway-user: could not remove .*q-l1-aaaaaa\.json/)
+  // The next poll: the kept marker still counts as delivered, so only the other line is handed over.
+  await clock.advance(5000)
+  expect(submits).toHaveLength(2)
+  expect(submits[0]?.split('\n')).toHaveLength(2)
+  expect(submits[1]?.split('\n')).toHaveLength(1)
+  expect(logs).toHaveLength(2)
 })
 
 test('Gauntlet 5 B2 M32: a reply past the 7-day TTL is not handed to its session, as the status shows it expired', async ($, on) => {
