@@ -78,7 +78,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask <<'JSON'
 JSON
 ```
 
-Outside Claude Code, `${CLAUDE_PLUGIN_ROOT}` is not set: use the absolute path of `scripts/askaway.py`, and a Codex brief gives that path.
+Outside Claude Code, `${CLAUDE_PLUGIN_ROOT}` is not set: use the absolute path of `${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py` (the plugin root; the skill folder has no `scripts/`), and a Codex brief gives that path.
 
 The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","action":"continue"}`.
 
