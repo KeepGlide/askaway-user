@@ -503,12 +503,12 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
     always the letter: an option's key, or the Other row's letter for an Other pick, never the label or the typed text; a pick
     with no letter (an Other pick past "z") reads as no answer (`answerLabelOf`, `renderNav`). The one-question Submit all takes
     the same prefix ("Answer: D · Submit all (1)"). The review's Back has the prefix too; the review's Submit all keeps its plain
-    label, and an ended card's nav stays plain. On the terminal each nav label carries its letter after the answer state, "Answer: D · Next → (x)" style,
+    label, and an ended card's nav stays plain. On the terminal each Back and Next label carries its letter after the answer state, "Answer: D · Next → (x)" style,
     since the terminal draws a Button's label alone (`navLabelOf`, `hooks/pane.tsx`); the Desktop draws the hotkey itself.
 - **Hotkeys**: each option button draws its key letter in lower case as its hotkey (`optionHotkey`, `hooks/pane.tsx`), on
-  every surface. "Other…" takes the letter after the last option (`otherLetterOf`), drawn in lower case as its hotkey. Back, Next and Submit all
-  take the first free letters of their surface's pool (`letterFor`, `NAV_POOLS`, `hooks/pane.tsx`): `z`, `x`, `w` on the
-  terminal; `p`, `f` and then `w`, `z`, `x` on the desktop. A letter that an option of the card uses, or the letter of Other…, is skipped. The
+  every surface. "Other…" takes the letter after the last option (`otherLetterOf`), drawn in lower case as its hotkey. Back and Next
+  take the first free letters of their surface's pool (`letterFor`, `NAV_POOLS`, `hooks/pane.tsx`): `z`, `x` on the
+  terminal; `p`, `f` on the desktop; `w` is the spare after them in both pools, for Back or Next when an option uses those letters. A letter that an option of the card uses, or the letter of Other…, is skipped. Submit all has no hotkey (issue #52): a sent answer cannot be recalled, so a stray letter must not send it; Tab to it and press Enter. The
   hotkeys are drawn on every card: while the Other field has focus, the engine sends each printable key to the field alone,
   so no hotkey fires from typing. The Desktop draws an option's or Other's letter as its hotkey chip only, so the label has no "<L> · " prefix there (`letterPrefixOf`); the terminal draws no hotkey, so its label keeps the letter.
 - **Choosing**: a pick (an option, its hotkey, or an Other text kept with Keep) records the answer to its question and nothing
@@ -589,7 +589,7 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
 Decision: every Button of the pane and of the band keeps its press handle across redraws, on the desktop and on the
 terminal alike. The plugin does not hold the focus ring: the engine moves it as it does for any plugin. Its one `ui.focus` hook
 (`hooks/register.tsx`) passes the move on first (`await next(e)`), then records the text of the Other field the move left
-(see Other…); it never blocks, rewrites or re-targets a move. Its `ui.close` hook commits the pending texts. The ring, and the pane's hotkeys (the option letters on both surfaces, the letter of "Other…", and `z`, `x`, `w` or `p`, `f`, `w` for Back, Next and Submit all) are its keyboard path.
+(see Other…); it never blocks, rewrites or re-targets a move. Its `ui.close` hook commits the pending texts. The ring, and the pane's hotkeys (the option letters on both surfaces, the letter of "Other…", and `z`, `x` or `p`, `f` for Back and Next) are its keyboard path; Submit all has no hotkey, so Tab reaches it and Enter sends.
 
 Why: the engine hands a Button a new press handle on every redraw, unless the very same element object comes back. On
 the desktop a click moves the focus onto the Button, and that move redraws the site just before the press arrives. The
