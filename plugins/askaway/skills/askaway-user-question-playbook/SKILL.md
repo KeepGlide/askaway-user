@@ -49,23 +49,26 @@ Write each question in this order. The reader has not seen the conversation.
 
 The CLI refuses longer text as `too long (n/limit)` and names the field, so keep each field within its limit. An absent, null or blank title falls back to the question, cut to 60. The CLI stores any top-level key it does not read with the question as sent, except `asker`, which is dropped; the fields it writes win over a key of the same name.
 
+`Required` is `yes` at every risk. `high` means required at risk `high` only: at `low` and `medium` the field may be left out, and a blank one is not stored. The details fields are `context`, `how`, `gains`, `losses` and `analogy`.
+
 | Field | Required | Limit | Rule |
 |---|---|---|---|
 | `lang` | yes | | `en` or `pt-BR`: the language every main field is written in. Write all fields in one language; quoting a UI string in another language is fine. Blank is missing; any other value is refiled as `lang: must be one of en, pt-BR`. |
 | `title` | no | 60 | Absent, null or blank: the question, cut to 60. A title that is not a string is refiled as `title: must be a string, or left out to use the question`. |
 | `question` | yes | 400 | One decision, short and concrete. At least 3 words. |
-| `context` | yes | 600 | Task and step that stopped. At least 3 words. |
+| `context` | high | 600 | Task and step that stopped. At least 3 words. |
 | `what` | yes | 600 | At least 2 sentences, checked by the CLI, and at least 3 words. |
 | `problem` | yes | 400 | Consequence with one example. At least 3 words. |
-| `analogy` | yes | 300 | One everyday image. At least 3 words. |
-| `why`, `how` | yes | 300, 400 | One or two sentences each (guidance). At least 3 words each. |
-| `gains`, `losses` | yes | 300 | One or two sentences each (guidance). At least 3 words each. |
+| `analogy` | high | 300 | One everyday image. At least 3 words. |
+| `why` | yes | 300 | One or two sentences (guidance). At least 3 words. |
+| `how` | high | 400 | One or two sentences (guidance). At least 3 words. |
+| `gains`, `losses` | high | 300 | One or two sentences each (guidance). At least 3 words each. |
 | `urgency` | yes | 300 | `Blocks in ~8 min` or `Can wait`. |
 | `urgency_level` | no | | `low`, `medium` or `high`: the colour grade of the Urgency line (green, orange, red). When absent, the Urgency text is drawn in the default colour with no grade, so agents should set it. |
 | `undo` | yes | 300 | For example `changing later ≈ 10 min`. |
 | `recommended` | yes | | One of the option keys. Absent or null is listed in `missing`. |
-| `risk` | yes | | `low`, `medium` or `high`. |
-| `translations` | no | as the main field | The same text in the other language of `en` and `pt-BR` (never the entry's own `lang`), so `/askaway lang` switches the whole card at once. An object keyed by that language. A language is complete or absent: it holds every required text field above and `options` keyed by every main option key, each with `label`, `does`, `pros`, `cons` and `tradeoff`. `title` is optional: without it, the title is the translated question cut to 60. A partial language is refiled as `translations.<key>: missing <names>`, such as `translations.pt-BR: missing what, options.B.tradeoff`. Each string is checked like its main field; a refusal names its path, such as `translations.pt-BR.options.Z: not a key of the main options`. `"translations": null` counts as absent. |
+| `risk` | yes | | `low`, `medium` or `high`. A missing or invalid value is checked as `high`, so every field a high question needs is named in the same refile. |
+| `translations` | no | as the main field | The same text in the other language of `en` and `pt-BR` (never the entry's own `lang`), so `/askaway lang` switches the whole card at once. An object keyed by that language. A language is complete or absent: it holds every text field the main entry sets (the required ones, and each details field the entry gives) and `options` keyed by every main option key, each with `label`, `does`, `pros`, `cons` and `tradeoff`. `title` is optional: without it, the title is the translated question cut to 60. A partial language is refiled as `translations.<key>: missing <names>`, such as `translations.pt-BR: missing what, options.B.tradeoff`. Each string is checked like its main field; a refusal names its path, such as `translations.pt-BR.options.Z: not a key of the main options`. `"translations": null` counts as absent. |
 | `options` | yes | | At least 2. Keys are consecutive uppercase letters from A, in order (A, B, C). Each has `key`, `label` (300), `does`, `pros`, `cons` (300 each, all required; `does`, `pros` and `cons` need at least 3 words each), `tradeoff` (300, required; one line by guidance, as the CLI joins line breaks) and `fit` (integer 0 to 100, or `null` for no estimate; required). An option whose `key` is absent, blank or not a string is still checked: its other gaps are listed under `#<n>` (its position) in `by_option`, so one refile lists every gap. |
 
 The CLI refuses a long text under 3 words as `placeholder`, as it does text made only of `TBD`, `todo`, `n/a` or `lorem`. Dots and the ellipsis character `…` are not words, so text made only of them, such as `...` or `…`, is refused too. For an unspaced script (CJK), the short-text rule counts letters and digits instead of words, and fewer than 6 is refused. Do not pass `session` or `project`: the CLI fills them from the environment and the working directory. A subagent sends `"run_kind":"subagent"`.
@@ -203,7 +206,7 @@ JSON
 
 The same entry with a complete Brazilian Portuguese translation, so `/askaway lang pt-BR`
 turns the whole card at once. It adds one top-level key, `translations`; the entry keeps
-`"lang": "en"`. The translation holds every text field and every option field, or the CLI
+`"lang": "en"`. The translation holds every text field the main entry sets and every option field, or the CLI
 refiles it:
 
 ```json

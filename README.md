@@ -348,7 +348,7 @@ The card opens with the title, the Urgency line (coloured by its grade when `urg
 6. **The options:** each one a full-width button, `A · Label`, with `(Recommended)` after the label of the recommended one. Under it, a line `└ trade-off · fit 88` (the fit is the agent's estimate), then **What happens** (`does`), **Pros** (`pros`) and **Cons** (`cons`), which show at once. The picked option is the filled button; the recommended one is bold until it is picked. The last one is **Other…**, shown with the letter after the last option (`C · Other…` with two options).
 7. **The nav row:** a separator, then **← Back** (dim on the first question), **Next →** (every question but the last), or on the last question **Submit all (N)** (see step 6 above).
 
-The CLI requires `what`, `problem`, `analogy`, `context`, `why`, `how`, `gains`, `losses`, `urgency`, `undo` and `risk`, and each option's `tradeoff`, `does`, `pros` and `cons`, so every card filed through it carries them all. Names the agent wrote as slash commands or in backticks are drawn in bold. The accent colour is not used for text: the explanation sections sit on the card's own background, with no fill.
+The CLI requires `what`, `problem`, `why`, `urgency`, `undo` and `risk`, and each option's `tradeoff`, `does`, `pros` and `cons`; a question at risk `high` also requires the details block (`analogy`, `context`, `how`, `gains` and `losses`), so every card filed at high risk carries them all. Names the agent wrote as slash commands or in backticks are drawn in bold. The accent colour is not used for text: the explanation sections sit on the card's own background, with no fill.
 
 </details>
 
@@ -424,12 +424,12 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `title` | no | Up to 60 characters. When it is missing, the question is clipped to 60 characters and used as the title. |
 | `what` | yes | What the thing is, in at least two sentences. Up to 600 characters. Drawn as the first paragraph of the card. |
 | `problem` | yes | The concrete consequence if nothing is decided. Up to 400 characters. Drawn as the second paragraph of the card. |
-| `context` | yes | Where the question comes from: the task and the step that stopped. Up to 600 characters. |
+| `context` | high only | Where the question comes from: the task and the step that stopped. Up to 600 characters. |
 | `why` | yes | One or two sentences on why the recommended option. Up to 300 characters. |
-| `how` | yes | One or two sentences on how the recommended option works. Up to 400 characters. |
-| `gains` | yes | One or two sentences on what the user gains with it. Up to 300 characters. |
-| `losses` | yes | One or two sentences on what the user gives up or risks with it. Up to 300 characters. |
-| `analogy`, `urgency`, `undo` | yes | `analogy` is a comparison that makes the trade-off clear; `urgency` is the deadline, such as `Can wait` or `Blocks in ~8 min`; `undo` is the cost of reversing the choice, such as `changing later ≈ 10 min`. Up to 300 characters each. |
+| `how` | high only | One or two sentences on how the recommended option works. Up to 400 characters. |
+| `gains` | high only | One or two sentences on what the user gains with it. Up to 300 characters. |
+| `losses` | high only | One or two sentences on what the user gives up or risks with it. Up to 300 characters. |
+| `analogy`, `urgency`, `undo` | `urgency` and `undo` yes; `analogy` high only | `analogy` is a comparison that makes the trade-off clear; `urgency` is the deadline, such as `Can wait` or `Blocks in ~8 min`; `undo` is the cost of reversing the choice, such as `changing later ≈ 10 min`. Up to 300 characters each. |
 | `risk` | yes | The risk of accepting the recommended option: `low` is safe to accept and easy to change later; `medium` is reversible but costs rework; `high` is irreversible, or touches real files, credentials or money, and pauses the agent that asked until the answer is delivered to it (the whole session when the question has no asker yet). There is no default: a missing `risk` is refiled. |
 | `pause` | no | Type-checked only; it does not pause anything. A question pauses the agent that asked when `risk` is `high` (the whole session when it has no asker yet), and never otherwise. |
 | `urgency_level` | no | `low`, `medium` or `high` (any case): the grade the panel colours the urgency by. Without it the urgency text has no grade: it is drawn in the default colour. Any other value is refiled. |
@@ -442,7 +442,7 @@ The CLI also has `answer <id> <key> [--by <source>] [--text <text>]`, which reco
 
 The panel answers only through this command, with `answer <id> <key> --by panel --strict`, so the CLI is the one writer of `a/`. The first answer written to an item wins, across processes: a later one is not written.
 
-After filing, the agent continues on `recommended` unless the output says `"action": "pause"`, which the CLI prints only for a `risk` high question. An invalid entry prints `"action": "refile"` with an `error` that names the missing fields, for example `missing fields: analogy; option A: fit`. The agent completes those fields and files the question again; it never continues without filing. Only an internal failure prints `"action": "continue"` with `"error": "internal error"`, and then nothing was filed.
+After filing, the agent continues on `recommended` unless the output says `"action": "pause"`, which the CLI prints only for a `risk` high question. An invalid entry prints `"action": "refile"` with an `error` that names the missing fields, for example `missing fields: undo; option A: fit`. The agent completes those fields and files the question again; it never continues without filing. Only an internal failure prints `"action": "continue"` with `"error": "internal error"`, and then nothing was filed.
 
 ### CLI commands
 
@@ -664,7 +664,7 @@ Each line names the value AskAway User chose and the one it gave up.
 - **Simplicity over isolation.** One state folder per login, a trusted `CLAUDE_CODE_SESSION_ID` and a declared `who`: a shared login shares the inbox, and anyone can sign any name.
 - **Never twice over never lost.** A copy is claimed before its line is printed: a kill between the two loses one line, and History still shows the answer.
 - **One copy per recipient over one shared marker.** The main session and the asking subagent each get the answer once, and `status` reads `delivered` from the main copy while the subagent's hold can remain.
-- **A weighable question over a cheap one.** Every explanation field is required, so agents write a full briefing and you decide with the same facts.
+- **A weighable question over a cheap one.** `what`, `problem`, `why`, `urgency` and `undo` are required at every risk, and the details block too at risk `high`, so agents write a full briefing where the decision is risky and you decide with the same facts.
 - **Refuse over clip.** Long text is refused with `too long (n/limit)`, never cut behind your back; the agent files again.
 - **One file per item over one shared file.** No append races and no size limit, for a folder listing on every poll.
 - **One writer over two.** Panel answers go through the CLI, so the panel needs `python3`, and a failed run is an error toast.
