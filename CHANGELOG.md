@@ -8,6 +8,18 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.11] - 2026-11-14
+
+### Security
+- **Skills and web searches wait for the pause**: while a pause holds, a Skill call and a WebSearch call are held like any other tool, because a skill can run commands of its own that no hook sees.
+
+### Changed
+- **Submit all without a letter**: the Submit all control keeps its button but no longer claims a letter key, so the letters stay free for the options and for Back and Next.
+- **Fewer texts for everyday questions**: a low or medium risk question may leave out the analogy, the plan, the gains, the losses and the context; a high risk question still needs all of them.
+
+### Added
+- **Expired answers reach the asker**: when an answer expires before the asking session reads it, that session gets one line naming the question and the choice that lapsed.
+
 ## [1.1.10] - 2026-11-14
 
 ### Security
@@ -1011,7 +1023,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.10...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.11...HEAD
+[1.1.11]: https://github.com/KeepGlide/askaway-user/compare/v1.1.10...v1.1.11
 [1.1.10]: https://github.com/KeepGlide/askaway-user/compare/v1.1.9...v1.1.10
 [1.1.9]: https://github.com/KeepGlide/askaway-user/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/KeepGlide/askaway/compare/v1.1.7...v1.1.8
