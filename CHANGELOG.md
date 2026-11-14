@@ -8,6 +8,16 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-11-14
+
+### Fixed
+- A subagent's `turn.start` no longer marks the session busy: the busy flag is set only when the event has no `agentId`, the same test `turn.complete` uses, so a background agent turn no longer holds the idle hand-off (`hooks/register.tsx`) (#38).
+- A refused prompt hand-off removes the `d/` markers it published, with `rm -f` by literal path (`unpublishMarkers`), so the next poll or the CLI `deliver` hook hands each line over exactly once. Only an answer whose marker could not be removed gets the toast `toast.undelivered` ("was not delivered; answer again in the session"); the others are retried silently (`handOne`) (#39).
+
+### Not yet
+- #31 (the Claude Desktop repro of the Other commit) and #55 (committing Other text on the first key or on an idle timer) moved to W8.
+- The by-hand check on Claude Desktop is pending.
+
 ## [1.1.5] - 2026-11-14
 
 ### Added
@@ -962,7 +972,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.5...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.6...HEAD
+[1.1.6]: https://github.com/KeepGlide/askaway/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/KeepGlide/askaway/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/KeepGlide/askaway/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/KeepGlide/askaway/compare/v1.1.2...v1.1.3

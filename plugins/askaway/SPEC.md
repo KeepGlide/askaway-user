@@ -638,16 +638,18 @@ The race suites (`tests/race.test.ts`, `tests/panel-race.test.ts`) keep the stat
 ## Idle hand-off
 
 In each session's interval poll, when the session is idle (no main-loop turn running: `turn.start`
-begins a turn and `turn.complete` without `agentId` ends it), the answers whose question has
+without `agentId` begins a turn and `turn.complete` without `agentId` ends it; a subagent's turn never marks the session busy), the answers whose question has
 `session` equal to this session's id, at least 5 s old, with no readable d/ marker, are handed to the prompt. An answer whose ts lies after the clock is handed at once, without the 5 s wait (`promptsDue`, `hooks/model.ts`).
 All due answers of one asking session go in ONE `$.prompt.submit({ text })`, one line per answer,
 joined by "\n". The d/ markers (`via:"prompt"`) are written first, only where absent, each one with `publishMarker`: an exclusive `ln` of a dot-prefixed temp beside the marker, so a readable marker is kept; a torn one falls back to `writeAtomic`, which writes a dot-prefixed temp `.<name>.<random>.tmp` beside the target and moves it with `mv -f`, so a folder at the target is refused by `test -d` before any temp file is written, a failed move removes its temp file with `rm -f`, and the CLI's stale-temp prune covers that name; a marker that does not parse counts as absent.
 
 - Never twice: the marker is the guard, and an in-flight guard covers overlapping polls.
 - A busy session gets nothing until its turn completes.
-- If the submit fails after the markers are written, the answers stay marked delivered, the failure is logged, and
-  a toast says each answer was not delivered (`toast.undelivered`: "Answer <key> for <id> was not delivered; answer
-  again in the session."). No retry.
+- If the submit fails, the markers this call published are removed with `rm -f` by their literal paths (`unpublishMarkers`,
+  `hooks/register.tsx`), so the answers are not marked delivered and the next poll hands them over again, with no toast. The submit failure
+  is logged. Each removal that fails is logged, throws nothing and leaves its marker in place: that answer is not handed over
+  again and `status` reads it delivered, so a toast says it was not delivered (`toast.undelivered`: "Answer <key> for <id> was
+  not delivered; answer again in the session."). No retry inside the poll; the next poll is the retry.
 
 ## Model-facing lines (English, never translated; `_delivery_line` and `deliveryLine` stay identical, and both suites read `tests/delivery-lines.ts`, one JSON literal exported as `DELIVERY_LINES`; a lone surrogate in an Other text is written as `\udXXX`, as `JSON.stringify` does; the Other text is capped at 500 code points with no ellipsis, in storage and in the line.)
 
