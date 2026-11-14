@@ -461,11 +461,13 @@ const BRANCH_PREFIX = '└ '
 // An option answers to its key letter in lower case; a key that is not one letter draws no hotkey.
 const optionHotkey = (key: string): string | undefined => (/^[a-z]$/i.test(key) ? key.toLowerCase() : undefined)
 
-// Back, Next and Submit take the first free letters of their surface's pool, in that order. A letter that an option key
-// or Other… uses on this card is skipped, so no shortcut clashes with an option. The terminal pool avoids b, n and s, because
-// option B, N and S would clash with them; the desktop keeps p and f while no option uses them. A surface not listed draws none.
-type NavKey = 'back' | 'next' | 'submit'
-const NAV_ORDER: readonly NavKey[] = ['back', 'next', 'submit']
+// Back and Next take the first free letters of their surface's pool, in that order. A letter that an option key or Other…
+// uses on this card is skipped, so no shortcut clashes with an option. The terminal pool avoids b, n and s, because option
+// B, N and S would clash with them; the desktop keeps p and f while no option uses them. A surface not listed draws none.
+// Submit all has no letter: a sent answer cannot be recalled, so a stray key must not send it (issue #52). Enter on its
+// focused button sends.
+type NavKey = 'back' | 'next'
+const NAV_ORDER: readonly NavKey[] = ['back', 'next']
 const NAV_POOLS: Partial<Record<RenderSurface, readonly string[]>> = {
   terminal: ['z', 'x', 'w'],
   desktop: ['p', 'f', 'w', 'z', 'x'],
@@ -835,8 +837,9 @@ function renderUnanswered(ui: Ui, lang: Lang, card: CardContext, shown: boolean)
 // Back, and forward: Next on every question of a group of two or more (on its last question, Next opens the review); on a
 // group of one question, Submit all, which writes its one answer. Submit all needs every question picked, with the KeepGlide
 // mark beside it on the desktop. A dim Back or Next does nothing when pressed. A dim Submit all still sends its press: an
-// unanswered question answers it with a toast, and the card moves to that question (submitGroup). Back, Next and Submit
-// carry their letters on the terminal and on the desktop (letterFor). Back and forward show the card's answer first (answerLabelOf).
+// unanswered question answers it with a toast, and the card moves to that question (submitGroup). Back and Next carry their
+// letters on the terminal and on the desktop (letterFor); Submit all carries none. Back and forward show the card's answer
+// first (answerLabelOf).
 function renderNav(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, screen: Screen): RenderElement {
   const { Box, Button } = ui
   const { question, isLeaving, held } = card
@@ -960,12 +963,11 @@ function renderReview(tree: TreeContext, group: Group, screen: Screen): RenderEl
   )
 }
 
-// Submit all, with the label its caller built: the answer state first on a single-question card, plain in the review.
+// Submit all, with the label its caller built: the answer state first on a single-question card, plain in the review. It
+// draws no hotkey (issue #52): Tab to it and press Enter.
 function renderSubmitAll(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, screen: Screen, label: string): RenderElement {
   const { Box, Button } = ui
   const isOff = !screen.canSubmit || card.isLeaving
-  const drawnLabel = navLabelOf(card, 'submit', label)
-  const hotkey = letterFor(card, 'submit')
   // The press goes through even while the button is drawn off: an Other text typed but not recorded yet (no Enter, no
   // blur) is recorded by the submit action first, and submitGroup checks again that every question has a pick.
   const onPress = () => {
@@ -974,8 +976,8 @@ function renderSubmitAll(ui: Ui, lang: Lang, actions: PaneActions, card: CardCon
   }
   return (
     <Box key="submit-row" flexDirection="row" alignItems="center" gap={1}>
-      {card.held.hold('submit-all', [drawnLabel, isOff, hotkey], onPress, press => (
-        <Button key={SUBMIT_ALL_KEY} label={drawnLabel} variant={isOff ? 'secondary' : 'primary'} dimColor={isOff} hotkey={hotkey} onPress={press} />
+      {card.held.hold('submit-all', [label, isOff], onPress, press => (
+        <Button key={SUBMIT_ALL_KEY} label={label} variant={isOff ? 'secondary' : 'primary'} dimColor={isOff} onPress={press} />
       ))}
       {renderKeepGlide(ui, card.surface, 'keepglide-submit', KEEPGLIDE_SUBMIT_SIZE)}
     </Box>

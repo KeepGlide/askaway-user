@@ -1289,14 +1289,14 @@ test('a single-question window: Submit all is dim until its pick, then primary, 
   await $.session.start(SESSION)
   const pane = await mountPane($)
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
-  expect(await labelOf(pane, 'submit-all')).toBe('Sem resposta · Enviar tudo (1) (w)')
+  expect(await labelOf(pane, 'submit-all')).toBe('Sem resposta · Enviar tudo (1)')
   expect((await pane.find({ type: 'Button', key: 'submit-all' }))?.props.dimColor).toBe(true)
   await pane.press({ key: 'submit-all' })
   expect(writes).toEqual([])
   await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
   expect(writes).toEqual([])
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
-  expect(await labelOf(pane, 'submit-all')).toBe('Resposta: B · Enviar tudo (1) (w)')
+  expect(await labelOf(pane, 'submit-all')).toBe('Resposta: B · Enviar tudo (1)')
   expect((await pane.find({ type: 'Button', key: 'submit-all' }))?.props.variant).toBe('primary')
   expect((await pane.find({ type: 'Button', key: 'submit-all' }))?.props.dimColor).toBe(false)
   await pane.press({ key: 'submit-all' })
@@ -3317,7 +3317,7 @@ test('/askaway lang en switches the pane to English at once, and the choice is k
   const pane = await mountPane($)
   expect(await pane.find({ type: 'Text', text: '1 pending · 1 group' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: 'Questions waiting' })).toBeDefined()
-  expect(await labelOf(pane, 'submit-all')).toBe('No answer · Submit all (1) (w)')
+  expect(await labelOf(pane, 'submit-all')).toBe('No answer · Submit all (1)')
   await pane.unmount()
   expect(await run($, 'lang xx')).toEqual({ text: 'Use /askaway lang pt-BR, en or auto.' })
   // Object keys of the prototype are not choices either; nothing is stored for them.
@@ -3358,7 +3358,7 @@ test('/askaway lang pt then the pane reads in pt-BR, even when the environment s
   expect((await run($, 'lang pt-BR')).text).toBe('O idioma do AskAway User agora é Português.')
   const pane = await mountPane($)
   expect(await pane.find({ type: 'Text', text: 'Perguntas aguardando' })).toBeDefined()
-  expect(await labelOf(pane, 'submit-all')).toBe('Sem resposta · Enviar tudo (1) (w)')
+  expect(await labelOf(pane, 'submit-all')).toBe('Sem resposta · Enviar tudo (1)')
   await pane.unmount()
 })
 
@@ -4560,7 +4560,7 @@ test('on the last question of a group of two, Next stays and opens the review, w
   await clock.advance(350)
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Revise as suas respostas')
-  expect(await labelOf(pane, 'submit-all')).toBe('Enviar tudo (2) (w)')
+  expect(await labelOf(pane, 'submit-all')).toBe('Enviar tudo (2)')
   expect((await pane.find({ type: 'Button', key: 'submit-all' }))?.props.dimColor).toBe(true)
   await pane.press({ key: 'submit-all' })
   expect(writes).toEqual([])
@@ -5241,7 +5241,7 @@ test('a group answered from outside while another is open: the pane shows the fi
   await pane.unmount()
 })
 
-test('hotkeys: each option its key letter, Other the next letter c, then z, x and w on the terminal and p, f and w on the desktop; the hotkeys stay while the Other field holds text', async ($, on) => {
+test('hotkeys: each option its key letter, Other the next letter c, Back and Next z, x on the terminal and p, f on the desktop; Submit all has no hotkey; the hotkeys stay while the Other field holds text', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -5259,7 +5259,7 @@ test('hotkeys: each option its key letter, Other the next letter c, then z, x an
   expect(await hotkeyOf('nav-next')).toBe('x')
   await clock.advance(350)
   await pane.press({ key: 'nav-next' })
-  expect(await hotkeyOf('submit-all')).toBe('w')
+  expect(await hotkeyOf('submit-all')).toBeUndefined()
   await clock.advance(350)
   await pane.press({ key: 'review-back' })
   await clock.advance(350)
@@ -5284,7 +5284,7 @@ test('hotkeys: each option its key letter, Other the next letter c, then z, x an
   await desk.press({ key: 'nav-next' })
   await clock.advance(350)
   await desk.press({ key: 'nav-next' })
-  expect(await deskHotkey('submit-all')).toBe('w')
+  expect(await deskHotkey('submit-all')).toBeUndefined()
   await clock.advance(350)
   await desk.press({ key: 'review-back' })
   await clock.advance(350)
@@ -5292,7 +5292,33 @@ test('hotkeys: each option its key letter, Other the next letter c, then z, x an
   await desk.unmount()
 })
 
-test('Other… takes the letter after the last option, and the desktop keys skip the letters options and Other use: with options A to O, Other is P, F and P are skipped, Back takes w and Submit all x', async ($, on) => {
+// Issue #52: Submit all has no bare-letter hotkey. The harness has no keystroke method, so a stray w is checked the way the
+// engine reads it: no drawn button carries the hotkey w, so no key on the card reaches Submit all, and writes stay empty.
+test('Submit all has no hotkey (issue #52): on a one-question card with A picked, no button draws w and w sends nothing; Tab to Submit all plus Enter sends', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { writes } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const hotkeysOf = async (pane: Awaited<ReturnType<typeof mountPane>>): Promise<unknown[]> =>
+    nodesOf(await pane.drawn())
+      .filter(node => node.type === 'Button')
+      .map(node => (node.props as Record<string, unknown>).hotkey)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const pane = await mountPane($, surface)
+    await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+    expect((await pane.find({ type: 'Button', key: 'submit-all' }))?.props.hotkey).toBeUndefined()
+    expect(await hotkeysOf(pane)).not.toContain('w')
+    expect(writes).toEqual([])
+    await pane.unmount()
+  }
+  const pane = await mountPane($)
+  moveRing($, 'submit-all')
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([path('a', 'q-l1-aaaaaa')])
+  expect(readJson(files, path('a', 'q-l1-aaaaaa'))).toMatchObject({ id: 'q-l1-aaaaaa', key: 'A', by: 'panel' })
+  await pane.unmount()
+})
+
+test('Other… takes the letter after the last option, and the desktop keys skip the letters options and Other use: with options A to O, Other is P, F and P are skipped, Back takes w and Submit all has no hotkey', async ($, on) => {
   const options = Array.from({ length: 15 }, (_, index) => ({ key: String.fromCharCode(65 + index), label: `Option ${index}`, tradeoff: 'cheap', fit: 50 }))
   const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { options })]])
   stubHost(on, files)
@@ -5302,7 +5328,7 @@ test('Other… takes the letter after the last option, and the desktop keys skip
   expect(await labelOf(desk, 'other-q-l1-aaaaaa')).toBe('Outra…')
   expect(await deskHotkey('other-q-l1-aaaaaa')).toBe('p')
   expect(await deskHotkey('nav-back')).toBe('w')
-  expect(await deskHotkey('submit-all')).toBe('x')
+  expect(await deskHotkey('submit-all')).toBeUndefined()
   await desk.unmount()
 })
 
@@ -7444,7 +7470,7 @@ test('History labels are links on the desktop only: the terminal draws the famil
   await terminal.unmount()
 })
 
-test('the terminal nav labels carry their letter, "Sem resposta · ← Voltar (z)", "Sem resposta · Próxima → (x)" and "Enviar tudo (2) (w)"; the desktop labels carry no letter', async ($, on) => {
+test('the terminal nav labels carry their letter, "Sem resposta · ← Voltar (z)" and "Sem resposta · Próxima → (x)"; Submit all carries no letter; the desktop labels carry no letter', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -7463,7 +7489,7 @@ test('the terminal nav labels carry their letter, "Sem resposta · ← Voltar (z
   const reviewing = await mountPane($)
   await clock.advance(350)
   await reviewing.press({ key: 'nav-next' })
-  expect(await labelOf(reviewing, 'submit-all')).toBe('Enviar tudo (2) (w)')
+  expect(await labelOf(reviewing, 'submit-all')).toBe('Enviar tudo (2)')
   await reviewing.unmount()
 })
 
