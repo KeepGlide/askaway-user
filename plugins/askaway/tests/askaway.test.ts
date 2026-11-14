@@ -152,6 +152,8 @@ type Holds = {
   // The next prompt.submit fails. A hook that throws counts as skipped, so the host's own answer stands: with none, the
   // submit rejects and the pane logs the failure. The fault then clears.
   failSubmitOnce?: boolean
+  // The next N session.id reads come back empty, a failed read the plugin logs; each read counts one down, so the read after them resolves.
+  failSessionIdReads?: number
   // The `rm` of this marker path fails, its stderr naming the path, so the marker stays after a refused submit (#39).
   failRemoveOf?: string
   // Runs when a link is made, with the target it names: a test writes another window's marker at that moment (Gauntlet 5 review R12).
@@ -204,6 +206,8 @@ function stubHost(
   // The argv of each `ln` the pane makes (a delivery marker's no-clobber publish), in order (Gauntlet 5 review R4).
   const links: string[][] = []
   const calls: { argv: string[]; env?: Record<string, string> }[] = []
+  // Every process run the pane makes, with the timeoutMs its init carries (undefined when it has none), in order (issue #45).
+  const runs: { argv: string[]; timeoutMs?: number }[] = []
   const ended = new Set<string>()
   // The panel token calls in order (`install`, `write`, `chmod`).
   const tokenCalls: string[][] = []
@@ -220,7 +224,14 @@ function stubHost(
     return { value: { command: event.name } }
   })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('session.id', () => ({ value: SELF }))
+  on('session.id', () => {
+    if (holds.failSessionIdReads !== undefined && holds.failSessionIdReads > 0) {
+      holds.failSessionIdReads -= 1
+      // An empty value, not a throw: a throwing hook is skipped by the engine, which would hand back the host's own id.
+      return { value: undefined }
+    }
+    return { value: SELF }
+  })
   // A null theme name is an absent theme row: the list has no row at all.
   on('config.list', () => ({ value: themeName === null ? [] : [{ key: 'theme', label: 'Theme', kind: 'choice', value: themeName }] }))
   on('config.set', (_$, e) => ({ value: e.value }))
@@ -302,6 +313,7 @@ function stubHost(
   // and reports the stored key. The check runs when the call reaches its write, after any hold. `writes` records the
   // answers that land; `calls` records every call the pane makes.
   on('process.run', async (_$, e) => {
+    runs.push({ argv: [...e.argv], timeoutMs: e.init?.timeoutMs })
     // The token folder and mode are set by two plain commands; only the calls to askaway.py are the pane's CLI calls.
     if (e.argv[0] !== 'python3') {
       // `test -d target` is exit 0 only for a folder the stub holds (a file under that path); the stub's write targets are files.
@@ -370,7 +382,7 @@ function stubHost(
     writes.push(path('a', id))
     return cliReply(JSON.stringify({ id, key, written: true }))
   })
-  return { toasts, writes, drafts, clearings, submits, clock, calls, ended, tokenCalls, registrations, logs, links, titles }
+  return { toasts, writes, drafts, clearings, submits, clock, calls, runs, ended, tokenCalls, registrations, logs, links, titles }
 }
 
 // The hook's reply with the result `$.process.run` gives for a child that exited (the fields the pane reads).
@@ -1473,6 +1485,75 @@ test('a panel token whose file cannot be made at mode 600 is not minted: the CLI
   expect(calls).toEqual([])
   expect(writes).toEqual([])
   expect([...files.keys()].some(file => file.includes('/panel-tokens/'))).toBe(false)
+  await pane.unmount()
+})
+
+test('every process run of the pane carries an explicit timeoutMs (issue #45)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { runs, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'opt-q-l2-bbbbbb-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'submit-all' })
+  await pane.unmount()
+  // The runs cover the CLI answer, the token folder and file calls and the atomic draft write, so the check is not empty.
+  const kinds = runs.map(run => (run.argv[0] === 'python3' ? run.argv[2] : run.argv[0]))
+  expect(kinds).toEqual(expect.arrayContaining(['answer', 'install', 'mv']))
+  expect(runs.filter(run => run.timeoutMs === undefined).map(run => run.argv)).toEqual([])
+})
+
+test('a reply run that times out toasts the failure, undims its card and keeps the pick (issue #45)', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  // The engine rejects a run that outlasts its timeoutMs; this stands in for that rejection on the answer run, while `failing` holds.
+  let failing = true
+  on('process.run', {}, (_$, e, next) => {
+    if (failing && e.argv[2] === 'answer') throw new Error('timed out after 10000 ms')
+    return next(e)
+  })
+  const { toasts, writes } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await pane.press({ key: 'submit-all' })
+  expect(toasts).toEqual(['Não foi possível enviar sua resposta; a pergunta continua aberta.'])
+  expect(writes).toEqual([])
+  // The fade ends with the refused press: the card is not dimmed, and the pick it holds is still there for the next press.
+  expect((await pane.find({ type: 'Box', key: 'card-q-l1-aaaaaa' }))?.props.borderDimColor).not.toBe(true)
+  failing = false
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([path('a', 'q-l1-aaaaaa')])
+  await pane.unmount()
+})
+
+test('the panel token folder is made once per session: two answers run install -d one time (issue #45)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { tokenCalls, writes, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'opt-q-l2-bbbbbb-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([path('a', 'q-l1-aaaaaa'), path('a', 'q-l2-bbbbbb')])
+  expect(tokenCalls.filter(argv => argv[0] === 'install' && argv[1] === '-d')).toHaveLength(1)
   await pane.unmount()
 })
 
@@ -9186,4 +9267,108 @@ test('the Other label in a History row follows the card language of its question
   expect(answerNameOf('en', { key: 'other' }, portuguese)).toBe('Outra…')
   expect(answerNameOf('en', { key: 'B' }, portuguese)).toBe('Reescrever')
   expect(answerNameOf('en', { key: 'other' }, undefined)).toBe('Other…')
+})
+
+test('issue #46: a reload clears the fade its interrupted press left, so the card takes a pick again', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const holds: Holds = {}
+  const { drafts, clock } = stubHost(on, files, true, {}, holds)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  // The reply is held open, so the card is still fading when the session restarts: the reload cut the press off.
+  const write = gate()
+  holds.write = write.promise
+  const pressed = pane.press({ key: 'submit-all' })
+  await clock.settle()
+  await $.session.start(SESSION)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(JSON.parse(drafts[drafts.length - 1] ?? '{}')).toEqual({ ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'B' } } })
+  write.open()
+  await pressed
+  await pane.unmount()
+})
+
+test('issue #46: a fade older than 60 s is ignored by a press, and a fresh one still refuses it', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const holds: Holds = {}
+  const { drafts, clock } = stubHost(on, files, true, {}, holds)
+  const lastDraft = (): unknown => JSON.parse(drafts[drafts.length - 1] ?? '{}')
+  await $.session.start(SESSION)
+  let pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  const pickedA = { ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'A' } } }
+  expect(lastDraft()).toEqual(pickedA)
+  // The reply is held open, so the card keeps its fade from the Submit all press until the hold releases.
+  const write = gate()
+  holds.write = write.promise
+  const pressed = pane.press({ key: 'submit-all' })
+  await clock.settle()
+  // A fresh fade dims the card and refuses a pick of another option: the draft still says A.
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(lastDraft()).toEqual(pickedA)
+  // The 350 ms advance clears the move lock the refused press set, as the other option tests do; the fade is still fresh.
+  await clock.advance(350)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(lastDraft()).toEqual(pickedA)
+  // Over 60 s on, the fade is older than LEAVING_MAX_AGE_MS and no longer holds the card. The pane draws the card from
+  // its snapshot only when it mounts, so it is mounted again to read the card as it stands now.
+  await clock.advance(60_000)
+  await clock.advance(350)
+  await pane.unmount()
+  pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(lastDraft()).toEqual({ ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'B' } } })
+  write.open()
+  await pressed
+  await pane.unmount()
+})
+
+test('issue #46: a session id that fails to read is logged once and read again on the next polls, so the idle hand-off still runs', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 0, { session: SELF })],
+    [path('a', 'q-l1-aaaaaa'), answer('q-l1-aaaaaa', 'B', 0)],
+  ])
+  const holds: Holds = { failSessionIdReads: 2 }
+  const { submits, logs, clock } = stubHost(on, files, true, {}, holds)
+  const idLogs = (): string[] => logs.filter(line => line.includes('session id'))
+  await $.session.start(SESSION)
+  // Tick 1 and tick 2 read an empty id: the first is logged, the second is not logged again, and no hand-off runs.
+  await clock.advance(5000)
+  await clock.advance(5000)
+  expect(submits).toEqual([])
+  expect(idLogs()).toEqual(['askaway-user: the session id came back empty'])
+  // Tick 3 reads the id: the idle hand-off runs on it.
+  await clock.advance(5000)
+  expect(submits).toHaveLength(1)
+  expect(idLogs()).toHaveLength(1)
+})
+
+test('issue #46: a band press on a terminal too narrow for the pane shows one toast with the hint', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { toasts, clock } = stubHost(on, files, false, {}, {}, { LANG: '' })
+  await $.session.start(SESSION)
+  await clock.advance(5000)
+  const band = await mountBand($)
+  await band.press({ key: 'open' })
+  await clock.settle()
+  expect(toasts.filter(text => text === 'The pane needs a wider window: widen it or run /askaway.')).toHaveLength(1)
+  await band.unmount()
+})
+
+test('issue #46: a failure the pane logs carries the askaway-user prefix once, not twice', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { logs } = stubHost(on, files, true, {}, { installExit: 1 })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await pane.press({ key: 'submit-all' })
+  expect(logs.filter(line => line.includes('could not create the panel token file'))).toEqual([
+    'askaway-user: could not create the panel token file (install exit 1)',
+  ])
+  await pane.unmount()
 })

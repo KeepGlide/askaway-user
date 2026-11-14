@@ -3,13 +3,23 @@
 All notable changes to AskAway User are recorded here, newest first. Entries before the rename name the plugin
 Askaway, its old id and its old skill name. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The version in
-`plugins/askaway/.claude-plugin/plugin.json` is 1.1.0, set by the 1.1.0 release commit.
+`plugins/askaway/.claude-plugin/plugin.json` is set by each release commit.
 Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-11-14
+
 ### Fixed
-- `wait` defaults to 110 s, under the 120 s limit of the Bash tool, so an agent that runs `wait <id> --strict` with no `--timeout` gets its JSON and exit code instead of being killed; every `wait` example in the README pair, SPEC.md and the question playbook carries `--timeout`, and `scripts/tests/test_doc_wait_examples.py` checks it (#47).
+- **Wait fits the tool time limit**: the default wait is 110 seconds, under the 120-second limit of the Bash tool, so an agent that waits without a timeout gets the answer's JSON and exit code instead of being cut off.
+- **Pane runs cannot hang**: every file operation and command run of the pane has a time limit, 5 seconds for files and 10 seconds for the command, so a slow run no longer holds a press with its card dimmed. A run that times out shows the failure toast, undims the card and keeps the pick.
+- **Stale fades clear**: a card left dimmed by a reload that cut off a reply is undimmed when the session starts, and a dim older than 60 seconds neither dims a card nor refuses a press.
+- **Failed session id read retried**: a session id that could not be read is tried again on the next poll, so one failed read no longer stops the idle hand-off for the whole session.
+- **Narrow terminal explained**: pressing the band on a terminal too narrow for the pane shows a message that asks for a wider window or for the command that lists the questions as text.
+- **Error messages name the plugin once**: a failed draft save no longer shows the plugin name twice.
+
+### Performance
+- **Answers skip a folder check**: the token folder is created once per session instead of on every answer.
 
 ## [1.1.7] - 2026-11-14
 
@@ -987,7 +997,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.7...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.8...HEAD
+[1.1.8]: https://github.com/KeepGlide/askaway/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/KeepGlide/askaway/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/KeepGlide/askaway/compare/v1.1.5...v1.1.6
 [1.1.5]: https://github.com/KeepGlide/askaway/compare/v1.1.4...v1.1.5

@@ -119,6 +119,7 @@ const EN = {
   'details.hide': '▾ Hide details',
   // gauntlet 4, B1
   'toast.dismissFailed': 'Could not dismiss the question; it is still listed.',
+  'toast.paneNarrow': 'The pane needs a wider window: widen it or run /askaway.',
   'command.verbsHelp': 'Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name> or /askaway away.',
   // gauntlet 4, package B2
   'urgency.grade.low': 'low',
@@ -238,6 +239,7 @@ const PT: Record<MessageKey, string> = {
   'details.hide': '▾ Ocultar detalhes',
   // gauntlet 4, B1
   'toast.dismissFailed': 'Não foi possível dispensar a pergunta; ela continua na lista.',
+  'toast.paneNarrow': 'O painel precisa de uma janela mais larga: alargue-a ou rode /askaway.',
   'command.verbsHelp': 'Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome> ou /askaway away.',
   // gauntlet 4, package B2
   'urgency.grade.low': 'baixa',
