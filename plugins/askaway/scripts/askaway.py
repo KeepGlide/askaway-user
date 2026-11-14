@@ -296,10 +296,11 @@ DURATION_MS: Final = {"m": 60_000, "h": 3_600_000, "d": DAY_MS}
 # Read-only MCP tools (mcp__<server>__<tool>): the tool name starts with one of these prefixes, no write word.
 READ_ONLY_PREFIXES: Final = ("get_", "list_", "read_", "search_", "find_", "describe_", "show_", "query_")
 # The pause guard holds every other tool. These pass while a pause holds: read-only tools, the task-list and plan tools,
-# and Skill (the owner's decision, issue #41). WebFetch is not here, so it is held.
+# (issue #41). Skill, WebFetch and WebSearch are not here, so they are held: a skill's inline shell runs with no
+# PreToolUse hook, so only holding the Skill call stops it, and the web tools send model-chosen text out (issue #63).
 READ_ONLY_TOOLS: Final = frozenset({
-    "Read", "Grep", "Glob", "ToolSearch", "WebSearch", "ListAgents", "ListMcpResourcesTool", "ReadMcpResourceTool",
-    "AskUserQuestion", "Skill", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+    "Read", "Grep", "Glob", "ToolSearch", "ListAgents", "ListMcpResourcesTool", "ReadMcpResourceTool",
+    "AskUserQuestion", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
     "mcp__ccd_turn__update_plan"})
 WRITE_WORDS: Final = frozenset({
     "add", "apply", "create", "delete", "edit", "exec", "execute", "insert", "keep", "kill", "move",
