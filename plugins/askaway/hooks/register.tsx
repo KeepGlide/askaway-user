@@ -65,6 +65,10 @@ const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES}`
 const MOVE_LOCK_MS = 350
 // The `list --open` run that finds the ended sessions repeats at most this often while the linked open questions do not change.
 const ENDED_RECHECK_MS = 30_000
+// The timeout of each process run the pane makes (`$.process.run`'s init, ms; the engine's default is 30 s, and a run past it is
+// killed and its call rejects). A file operation takes milliseconds; a CLI run is a Python start-up, a few seconds at most (issue #45).
+const FILE_RUN_TIMEOUT_MS = 5_000
+const CLI_RUN_TIMEOUT_MS = 10_000
 // The longest text a failed `list --open` run logs after the command's name, in code points: a longer stderr or stdout is cut
 // (logEndedListFailure).
 const LIST_FAILURE_LOG_MAX = 500
@@ -145,6 +149,8 @@ let draftWrites: Promise<unknown> = Promise.resolve()
 let polling: Promise<void> | undefined
 // Whether the last write held the picks because draft.json did not parse. The next write overwrites the file (H1, one held write).
 let unreadableHeld = false
+// Whether this session's panel token folder is made (mintPanelToken): one `install -d` per session, cleared at session.start.
+let panelFolderMade = false
 
 // Files are written once and never change, so a parsed file stays until its name leaves the folder.
 const questionCache = new Map<string, Question>()
@@ -223,17 +229,17 @@ function randomHex(bytes: number): string {
 // accepted. A failed move removes its temp file, and the message names the
 // target, not the random temp name, so two failures of one cause read the same.
 export async function writeAtomic($: EngineInterface, path: string, text: string): Promise<void> {
-  if ((await $.process.run(['test', '-d', path])).exitCode === 0) throw new Error(`could not write ${path}: it is a folder`)
+  if ((await $.process.run(['test', '-d', path], { timeoutMs: FILE_RUN_TIMEOUT_MS })).exitCode === 0) throw new Error(`could not write ${path}: it is a folder`)
   const temp = tempPathOf(path)
   try {
     await $.fs.write(temp, text)
   } catch (error: unknown) {
-    await $.process.run(['rm', '-f', temp]).catch(() => undefined) // best effort: a partial temp file may be there
+    await $.process.run(['rm', '-f', temp], { timeoutMs: FILE_RUN_TIMEOUT_MS }).catch(() => undefined) // best effort: a partial temp file may be there
     throw writeFailure(path, temp, error instanceof Error ? error.message : String(error))
   }
-  const run = await $.process.run(['mv', '-f', temp, path])
+  const run = await $.process.run(['mv', '-f', temp, path], { timeoutMs: FILE_RUN_TIMEOUT_MS })
   if (run.exitCode === 0) return
-  await $.process.run(['rm', '-f', temp]).catch(() => undefined) // best effort: the move's own failure is the one reported
+  await $.process.run(['rm', '-f', temp], { timeoutMs: FILE_RUN_TIMEOUT_MS }).catch(() => undefined) // best effort: the move's own failure is the one reported
   throw writeFailure(path, temp, (run.stderr || run.stdout).trim())
 }
 
@@ -254,8 +260,8 @@ function tempPathOf(path: string): string {
 async function publishMarker($: EngineInterface, marker: string, id: string, text: string): Promise<boolean> {
   const temp = tempPathOf(marker)
   await $.fs.write(temp, text)
-  const linked = await $.process.run(['ln', temp, marker])
-  await $.process.run(['rm', '-f', temp])
+  const linked = await $.process.run(['ln', temp, marker], { timeoutMs: FILE_RUN_TIMEOUT_MS })
+  await $.process.run(['rm', '-f', temp], { timeoutMs: FILE_RUN_TIMEOUT_MS })
   if (linked.exitCode === 0) return true
   if (parseDelivery(await readJson($, marker), id) !== undefined) return false
   await writeAtomic($, marker, text)
@@ -503,7 +509,7 @@ async function refreshEnded($: EngineInterface, home: string, next: Board, now: 
 // list did not run: it is logged with its exit code and stderr (a press that it refuses only shows a toast) and gives undefined.
 async function runEndedList($: EngineInterface, home: string): Promise<string[] | undefined> {
   const argv = ['python3', `${$.plugin.root}/scripts/askaway.py`, 'list', '--open']
-  const run = await $.process.run(argv, { env: { ASKAWAY_HOME: home } }).catch((error: unknown) => {
+  const run = await $.process.run(argv, { env: { ASKAWAY_HOME: home }, timeoutMs: CLI_RUN_TIMEOUT_MS }).catch((error: unknown) => {
     logEndedListFailure($, `did not start: ${error instanceof Error ? error.message : String(error)}`)
     return undefined
   })
@@ -536,7 +542,7 @@ async function mergeEnded($: EngineInterface, ended: string[]): Promise<string[]
 // a file the CLI reads as a question (a stored NaN literal) is refused, not deleted (Should-4).
 async function dismissQuestion($: EngineInterface, home: string, id: string, force: boolean): Promise<void> {
   const argv = ['python3', `${$.plugin.root}/scripts/askaway.py`, 'prune', '--id', id, '--strict', ...(force ? ['--force'] : [])]
-  const run = await $.process.run(argv, { env: { ASKAWAY_HOME: home } })
+  const run = await $.process.run(argv, { env: { ASKAWAY_HOME: home }, timeoutMs: CLI_RUN_TIMEOUT_MS })
   if (run.exitCode !== 0) throw new Error(`askaway prune failed: ${(run.stderr || run.stdout).trim()}`)
   await pollAfterRunning($, home)
 }
@@ -737,7 +743,7 @@ async function unpublishMarkers($: EngineInterface, markers: readonly string[]):
   const kept = new Set<string>()
   for (const marker of markers) {
     try {
-      const run = await $.process.run(['rm', '-f', marker])
+      const run = await $.process.run(['rm', '-f', marker], { timeoutMs: FILE_RUN_TIMEOUT_MS })
       if (run.exitCode !== 0) throw new Error(`could not remove ${marker}: ${(run.stderr || run.stdout).trim()}`)
     } catch (error: unknown) {
       logFailure($, error)
@@ -817,15 +823,19 @@ async function mintPanelToken($: EngineInterface, home: string): Promise<string>
   const token = randomHex(16)
   const dir = `${home}/panel-tokens`
   const file = `${dir}/${token}`
-  await $.process.run(['install', '-d', '-m', '700', dir])
+  // The folder is made once per session: the first answer makes it, and session.start clears the flag, so a failed make is retried.
+  if (!panelFolderMade) {
+    const folderRun = await $.process.run(['install', '-d', '-m', '700', dir], { timeoutMs: FILE_RUN_TIMEOUT_MS })
+    panelFolderMade = folderRun.exitCode === 0
+  }
   // The file is created at mode 600 before it gets its text, and set to 600 again after the write: $.fs.write takes no mode,
   // and a write by temp file and rename would leave the default mode. A failed install or chmod throws: no token is handed out.
   // The error names the exit code only: the file's name is the token, so neither its path nor the command's stderr (which
   // names the path) reaches the throw or the log.
-  const made = await $.process.run(['install', '-m', '600', '/dev/null', file])
+  const made = await $.process.run(['install', '-m', '600', '/dev/null', file], { timeoutMs: FILE_RUN_TIMEOUT_MS })
   if (made.exitCode !== 0) throw new Error(`askaway-user: could not create the panel token file (install exit ${made.exitCode})`)
   await $.fs.write(file, `${JSON.stringify({ ts: await $.clock.now() })}\n`)
-  const mode = await $.process.run(['chmod', '600', file])
+  const mode = await $.process.run(['chmod', '600', file], { timeoutMs: FILE_RUN_TIMEOUT_MS })
   if (mode.exitCode !== 0) throw new Error(`askaway-user: could not set the panel token file to mode 600 (chmod exit ${mode.exitCode})`)
   return token
 }
@@ -841,7 +851,7 @@ async function answerViaCli($: EngineInterface, home: string, id: string, key: s
   const token = await mintPanelToken($, home)
   const who = await read($, whoAtom)
   const env = { ASKAWAY_HOME: home, ASKAWAY_PANEL_TOKEN: token, ...(who ? { ASKAWAY_WHO: who } : {}) }
-  const run = await $.process.run(argv, { env })
+  const run = await $.process.run(argv, { env, timeoutMs: CLI_RUN_TIMEOUT_MS })
   const written = parseAnswerWritten(run.stdout)
   if (run.exitCode !== 0 || written === undefined) {
     throw new Error(`askaway answer failed: ${(run.stderr || run.stdout).trim()}`)
@@ -1021,7 +1031,7 @@ async function saveDraft($: EngineInterface, home: string, changes: DraftChanges
   try {
     await mergeDraft($, home, changes)
   } finally {
-    await $.process.run(['rmdir', `${home}/draft.lock`])
+    await $.process.run(['rmdir', `${home}/draft.lock`], { timeoutMs: FILE_RUN_TIMEOUT_MS })
   }
 }
 
@@ -1030,11 +1040,14 @@ async function saveDraft($: EngineInterface, home: string, changes: DraftChanges
 // left beside it (the same age, so a temp file a live write is still filling is never touched), and the write waits for the next poll.
 async function takeDraftLock($: EngineInterface, home: string): Promise<boolean> {
   const lock = `${home}/draft.lock`
-  if ((await $.process.run(['mkdir', lock])).exitCode === 0) return true
-  const stale = (await $.process.run(['find', lock, '-maxdepth', '0', '-mmin', DRAFT_LOCK_STALE_FIND_ARG])).stdout.trim() !== ''
+  if ((await $.process.run(['mkdir', lock], { timeoutMs: FILE_RUN_TIMEOUT_MS })).exitCode === 0) return true
+  const stale = (await $.process.run(['find', lock, '-maxdepth', '0', '-mmin', DRAFT_LOCK_STALE_FIND_ARG], { timeoutMs: FILE_RUN_TIMEOUT_MS })).stdout.trim() !== ''
   if (stale) {
-    await $.process.run(['rmdir', lock])
-    await $.process.run(['find', home, '-maxdepth', '1', '-name', '.draft.json.*.tmp', '-mmin', DRAFT_LOCK_STALE_FIND_ARG, '-delete'])
+    await $.process.run(['rmdir', lock], { timeoutMs: FILE_RUN_TIMEOUT_MS })
+    await $.process.run(
+      ['find', home, '-maxdepth', '1', '-name', '.draft.json.*.tmp', '-mmin', DRAFT_LOCK_STALE_FIND_ARG, '-delete'],
+      { timeoutMs: FILE_RUN_TIMEOUT_MS },
+    )
   }
   return false
 }
@@ -1521,6 +1534,7 @@ export const register: Register = on => {
     // A session starts with no draft seen: the awaited first poll below applies the picks the folder holds.
     draftTs = 0
     moveLock = undefined
+    panelFolderMade = false
     const folder = await folderOf($)
     poller?.cancel()
     if (folder !== undefined) {

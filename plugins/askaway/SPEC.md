@@ -156,7 +156,8 @@ Readers skip unreadable or invalid JSON files silently (a file may be mid-write)
 
 `answer --by panel`, `--by accept_all` and `--by accept_recommended` are accepted only with a valid, unused one-shot token.
 The panel mints it before each answer: 32 random hex characters, recorded as `panel-tokens/<token>` (a mode 700 folder
-under the state folder, a mode 600 file holding `{"ts": <ms>}`, created with `install -m 600 /dev/null` before it is written, then `chmod 600`; a failed install or chmod mints no token), and passes the name to the CLI in `ASKAWAY_PANEL_TOKEN`.
+under the state folder, made by `install -d` once per session at its first answer, not again per answer; a mode 600 file holding `{"ts": <ms>}`, created with `install -m 600 /dev/null` before it is written, then `chmod 600`; a failed install or chmod mints no token), and passes the name to the CLI in `ASKAWAY_PANEL_TOKEN`.
+Every process run the panel makes carries an explicit timeout: 5 s for a file operation, 10 s for a CLI run. A run past its timeout is killed and rejects; an answer run that rejects shows the reply-failed toast, undims its card and keeps the pick for another press, as a refused answer does.
 The CLI accepts it when the file is a regular file of the same user, mode 600, no older than 120 s, and renames it to
 `<token>.used` (atomic, so one token answers once). Otherwise it prints `{"error": "answer refused: --by <by> needs a
 valid panel token; ..."}` and writes nothing. `prune` clears token files older than a day. `--by cli` needs no token.

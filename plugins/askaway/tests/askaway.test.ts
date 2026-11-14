@@ -204,6 +204,8 @@ function stubHost(
   // The argv of each `ln` the pane makes (a delivery marker's no-clobber publish), in order (Gauntlet 5 review R4).
   const links: string[][] = []
   const calls: { argv: string[]; env?: Record<string, string> }[] = []
+  // Every process run the pane makes, with the timeoutMs its init carries (undefined when it has none), in order (issue #45).
+  const runs: { argv: string[]; timeoutMs?: number }[] = []
   const ended = new Set<string>()
   // The panel token calls in order (`install`, `write`, `chmod`).
   const tokenCalls: string[][] = []
@@ -302,6 +304,7 @@ function stubHost(
   // and reports the stored key. The check runs when the call reaches its write, after any hold. `writes` records the
   // answers that land; `calls` records every call the pane makes.
   on('process.run', async (_$, e) => {
+    runs.push({ argv: [...e.argv], timeoutMs: e.init?.timeoutMs })
     // The token folder and mode are set by two plain commands; only the calls to askaway.py are the pane's CLI calls.
     if (e.argv[0] !== 'python3') {
       // `test -d target` is exit 0 only for a folder the stub holds (a file under that path); the stub's write targets are files.
@@ -370,7 +373,7 @@ function stubHost(
     writes.push(path('a', id))
     return cliReply(JSON.stringify({ id, key, written: true }))
   })
-  return { toasts, writes, drafts, clearings, submits, clock, calls, ended, tokenCalls, registrations, logs, links, titles }
+  return { toasts, writes, drafts, clearings, submits, clock, calls, runs, ended, tokenCalls, registrations, logs, links, titles }
 }
 
 // The hook's reply with the result `$.process.run` gives for a child that exited (the fields the pane reads).
@@ -1473,6 +1476,75 @@ test('a panel token whose file cannot be made at mode 600 is not minted: the CLI
   expect(calls).toEqual([])
   expect(writes).toEqual([])
   expect([...files.keys()].some(file => file.includes('/panel-tokens/'))).toBe(false)
+  await pane.unmount()
+})
+
+test('every process run of the pane carries an explicit timeoutMs (issue #45)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { runs, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'opt-q-l2-bbbbbb-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'submit-all' })
+  await pane.unmount()
+  // The runs cover the CLI answer, the token folder and file calls and the atomic draft write, so the check is not empty.
+  const kinds = runs.map(run => (run.argv[0] === 'python3' ? run.argv[2] : run.argv[0]))
+  expect(kinds).toEqual(expect.arrayContaining(['answer', 'install', 'mv']))
+  expect(runs.filter(run => run.timeoutMs === undefined).map(run => run.argv)).toEqual([])
+})
+
+test('a reply run that times out toasts the failure, undims its card and keeps the pick (issue #45)', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  // The engine rejects a run that outlasts its timeoutMs; this stands in for that rejection on the answer run, while `failing` holds.
+  let failing = true
+  on('process.run', {}, (_$, e, next) => {
+    if (failing && e.argv[2] === 'answer') throw new Error('timed out after 10000 ms')
+    return next(e)
+  })
+  const { toasts, writes } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await pane.press({ key: 'submit-all' })
+  expect(toasts).toEqual(['Não foi possível enviar sua resposta; a pergunta continua aberta.'])
+  expect(writes).toEqual([])
+  // The fade ends with the refused press: the card is not dimmed, and the pick it holds is still there for the next press.
+  expect((await pane.find({ type: 'Box', key: 'card-q-l1-aaaaaa' }))?.props.borderDimColor).not.toBe(true)
+  failing = false
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([path('a', 'q-l1-aaaaaa')])
+  await pane.unmount()
+})
+
+test('the panel token folder is made once per session: two answers run install -d one time (issue #45)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { tokenCalls, writes, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'opt-q-l2-bbbbbb-A' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([path('a', 'q-l1-aaaaaa'), path('a', 'q-l2-bbbbbb')])
+  expect(tokenCalls.filter(argv => argv[0] === 'install' && argv[1] === '-d')).toHaveLength(1)
   await pane.unmount()
 })
 
