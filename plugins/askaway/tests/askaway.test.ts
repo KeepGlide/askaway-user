@@ -22,6 +22,7 @@ import {
   parseAnswer,
   parseDelivery,
   parseQuestion,
+  pausedText,
   piecesOf,
   projectLabel,
   questionLabel,
@@ -564,6 +565,18 @@ test('model: the counter reads in English and Portuguese, singular and plural, w
   expect(counterText('pt', two.slice(0, 1))).toBe('1 pendente · 1 grupo')
   expect(counterText('en', [])).toBe('Nothing pending')
   expect(counterText('pt', [])).toBe('Nenhuma pendente')
+})
+
+test('model: a high-risk open question counts as paused, in the counter and the band alike (#37)', () => {
+  const low = parsedQuestion('q-m-000001', 10, { project: '/work/app' })
+  const high = parsedQuestion('q-m-000002', 20, { project: '/work/web', risk: 'high' })
+  expect(pausedText('en', [low, high])).toBe('1 paused')
+  expect(pausedText('pt', [low, high])).toBe('1 pausada')
+  expect(pausedText('pt', [high, parsedQuestion('q-m-000003', 30, { risk: 'high' })])).toBe('2 pausadas')
+  expect(pausedText('en', [low])).toBeUndefined()
+  expect(counterText('en', [low, high])).toBe('2 pending · 1 paused · 2 groups')
+  expect(counterText('pt', [low, high])).toBe('2 pendentes · 1 pausada · 2 grupos')
+  expect(counterText('en', [low])).not.toContain('paused')
 })
 
 test('model: the counter counts two sessions of one project as one group', () => {
@@ -1847,6 +1860,18 @@ test('the heading draws the logo before it: the glyph on the terminal, the SVG o
   await desktop.unmount()
 })
 
+test('the header counts a paused question between the pending count and the groups, in pt-BR (#37)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { project: '/work/app' })],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000, { project: '/work/web', risk: 'high' })],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  expect(await pane.find({ type: 'Text', text: '2 pendentes · 1 pausada · 2 grupos' })).toBeDefined()
+  await pane.unmount()
+})
+
 test('the header reads Nenhuma pendente when no question is open', async ($, on) => {
   stubHost(on, new Map())
   await $.session.start(SESSION)
@@ -2772,6 +2797,36 @@ test('the band row draws while a question waits: its text, and the hotkey 1 on t
   expect((await band.find({ type: 'Button', key: 'open' }))?.props.hotkey).toBe('1')
   expect(await band.find({ text: 'drawn beneath' })).toBeUndefined()
   await band.unmount()
+})
+
+test('the band reads a paused question between the questions and the groups, in pt-BR (#37)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { project: '/work/app' })],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000, { project: '/work/web', risk: 'high' })],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const band = await mountBand($)
+  expect(await band.find({ type: 'Text', text: '2 perguntas aguardando · 1 pausada · 2 grupos' })).toBeDefined()
+  await band.unmount()
+})
+
+test('the band drops the paused segment once its high-risk question is answered, by the next poll (#37)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { project: '/work/app' })],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000, { project: '/work/web', risk: 'high' })],
+  ])
+  const { clock } = stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  await clock.advance(5000)
+  const before = await mountBand($)
+  expect(await before.find({ type: 'Text', text: '2 questions waiting · 1 paused · 2 groups' })).toBeDefined()
+  await before.unmount()
+  files.set(path('a', 'q-l2-bbbbbb'), answer('q-l2-bbbbbb', 'A'))
+  await clock.advance(5000)
+  const after = await mountBand($)
+  expect(await after.find({ type: 'Text', text: '1 question waiting · 1 group' })).toBeDefined()
+  await after.unmount()
 })
 
 test('the band row is absent with a survey up, and with no open question', async ($, on) => {

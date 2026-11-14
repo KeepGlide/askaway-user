@@ -770,14 +770,25 @@ export const clearableIdsOf = (history: readonly HistoryGroup[]): string[] =>
     group.sessions.flatMap(session => session.entries.map(entry => entry.id)),
   )
 
+// An open question pauses its session when it is high-risk: the card's "Paused since" line and the paused count both read this.
+export const pausesSession = (question: Question): boolean => question.risk === 'high'
+
+// The paused segment of the band and of the header counter: "N paused" for the open questions that pause their session, else undefined.
+export function pausedText(lang: Lang, questions: readonly Question[]): string | undefined {
+  const count = questions.filter(pausesSession).length
+  return count === 0 ? undefined : plural(lang, count, 'count.paused.one', 'count.paused.many')
+}
+
 // The header counter: the open questions and the distinct groups (Desktop groups, else session families, else projects).
 export function counterText(lang: Lang, questions: readonly Question[]): string {
   if (questions.length === 0) return t(lang, 'counter.none')
   const groups = new Set(questions.map(groupKeyOf)).size
-  return t(lang, 'counter.line', {
+  const vars = {
     pending: plural(lang, questions.length, 'counter.pending.one', 'counter.pending.many'),
     groups: plural(lang, groups, 'count.group.one', 'count.group.many'),
-  })
+  }
+  const paused = pausedText(lang, questions)
+  return paused === undefined ? t(lang, 'counter.line', vars) : t(lang, 'counter.linePaused', { ...vars, paused })
 }
 
 // The footer line shown while no question is open: counts from the same folders the poll reads. Answered covers the last
@@ -866,7 +877,7 @@ function clockOf(ts: number): string {
 // Its time is timeOf's: the clock time, with the date when the question was asked on an earlier day than `now`.
 export function leadOf(lang: Lang, question: Question, now: number): string {
   const time = timeOf(question.ts, now)
-  return question.risk === 'high'
+  return pausesSession(question)
     ? t(lang, 'card.lead.paused', { time })
     : t(lang, 'card.lead.agent', { key: question.recommended, time })
 }

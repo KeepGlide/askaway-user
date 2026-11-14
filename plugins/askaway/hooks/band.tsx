@@ -9,7 +9,8 @@ import { renderLogo } from './logo-element'
 
 type Ui = Elements[RenderSurface]
 
-export type BandView = { lang: Lang; questions: number; groups: number; surface: RenderSurface }
+// `paused` is pausedText's segment ("1 paused"), or undefined when no open question pauses its session.
+export type BandView = { lang: Lang; questions: number; groups: number; paused: string | undefined; surface: RenderSurface }
 
 // The digit 1 opens the pane from an empty composer too (the band's hotkey), so the person answers without a mouse.
 export function renderBand(ui: Ui, view: BandView, onOpen: () => void, held: HeldButtons): RenderElement {
@@ -18,10 +19,13 @@ export function renderBand(ui: Ui, view: BandView, onOpen: () => void, held: Hel
   held.begin()
   const questions = plural(view.lang, view.questions, 'count.question.one', 'count.question.many')
   const groups = plural(view.lang, view.groups, 'count.group.one', 'count.group.many')
+  const text = view.paused === undefined
+    ? t(view.lang, 'band.text', { questions, groups })
+    : t(view.lang, 'band.textPaused', { questions, paused: view.paused, groups })
   const band = (
     <Box flexDirection="row" alignItems="center" gap={1}>
       {renderLogo(ui, view.surface)}
-      <Text>{t(view.lang, 'band.text', { questions, groups })}</Text>
+      <Text>{text}</Text>
       {held.hold('open', label, onOpen, press => (
         <Button key="open" label={label} hotkey="1" variant="primary" onPress={press} />
       ))}

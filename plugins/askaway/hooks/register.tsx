@@ -40,6 +40,7 @@ import {
   withAnswer,
   withLocalAnswers,
   damagedPauseOf,
+  pausedText,
   NO_DESKTOP_GROUPS,
   parseDesktopGroups,
   withDesktopGroup,
@@ -1609,7 +1610,7 @@ export const register: Register = on => {
     const lang = await read($, langAtom)
     return renderBand(
       $.ui.resolve(e),
-      { lang, questions: open.length, groups: flow.groupsOf(open).length, surface: e.surface },
+      { lang, questions: open.length, groups: flow.groupsOf(open).length, paused: pausedText(lang, open), surface: e.surface },
       () => report($, openPane($)),
       heldFor(e.surface, e.requestId),
     )

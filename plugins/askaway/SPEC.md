@@ -338,7 +338,9 @@ Brazilian Portuguese, with identical key sets). The model-facing lines are alway
 
 - A band row above the prompt (`ui.render` on `AbovePrompt`, `hooks/band.tsx`) is drawn only while open questions exist
   and no survey is up. It reads, left to right: the AskAway User logo, "<n> questions waiting · <n> groups"
-  (Portuguese: "<n> perguntas aguardando · <n> grupos"; `band.text`, `hooks/i18n.ts`), and an **Answer**
+  (Portuguese: "<n> perguntas aguardando · <n> grupos"; `band.text`, `hooks/i18n.ts`). When at least one open question
+  is high-risk (it pauses its session, `pausesSession`), one segment goes between the two: "<n> questions waiting · <n> paused · <n> groups"
+  (Portuguese: "<n> perguntas aguardando · <n> pausadas · <n> grupos"; `band.textPaused`, count `pausedText`, `hooks/model.ts`). No segment when none is paused. Then an **Answer**
   button (Portuguese: "Responder"). The button has hotkey `1` (a bare digit works from an empty composer)
   and opens the panel.
 - When a new open question arrives, the mod shows one toast: `New question: <title>` (Portuguese: `Nova pergunta: <title>`), where the title is the question's label: its title, else its text, on one line (`questionLabel`, `hooks/model.ts`).
@@ -357,7 +359,8 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
 - **Tab and header row** (owner, 2026-11-08: one design with KeepAway Repo): the tab title is `pane.title`, "AskAway User" in both languages, passed to `ui.open`. The header is one row that wraps, items centred (keys `header`, `brand`, `heading`, `header-end`, `counter`), the same row KeepAway Repo draws.
 - **Header**: the AskAway User logo, then "Questions waiting" ("Perguntas aguardando"; `pane.heading`, `hooks/i18n.ts`), with the counter on the right. Right under the header, a hairline rule across the pane (`HEADER_RULE_SVG`, `hooks/divider.ts`: a 1 px SVG line in `DIVIDER_COLOR`, markup 4000 px wide drawn with no width, so its slot cuts it to the pane; a dim row of 40 `─` on the terminal), as KeepAway Repo draws it (owner, 2026-11-08). The logo is the violet
   SVG on the desktop (`hooks/logo.ts`, `#8B5CF6`) and the bold "?" glyph on the terminal
-  (`hooks/logo.ts`, `LOGO_GLYPH`, drawn by `hooks/logo-element.tsx`). The counter reads "<n> pending · <n> groups" ("<n> pendentes · <n> grupos"), or
+  (`hooks/logo.ts`, `LOGO_GLYPH`, drawn by `hooks/logo-element.tsx`). The counter reads "<n> pending · <n> groups" ("<n> pendentes · <n> grupos"), with the same
+  "<n> paused" segment as the band between them when a high-risk question is open ("<n> pendentes · <n> pausadas · <n> grupos"; `counter.linePaused`, the same `pausedText`), or
   "Nothing pending" ("Nenhuma pendente") when no question is open (`counterText`, `hooks/model.ts`); while away mode is on, ", away mode on" (", modo ausente ligado", `list.awayOn`) follows it. The pane draws that suffix from its `away` flag, which the register sets from away.json (`hooks/pane.tsx`, `hooks/register.tsx`).
 - **Tree of the open questions** (drawn when at least one question is open). The questions are grouped by GROUP =
   their Desktop Group (`desktop_group.id`) when the config names one, else their `family` when they have one, else their `project` (`groupKeyOf`, `hooks/model.ts`), in the order of each group's
