@@ -778,9 +778,9 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 | Categoria | Testes |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 611 |
-| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1822 |
+| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1625 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit 70b5845 (as decisões #50, #52, #53 e #63), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit cf5075f (a cópia congelada do guard retirada, #51), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -846,6 +846,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.9 | 2026-11-14 | A documentação cita o repositório renomeado e o id de plugin askaway-user; o README abre com o logo e a capa do produto; o SECURITY.md cita a versão atual; a regra de escrita do changelog está no CONTRIBUTING.md. |
 | 1.1.10 | 2026-11-14 | Durante uma pausa, a checagem de leitura dos nomes de ferramentas MCP também acha palavras de escrita em camelCase, maiúsculas misturadas e nomes com hífen. |
 | 1.1.11 | 2026-11-14 | Chamadas de Skill e WebSearch ficam retidas durante uma pausa; Enviar tudo não tem mais atalho de letra; a sessão que perguntou fica sabendo quando a resposta expirou sem leitura; perguntas de risco baixo e médio podem omitir os textos de detalhes. |
+| 1.1.12 | 2026-11-14 | O guard de Bash é só o scanner: a cópia congelada do guard antigo foi retirada depois de uma revisão limpa, e os excessos de negação dela acabaram; um make que lê o makefile da entrada padrão é lido como shell. |
 
 ## 🤝 Contribuição
 

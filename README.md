@@ -778,9 +778,9 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 | Category | Tests |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 611 |
-| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1822 |
+| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1625 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit 70b5845 (the owner decisions #50, #52, #53 and #63), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit cf5075f (the frozen guard copy retired, #51), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -846,6 +846,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.9 | 2026-11-14 | The docs name the renamed repository and the askaway-user plugin id; the README opens with the product logo and cover; SECURITY.md names the current version; the changelog writing rule is in CONTRIBUTING.md. |
 | 1.1.10 | 2026-11-14 | While a pause holds, the read-only check of MCP tool names also finds write words in camelCase, mixed case and dashed names. |
 | 1.1.11 | 2026-11-14 | Skill and WebSearch calls are held while a pause holds; Submit all has no letter hotkey; the asking session hears when its answer expired unread; low and medium risk questions may leave out the details texts. |
+| 1.1.12 | 2026-11-14 | The Bash guard is the scanner alone: the frozen copy of the earlier guard is retired after a clean review, so its over-denies end; a make that reads its makefile from stdin is read as a shell. |
 
 ## 🤝 Contributing
 
