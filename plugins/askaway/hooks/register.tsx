@@ -113,7 +113,7 @@ const damagedAtom = atom({ plugin: 'askaway-user', key: 'damagedPauses' } as con
 const whoAtom = atom({ plugin: 'askaway-user', key: 'who' } as const, null as string | null)
 const quietAtom = atom({ plugin: 'askaway-user', key: 'quiet' } as const, false)
 // The details block is open (DETAILS_OPEN_KEY): read at session.start, folded until then.
-const detailsOpenAtom = atom({ plugin: 'askaway-user', key: 'details-open' } as const, false)
+const detailsOpenAtom = atom({ plugin: 'askaway-user', key: 'detailsOpen' } as const, false)
 const wizardAtom = atom({ plugin: 'askaway-user', key: 'wizard' } as const, flow.EMPTY_WIZARD)
 // The question set (reviewKeyOf) the review (every chosen answer, Back and Submit all) is drawn for in place of the card, or null:
 // set by Next on the last question of a group of two or more, cleared by Back on the review (leaveReview), a move, a jump, a
