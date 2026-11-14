@@ -159,7 +159,6 @@ import csv
 import fcntl
 import functools
 import getpass
-import importlib.util
 import io
 import json
 import math
@@ -174,7 +173,6 @@ from datetime import datetime, timezone
 from fnmatch import fnmatchcase
 from itertools import islice
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Final, NamedTuple, NoReturn
 
 HookOutput = dict[str, Any] | None
@@ -348,7 +346,6 @@ UNREADABLE_DENIED: Final = ("Denied: the AskAway User guard could not read this 
                             "simpler commands, or keep working without it.")
 TOO_DEEP_DENIED: Final = ("Denied: the AskAway User guard could not read this command: its $(...), `...`, (...) or eval "
                           "nesting goes deeper than 64 levels. Split it into simpler commands.")
-BACKSTOP_DENIED: Final = "AskAway User guard backstop missing: reinstall the plugin (scripts/askaway_guard_baseline.py)."
 SCAN_DEPTH_LIMIT: Final = 64  # nested scans (command substitutions, eval, sh -c, comments) the scanner follows
 SCAN_SIZE_LIMIT: Final = 64 * 1024  # characters: a longer command is not scanned, and is denied
 FED_SCAN_LIMIT: Final = 64 * 1024  # characters the scan reads from a line's substitutions' heredocs; past it, denied
@@ -429,6 +426,8 @@ DIRECTORY_CHANGERS: Final = frozenset({"cd", "pushd", "popd"})
 DIRECTORY_OPTION: Final = re.compile(r"-(?:-|[LPe@]+)")  # cd's own options and the end-of-options "--"; a lone "-" is OLDPWD
 DIRECTORY_STACK_INDEX: Final = re.compile(r"[+-]\d+")  # pushd's rotation of the stack: the directory it reaches is unknown
 DIRECTORY_WORD: Final = re.compile(r"\b(?:cd|pushd|popd)\b")
+MAKE_NAMES: Final = frozenset({"make", "gmake", "bmake"})  # -f - reads the makefile, whose recipes are shell, from stdin
+MAKE_FILE_OPTIONS: Final = frozenset({"-f", "--file", "--makefile"})
 SOURCE_NAMES: Final = frozenset({"source", "."})  # run in this shell, and the scan cannot read the file they run
 PROCESS_SUBSTITUTIONS: Final = ("<(", ">(")  # a word whose text runs as a command, as a $(...) does (issue #17)
 FD_PATH: Final = re.compile(r"/+(?:dev/stdin|dev/fd/[0-9]+|proc/(?:self|thread-self|[0-9]+)/fd/[0-9]+)")  # an fd as a file
@@ -2786,6 +2785,8 @@ def _reads_stdin_script(simple: _Simple) -> bool:
     a word that may expand) runs the text a heredoc or here-string feeds that fd in this shell, so it counts too; so does
     a source or . of a <(...) process substitution, which runs the text it prints (issue #17)."""
     argv = _strip_prefix(simple.words)[1]
+    if argv and _command_name(argv) in MAKE_NAMES:
+        return _make_reads_stdin([_unquote(word) for word in argv[1:]])
     if argv and _command_name(argv) in SOURCE_NAMES:
         return any(_may_expand(word) or word.startswith("<(") or FD_PATH.fullmatch(os.path.normpath(_unquote(word)))
                    for word in argv[1:])
@@ -2795,6 +2796,23 @@ def _reads_stdin_script(simple: _Simple) -> bool:
         return _command_name(argv) in SHELL_NAMES or _may_expand(argv[0])
     words = [_unquote(word) for word in simple.words]
     return any(os.path.basename(word) == "sudo" for word in words) and any(map(SUDO_SHELL_OPTION.fullmatch, words))
+
+
+def _make_reads_stdin(args: Sequence[str]) -> bool:
+    """Does a make read its makefile from stdin (-f -, -f-, --file=-, --makefile -, or an fd path)? Its recipes are then
+    shell lines a heredoc or here-string feeds it, so the line counts as one that runs a shell (#51)."""
+    for index, word in enumerate(args):
+        if word in MAKE_FILE_OPTIONS:
+            value = args[index + 1] if index + 1 < len(args) else ""
+        elif word.startswith("-f") and not word.startswith("--"):
+            value = word[2:]
+        elif word.startswith(("--file=", "--makefile=")):
+            value = word.split("=", 1)[1]
+        else:
+            continue
+        if value == "-" or _has_expansion(value) or FD_PATH.fullmatch(os.path.normpath(value or ".")):
+            return True
+    return False
 
 
 def _is_askaway_name(name: str) -> bool:
@@ -3397,24 +3415,6 @@ class _ShellScan:
         return os.path.realpath(os.path.join(self.cwd, target))
 
 
-def _baseline_guard() -> ModuleType:
-    """The frozen guard (askaway_guard_baseline.py), loaded from
-    beside this script
-    by path, so it loads from the plugin cache, a local mirror and a test alike, whatever sys.path holds. A load that fails raises
-    and leaves nothing in sys.modules, so the next call tries again and never reuses a half-loaded module."""
-    name = "askaway_guard_baseline"
-    if name not in sys.modules:
-        try:
-            spec = importlib.util.spec_from_file_location(name, SCRIPT_PATH.with_name(f"{name}.py"))
-            module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
-            sys.modules[name] = module
-            spec.loader.exec_module(module)  # type: ignore[union-attr]
-        except (OSError, ImportError, SyntaxError, AttributeError):
-            sys.modules.pop(name, None)
-            raise
-    return sys.modules[name]
-
-
 def _working_directory() -> str | None:
     """The working directory, or None when it was deleted: a relative path then cannot be placed, so it is refused."""
     try:
@@ -3423,35 +3423,14 @@ def _working_directory() -> str | None:
         return None
 
 
-def _backstop_reason(command: str, cwd: str | None) -> str | None:
-    """The frozen guard's denial, or the denial for a frozen guard that cannot load or decide; None when it allows. With
-    the working directory deleted (cwd None) its bash_tamper_reason, which reads os.getcwd(), cannot run, so its own
-    scan runs with the directory unknown and strict, as the scanner's does."""
-    try:
-        backstop = _baseline_guard()
-    except Exception:  # noqa: BLE001 - fail closed: no backstop, no allow
-        return BACKSTOP_DENIED
-    try:
-        if cwd is None:
-            return backstop._ShellScan(os.sep, {}, backstop._state_roots(), cwd_known=False, strict=True).text(command)
-        return backstop.bash_tamper_reason(command)
-    except Exception:  # noqa: BLE001 - fail closed
-        return UNREADABLE_DENIED
-
-
 def bash_tamper_reason(command: str) -> str | None:
     """Why a Bash command may not answer a question, force a prune or write the state folder, or None.
 
-    The frozen guard decides first (the guard of 0.4.0-beta.36 plus the relaxations that stop it
-    denying unrelated commands), so this guard never denies less than the installed one did; the current scanner then decides
-    what is left. Above SCAN_SIZE_LIMIT the scanner is skipped and the command is denied: a spelling no pattern names
-    (st\\<newline>ate) could aim at the state folder. A deleted working directory leaves both reading every relative
-    path as unknown (_backstop_reason). Each runs in its own try, and an exception in either is a denial, never an
-    allow; drop the frozen guard and its file once the scanner has a clean review (SPEC.md). A deterrent against the
+    Above SCAN_SIZE_LIMIT the scanner is skipped and the command is denied: a spelling no pattern names
+    (st\\<newline>ate) could aim at the state folder. A deleted working directory leaves the scanner reading every
+    relative path as unknown. An exception in the scan is a denial, never an allow. A deterrent against the
     agent's own shell, not a guarantee (SPEC.md, the Bash guard)."""
     cwd = _working_directory()
-    if (reason := _backstop_reason(command, cwd)) is not None:
-        return reason
     if len(command) > SCAN_SIZE_LIMIT:
         return TOO_LONG_DENIED
     try:

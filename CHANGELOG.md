@@ -8,6 +8,14 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.12] - 2026-11-14
+
+### Changed
+- **One Bash guard, fewer false alarms**: the frozen copy of the earlier guard, which decided before the current one, is retired after a clean review. Harmless commands it still refused now pass: a quoted heredoc whose text holds shell-like lines, an exported CDPATH, an apostrophe in a comment, sed edits from a parent folder, and commit messages read from a heredoc.
+
+### Security
+- **Makefiles read from stdin are read as shell**: a make that takes its makefile from a heredoc runs the recipes in it, so the guard now reads them like any shell script.
+
 ## [1.1.11] - 2026-11-14
 
 ### Security
@@ -1023,7 +1031,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.11...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.12...HEAD
+[1.1.12]: https://github.com/KeepGlide/askaway-user/compare/v1.1.11...v1.1.12
 [1.1.11]: https://github.com/KeepGlide/askaway-user/compare/v1.1.10...v1.1.11
 [1.1.10]: https://github.com/KeepGlide/askaway-user/compare/v1.1.9...v1.1.10
 [1.1.9]: https://github.com/KeepGlide/askaway-user/compare/v1.1.8...v1.1.9
