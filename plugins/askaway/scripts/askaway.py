@@ -2135,15 +2135,22 @@ def askuser_skeleton(question: Mapping[str, Any]) -> dict[str, Any]:
             "analogy": "", "urgency": "", "undo": "", "risk": "low"}
 
 
-def askuser_reason(skeletons: Sequence[Mapping[str, Any]]) -> str:
-    commands = [f"{number}. python3 \"{SCRIPT_PATH}\" ask --json "
-                + shlex.quote(json.dumps(skeleton, ensure_ascii=False, separators=(',', ':')))
-                for number, skeleton in enumerate(skeletons, start=1)]
+MULTI_SELECT_NOTE: Final = ("the original question was multi-select, but the pane takes one pick per question: "
+                            "file one question per independent choice in the same group, or use Other.")
+
+
+def askuser_reason(skeletons: Sequence[Mapping[str, Any]], multi_selects: Sequence[bool]) -> str:
+    lines: list[str] = []
+    for number, (skeleton, multi_select) in enumerate(zip(skeletons, multi_selects, strict=True), start=1):
+        if multi_select:
+            lines.append(f"Question {number}: {MULTI_SELECT_NOTE}")
+        lines.append(f"{number}. python3 \"{SCRIPT_PATH}\" ask --json "
+                     + shlex.quote(json.dumps(skeleton, ensure_ascii=False, separators=(',', ':'))))
     return ("The user is away, so these AskUserQuestion calls are NOT in the AskAway User inbox yet. "
             "Before you continue, fill every empty field (\"\" or null) of each skeleton, then file "
             "it with its command: one command per question, keeping the single quotes (write a ' "
             "inside a value as '\\''). Continue on the recommended option unless the reply says "
-            "pause.\n" + "\n".join(commands))
+            "pause.\n" + "\n".join(lines))
 
 
 def hook_ask_guard(event: Mapping[str, Any]) -> HookOutput:
@@ -2153,7 +2160,8 @@ def hook_ask_guard(event: Mapping[str, Any]) -> HookOutput:
     skeletons = [askuser_skeleton(question) for question in questions]
     if not skeletons:
         return None
-    return deny(askuser_reason(skeletons))
+    multi_selects = [question.get("multiSelect") is True for question in questions]
+    return deny(askuser_reason(skeletons, multi_selects))
 
 
 def is_read_only_mcp(tool_name: object) -> bool:

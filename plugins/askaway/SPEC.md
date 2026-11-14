@@ -273,7 +273,10 @@ It fails open: any error exits 0 with no output (below Python 3.12 the version l
   `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":<reason>}}`,
   where the reason says the questions are NOT in the inbox yet, and that the agent must fill every empty
   field of each skeleton and file it with `python3 "<this script>" ask --json '<skeleton>'` (one command
-  per question) before continuing on the recommended option unless the reply says pause. The script
+  per question) before continuing on the recommended option unless the reply says pause. A question with
+  `multiSelect` true gets one line before its command, `Question N: the original question was multi-select, but
+  the pane takes one pick per question: file one question per independent choice in the same group, or use Other.`
+  (`MULTI_SELECT_NOTE`); its skeleton is still a single-choice question, since the pane has no multi-pick field. The script
   path comes from `Path(__file__)`. The JSON after `--json` is shell-quoted with `shlex.quote`, so a
   quote or `$(...)` inside a question or label is data, never a shell token. A recommended marker
   is any mark `ask` strips from a label (see `ask`: "(Recommended)", "(Recomendado)", "(Recomendada)", "[Recommended]", "Keep - Recommended", "Keep: recomendada" and the like, any case; `RECOMMENDED_MARKER`, `_recommended_key`). Not away, or any error

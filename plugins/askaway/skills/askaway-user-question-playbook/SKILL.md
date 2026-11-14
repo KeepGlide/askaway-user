@@ -24,6 +24,7 @@ answers later in the AskAway User panel, and the answer comes back into your ses
   option, and you may repeat the question in the reply. Chat text alone never
   reaches the panel.
 - Do not file facts you can check yourself, or routine steps.
+- An away-mode AskUserQuestion with `multiSelect: true` is denied with a note: the pane takes one pick per question, so file one question per independent choice in the same group, or use Other.
 
 ## Briefing order
 
@@ -101,10 +102,10 @@ The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","ac
   denies it.
 
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title": "Cache", "lang": "en", "question": "Don\u0027t drop the cache?", ...}'
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title": "Cache", "lang": "en", "question": "Don\u0027t drop the cache?", "what": "Every request reads the database. A cache could answer the repeated reads.", "problem": "Without a choice, every worker queries the database for the same rows.", "context": "Sizing the API for three workers.", "why": "Shared hits remove repeated reads.", "how": "Redis runs next to the API.", "gains": "Repeated reads come from memory.", "losses": "One more service to run.", "analogy": "A note by the phone instead of looking the number up each time.", "urgency": "Can wait", "undo": "changing later ≈ 10 min", "risk": "low", "options": [{"key": "A", "label": "Redis", "tradeoff": "One more service to run", "fit": 88, "does": "Redis runs next to the API and holds the cache.", "pros": "Repeated reads come from memory.", "cons": "One more service to run."}, {"key": "B", "label": "No cache", "tradeoff": "Every request reads the database", "fit": 30, "does": "The API keeps querying the database.", "pros": "Nothing new to run.", "cons": "Slower reads under load."}], "recommended": "A"}'
   ```
 
-  The other fields follow the worked example below.
+  The line is a complete entry; the worked example below shows what each field should say.
 
 ## After filing
 

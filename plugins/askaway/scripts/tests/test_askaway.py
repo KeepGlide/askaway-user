@@ -1282,6 +1282,33 @@ def test_ask_guard_keeps_a_context_the_question_already_carries(capsys, monkeypa
     assert guard_skeletons(capsys, monkeypatch, payload)["Cache"]["context"] == "Own context"
 
 
+def multi_select_payload() -> dict:
+    payload = askuser_payload()
+    payload["tool_input"]["questions"][0]["multiSelect"] = True
+    return payload
+
+
+def test_ask_guard_names_a_multi_select_question_and_only_that_one(capsys, monkeypatch):
+    cli(capsys, "away", "on")
+    out = hook_json(capsys, monkeypatch, "ask-guard", multi_select_payload())
+    reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "Question 1: the original question was multi-select" in reason
+    assert "one question per independent choice in the same group, or use Other" in reason
+    assert "Question 2" not in reason
+
+
+def test_ask_guard_multi_select_skeleton_still_files_after_filling(home, capsys, monkeypatch):
+    skeleton = guard_skeletons(capsys, monkeypatch, multi_select_payload())["Cache"]
+    entry = {**skeleton, "lang": "en", "options": [
+        {**option, "fit": 80, **{name: "Filled in. Done." for name in REQUIRED_OPTION_TEXT}}
+        for option in skeleton["options"]]}
+    for name in REQUIRED_TEXT:
+        entry[name] = entry[name] or "Filled in. Done."
+    out = cli(capsys, "ask", "--json", json.dumps(entry))
+    assert out["action"] == "continue"
+    assert stored(home, "q", out["id"])["question"] == "Which cache should the service use?"
+
+
 # ---- pause-guard -------------------------------------------------------
 
 def pending_pause(capsys, monkeypatch) -> str:
