@@ -429,6 +429,8 @@ DIRECTORY_CHANGERS: Final = frozenset({"cd", "pushd", "popd"})
 DIRECTORY_OPTION: Final = re.compile(r"-(?:-|[LPe@]+)")  # cd's own options and the end-of-options "--"; a lone "-" is OLDPWD
 DIRECTORY_STACK_INDEX: Final = re.compile(r"[+-]\d+")  # pushd's rotation of the stack: the directory it reaches is unknown
 DIRECTORY_WORD: Final = re.compile(r"\b(?:cd|pushd|popd)\b")
+MAKE_NAMES: Final = frozenset({"make", "gmake", "bmake"})  # -f - reads the makefile, whose recipes are shell, from stdin
+MAKE_FILE_OPTIONS: Final = frozenset({"-f", "--file", "--makefile"})
 SOURCE_NAMES: Final = frozenset({"source", "."})  # run in this shell, and the scan cannot read the file they run
 PROCESS_SUBSTITUTIONS: Final = ("<(", ">(")  # a word whose text runs as a command, as a $(...) does (issue #17)
 FD_PATH: Final = re.compile(r"/+(?:dev/stdin|dev/fd/[0-9]+|proc/(?:self|thread-self|[0-9]+)/fd/[0-9]+)")  # an fd as a file
@@ -2786,6 +2788,8 @@ def _reads_stdin_script(simple: _Simple) -> bool:
     a word that may expand) runs the text a heredoc or here-string feeds that fd in this shell, so it counts too; so does
     a source or . of a <(...) process substitution, which runs the text it prints (issue #17)."""
     argv = _strip_prefix(simple.words)[1]
+    if argv and _command_name(argv) in MAKE_NAMES:
+        return _make_reads_stdin([_unquote(word) for word in argv[1:]])
     if argv and _command_name(argv) in SOURCE_NAMES:
         return any(_may_expand(word) or word.startswith("<(") or FD_PATH.fullmatch(os.path.normpath(_unquote(word)))
                    for word in argv[1:])
@@ -2795,6 +2799,23 @@ def _reads_stdin_script(simple: _Simple) -> bool:
         return _command_name(argv) in SHELL_NAMES or _may_expand(argv[0])
     words = [_unquote(word) for word in simple.words]
     return any(os.path.basename(word) == "sudo" for word in words) and any(map(SUDO_SHELL_OPTION.fullmatch, words))
+
+
+def _make_reads_stdin(args: Sequence[str]) -> bool:
+    """Does a make read its makefile from stdin (-f -, -f-, --file=-, --makefile -, or an fd path)? Its recipes are then
+    shell lines a heredoc or here-string feeds it, so the line counts as one that runs a shell (#51)."""
+    for index, word in enumerate(args):
+        if word in MAKE_FILE_OPTIONS:
+            value = args[index + 1] if index + 1 < len(args) else ""
+        elif word.startswith("-f") and not word.startswith("--"):
+            value = word[2:]
+        elif word.startswith(("--file=", "--makefile=")):
+            value = word.split("=", 1)[1]
+        else:
+            continue
+        if value == "-" or _has_expansion(value) or FD_PATH.fullmatch(os.path.normpath(value or ".")):
+            return True
+    return False
 
 
 def _is_askaway_name(name: str) -> bool:

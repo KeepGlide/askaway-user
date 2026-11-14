@@ -6165,6 +6165,12 @@ SHELL_STDIN_SCRIPTS = {
     "answer-unquoted": (f"bash <<EOF\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
     "state-quoted": ("bash <<'EOF'\ncd ~/.claude/state\nrm -r askaway\nEOF", STATE),
     "answer-bash-s": (f"bash -s <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
+    "answer-make-f-dash": (f"make -f - <<'EOF'\nall:\n\tpython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
+    "answer-make-f-joined": (f"make -f- <<'EOF'\nall:\n\tpython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
+    "answer-gmake-file-eq": (f"gmake --file=- <<'EOF'\nall:\n\tpython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
+    "answer-make-makefile-stdin": (
+        f"make --makefile /dev/stdin <<'EOF'\nall:\n\tpython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
+    "state-make-f-dash": ("make -f - <<'EOF'\nall:\n\trm -r ~/.claude/state/askaway\nEOF", STATE),
     "answer-bash-dash": (f"bash - <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
     "answer-bash-dev-stdin": (f"bash /dev/stdin <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
     "answer-sh": (f"sh <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
@@ -6333,6 +6339,15 @@ def test_a_shell_reading_its_script_from_a_heredoc_is_denied(command, reason, ca
 @pytest.mark.parametrize(("command", "reason"), SHELL_STDIN_SCRIPTS.values(), ids=SHELL_STDIN_SCRIPTS.keys())
 def test_the_scanner_alone_denies_a_shell_reading_its_script_from_a_heredoc(command, reason, capsys, monkeypatch):
     assert bash_denial(capsys, monkeypatch, command) == reason
+
+
+@pytest.mark.parametrize("command", [
+    f"make -f Makefile.ci test <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF",
+    "make -j4 check",
+    "make --file=build.mk all",
+])
+def test_the_scanner_lets_a_make_that_reads_no_makefile_from_stdin_through(command, tmp_path):
+    assert askaway._ShellScan(str(tmp_path), {}, askaway._state_roots()).text(command) is None  # #51
 
 
 def test_a_source_of_an_fd_fed_a_here_string_is_denied_by_the_full_guard(capsys, monkeypatch):
