@@ -445,7 +445,7 @@ Every command prints one JSON line, except `export`, which prints its document. 
 | `answer <id> <key> [--by <source>] [--text <text>]` | Records an answer (agents must not call it). `--strict` exits 1 when the answer is refused or invalid. |
 | `status <id>` | Prints the status (`open`, `answered`, `delivered`, `expired`, `damaged` or `damaged answer`), the key and, when set, `who` and `by`, and `text` for an Other reply. `--table` prints an aligned table. `--strict` as for `ask`. |
 | `list [--open or --answered] [--since <when>]` | Lists the questions with their status. `--since` needs `--answered` and keeps the answers given since `<when>`. `--table` prints an aligned table. |
-| `wait <id> [--timeout 300] [--strict]` | Polls every 0.5 s until the answer exists, then prints `"status": "answered"` with its key, or `"status": "timeout"` when the seconds run out. `--strict` exits 0 when answered or delivered, 2 on timeout, and 1 on an error or on any other status, such as `expired` or `damaged`; without it, the exit is 0. An unknown id exits 1 either way. |
+| `wait <id> [--timeout 110] [--strict]` | Polls every 0.5 s until the answer exists, then prints `"status": "answered"` with its key, or `"status": "timeout"` when the seconds run out. `--strict` exits 0 when answered or delivered, 2 on timeout, and 1 on an error or on any other status, such as `expired` or `damaged`; without it, the exit is 0. An unknown id exits 1 either way. |
 | `export [--since <when>] [--format json, jsonl or csv]` | Writes every question with its answer, newest first. `--since` keeps the questions asked since `<when>`. |
 | `away on`, `away off` or `away status` | Turns away mode on or off, or reports it. The agent's Bash cannot run `away on` or `away off`: the Bash guard denies them. You switch it from the panel or with `/askaway away`. |
 | `prune [--days N] [--dry-run]` | Removes delivered and expired items older than N days. The default is `ASKAWAY_PRUNE_DAYS`, else 30. With `--dry-run`, it prints the ids it would remove (`would_remove_ids`) and removes nothing. Whatever N is, it also removes damaged `q/` files, unreadable answers that have no delivery marker, and orphan answers. `--id <id>` removes one open question whose asking session has ended, with its files; `--id <id> --force` also removes one whose session has no end marker. `--strict` exits 1 on a refused `--id`. |
@@ -462,10 +462,10 @@ A Codex run has no Claude Code session id, so no hook reaches it. Its script fet
 2. For a `high` risk question, the output has `"action": "pause"`. Nothing holds a Codex run, so the script must wait for the answer before it acts on the recommended option:
 
 ```bash
-python3 "<askaway>/scripts/askaway.py" wait <id> --strict
+python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ```
 
-   `<askaway>` is the installed `plugins/askaway` folder, and `<id>` is the `id` of the `ask` output. `--timeout` sets the seconds to wait (default 300).
+   `<askaway>` is the installed `plugins/askaway` folder, and `<id>` is the `id` of the `ask` output. `--timeout` sets the seconds to wait (default 110, under the 120 s limit of the Bash tool, which kills a longer call; a longer wait needs a longer Bash timeout).
 3. Read the exit code: `0` answered or delivered (the output has the `key`, and `text` for the `other` key); `2` no answer before the timeout; `1` an error, or an answer that expired or was damaged.
 
 ## 🗂️ State folder
@@ -701,7 +701,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 | Prune | 30 days by default (`ASKAWAY_PRUNE_DAYS`), at most once a day; token files are cleared after a day |
 | Panel token | One use, at most 120 s old |
 | Pane | Polls every 5 s; re-checks ended sessions at most every 30 s; 350 ms lock on a repeat of the same move; hands an idle session answers at least 5 s old |
-| `wait` | Polls every 0.5 s; 300 s timeout by default |
+| `wait` | Polls every 0.5 s; 110 s timeout by default |
 | Hooks | 5 s timeout each |
 | High-risk write | 4 attempts, 50 ms apart |
 
