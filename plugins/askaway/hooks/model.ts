@@ -72,17 +72,9 @@ const isRecord = (raw: unknown): raw is Record<string, unknown> =>
 const urgencyLevelOf = (raw: unknown): UrgencyGrade | undefined =>
   raw === 'low' || raw === 'medium' || raw === 'high' ? raw : undefined
 
-// The keyword fallback: the words of the Urgency text in English and Portuguese, high first.
-const HIGH_URGENCY_WORDS = /\b(now|today|immediately|urgent|urgente|agora|hoje|imediat\w*|alta)\b/
-const MEDIUM_URGENCY_WORDS = /\b(this week|soon|days?|semana|breve|dias|moderad\w*|\bm[ée]dia)\b/
-
-// The grade of a question's Urgency line: the grade the file names, else the one the words of `urgency` suggest, else low.
-export function urgencyGradeOf(question: Question): UrgencyGrade {
-  if (question.urgency_level !== undefined) return question.urgency_level
-  const words = (question.urgency ?? '').toLowerCase()
-  if (HIGH_URGENCY_WORDS.test(words)) return 'high'
-  if (MEDIUM_URGENCY_WORDS.test(words)) return 'medium'
-  return 'low'
+// The grade of a question's Urgency line: the grade the file names, or undefined when it names none (the text is then drawn plain).
+export function urgencyGradeOf(question: Question): UrgencyGrade | undefined {
+  return question.urgency_level
 }
 
 const optionalText = (raw: unknown): string | undefined =>

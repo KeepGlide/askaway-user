@@ -472,23 +472,21 @@ const enTranslation = (fields: Record<string, unknown> = {}, options: Record<str
 const answerOf = (id: string, key: string, ts: number, text?: string): Answer => ({ id, key, by: 'panel', ts, text })
 const NO_STATUS = { cleared: [], now: 0, leaving: {} } as const
 
-test('model: the urgency grade is the level the file names, else the one its words suggest in English or Portuguese, else low', () => {
+test('model: the urgency grade is the level the file names, else none; the words of the urgency text never grade it', () => {
   const grade = (extra: Record<string, unknown>) => urgencyGradeOf(parsedQuestion('q-u-000001', 1000, extra))
   expect(grade({ urgency: 'Blocks in ~8 min', urgency_level: 'high' })).toBe('high')
   expect(grade({ urgency: 'Blocks right now', urgency_level: 'medium' })).toBe('medium')
   expect(grade({ urgency: 'Can wait', urgency_level: 'low' })).toBe('low')
-  expect(grade({ urgency: 'Blocks right now' })).toBe('high')
-  expect(grade({ urgency: 'Blocks today' })).toBe('high')
-  expect(grade({ urgency: 'Needs an answer this week' })).toBe('medium')
-  expect(grade({ urgency: 'Soon, in a few days' })).toBe('medium')
-  expect(grade({ urgency: 'Bloqueia agora' })).toBe('high')
-  expect(grade({ urgency: 'Urgência imediata' })).toBe('high')
-  expect(grade({ urgency: 'Vence em dias' })).toBe('medium')
-  expect(grade({ urgency: 'Prazo na semana que vem' })).toBe('medium')
-  expect(grade({ urgency: 'Pode esperar' })).toBe('low')
-  expect(grade({})).toBe('low')
-  // A level that is not one of the three reads as absent, and the words decide.
-  expect(grade({ urgency: 'Blocks in ~8 min', urgency_level: 'critical' })).toBe('low')
+  // No level: no grade, whatever the words say, negation included.
+  expect(grade({ urgency: 'Not urgent, nothing breaks today' })).toBeUndefined()
+  expect(grade({ urgency: 'Blocks right now' })).toBeUndefined()
+  expect(grade({ urgency: 'Needs an answer this week' })).toBeUndefined()
+  expect(grade({ urgency: 'Bloqueia agora' })).toBeUndefined()
+  expect(grade({ urgency: 'Vence em dias' })).toBeUndefined()
+  expect(grade({ urgency: 'Pode esperar' })).toBeUndefined()
+  expect(grade({})).toBeUndefined()
+  // A level that is not one of the three reads as absent.
+  expect(grade({ urgency: 'Blocks in ~8 min', urgency_level: 'critical' })).toBeUndefined()
   expect(URGENCY_COLOR).toEqual({ low: 'success', medium: 'warning', high: 'error' })
 })
 
@@ -1193,6 +1191,44 @@ test('the Urgency text takes the colour of its grade, its bold title stays in th
   const titleNode = nodes.find(node => node.type === 'Text' && Array.isArray(node.children) && node.children.includes('⏱️ Urgência (alta): '))
   expect(titleNode).toBeDefined()
   expect((titleNode?.props as Record<string, unknown> | undefined)?.color).toBeUndefined()
+  await pane.unmount()
+})
+
+test('without urgency_level the Urgency text is drawn in the default colour under a plain heading, though its words say today (en)', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { urgency: 'Not urgent, nothing breaks today' })]])
+  stubHost(on, files, true, {}, {}, { LANG: '' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const nodes = nodesOf(await pane.drawn())
+  const bodyNode = nodes.find(node => node.type === 'Text' && Array.isArray(node.children) && node.children.includes('Not urgent, nothing breaks today'))
+  expect(bodyNode).toBeDefined()
+  expect((bodyNode?.props as Record<string, unknown> | undefined)?.color).toBeUndefined()
+  expect(await textsOf(pane)).toContain('⏱️ Urgency: ')
+  await pane.unmount()
+})
+
+test('without urgency_level the Urgency text is drawn in the default colour under a plain heading, though its words say hoje (pt-BR)', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { urgency: 'Não é urgente, nada quebra hoje' })]])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const nodes = nodesOf(await pane.drawn())
+  const bodyNode = nodes.find(node => node.type === 'Text' && Array.isArray(node.children) && node.children.includes('Não é urgente, nada quebra hoje'))
+  expect(bodyNode).toBeDefined()
+  expect((bodyNode?.props as Record<string, unknown> | undefined)?.color).toBeUndefined()
+  expect(await textsOf(pane)).toContain('⏱️ Urgência: ')
+  await pane.unmount()
+})
+
+test('with urgency_level high the Urgency heading names the grade and the text takes the error colour (en)', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { urgency: 'Not urgent, nothing breaks today', urgency_level: 'high' })]])
+  stubHost(on, files, true, {}, {}, { LANG: '' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  expect(await textsOf(pane)).toContain('⏱️ Urgency (high): ')
+  const nodes = nodesOf(await pane.drawn())
+  const bodyNode = nodes.find(node => node.type === 'Text' && Array.isArray(node.children) && node.children.includes('Not urgent, nothing breaks today'))
+  expect((bodyNode?.props as Record<string, unknown> | undefined)?.color).toBe('error')
   await pane.unmount()
 })
 
@@ -6509,10 +6545,11 @@ test('History: Clear drops a cleared id whose answer is gone from the board, and
 })
 
 
-test('model: "multimedia" does not grade medium urgency; an Other answer whose question is gone names no letter', () => {
+test('model: the urgency words grade nothing without urgency_level; an Other answer whose question is gone names no letter', () => {
   const grade = (extra: Record<string, unknown>) => urgencyGradeOf(parsedQuestion('q-u-000002', 1000, extra))
-  expect(grade({ urgency: 'multimedia assets' })).toBe('low')
-  expect(grade({ urgency: 'media team' })).toBe('medium')
+  expect(grade({ urgency: 'multimedia assets' })).toBeUndefined()
+  expect(grade({ urgency: 'media team' })).toBeUndefined()
+  expect(grade({ urgency: 'media team', urgency_level: 'medium' })).toBe('medium')
   const orphan: Board = { questions: [], answers: [answerOf('q-m-000001', 'other', 1, 'lavanda')], delivered: [] }
   expect(historyOf('en', orphan, NO_STATUS)[0]?.sessions[0]?.entries[0]?.line).toContain('“lavanda” · sent ')
 })

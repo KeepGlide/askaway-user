@@ -637,17 +637,19 @@ function renderTitleRow(ui: Ui, lang: Lang, question: Question, isLeaving: boole
 }
 
 // The Urgency line under the title: its bold title in the default colour, its text in the colour of its grade (URGENCY_COLOR).
-// When the question sets its grade (urgency_level), the title names it too ("Urgency (high):"), so the grade is not colour alone.
+// Only a grade the question sets (urgency_level) colours the text and names it in the title ("Urgency (high):"), so the grade
+// is never colour alone; with no urgency_level the text is drawn in the default colour under the plain title.
 function renderUrgency(ui: Ui, lang: Lang, question: Question, isLeaving: boolean): RenderElement | false {
   const [section] = sectionsOf(lang, question, 'before-options')
   if (section === undefined) return false
   const { Box, Text } = ui
-  const heading = question.urgency_level === undefined ? section.heading : `${section.heading} (${t(lang, `urgency.grade.${question.urgency_level}`)})`
+  const grade = urgencyGradeOf(question)
+  const heading = grade === undefined ? section.heading : `${section.heading} (${t(lang, `urgency.grade.${grade}`)})`
   return (
     <Box key="explanation-before-options" flexDirection="column">
       <Text dimColor={isLeaving}>
         <Text bold>{`${heading}: `}</Text>
-        <Text color={URGENCY_COLOR[urgencyGradeOf(question)]}>{section.body}</Text>
+        <Text color={grade === undefined ? undefined : URGENCY_COLOR[grade]}>{section.body}</Text>
       </Text>
     </Box>
   )

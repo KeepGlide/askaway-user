@@ -60,7 +60,7 @@ The CLI refuses longer text as `too long (n/limit)` and names the field, so keep
 | `why`, `how` | yes | 300, 400 | One or two sentences each (guidance). At least 3 words each. |
 | `gains`, `losses` | yes | 300 | One or two sentences each (guidance). At least 3 words each. |
 | `urgency` | yes | 300 | `Blocks in ~8 min` or `Can wait`. |
-| `urgency_level` | no | | `low`, `medium` or `high`: the colour grade of the Urgency line (green, orange, red). When absent, the card grades `urgency` by keywords, so agents should set it. |
+| `urgency_level` | no | | `low`, `medium` or `high`: the colour grade of the Urgency line (green, orange, red). When absent, the Urgency text is drawn in the default colour with no grade, so agents should set it. |
 | `undo` | yes | 300 | For example `changing later ≈ 10 min`. |
 | `recommended` | yes | | One of the option keys. Absent or null is listed in `missing`. |
 | `risk` | yes | | `low`, `medium` or `high`. |

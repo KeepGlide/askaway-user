@@ -2,7 +2,7 @@
 // markers; this mod reads them and writes answers only. Field names follow the spec.
 
 // The urgency grade of a question's Urgency line: its colour (look.ts URGENCY_COLOR). Optional in q/<id>.json; absent, the
-// grade is read from the words of `urgency` (model.ts urgencyGradeOf).
+// Urgency text has no grade and is drawn in the default colour (model.ts urgencyGradeOf).
 export type UrgencyGrade = 'low' | 'medium' | 'high'
 
 export type AnswerBy = 'panel' | 'accept_recommended' | 'accept_all' | 'cli' | 'agent'
