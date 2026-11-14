@@ -309,7 +309,7 @@ Enquanto há perguntas abertas, uma faixa fica acima do prompt: `2 perguntas agu
 
 ### Responder uma pergunta
 
-1. Aperte `1` com o prompt vazio, ou clique em **Responder** na faixa, para abrir o painel. O cabeçalho mostra o logo do AskAway User, o título **Perguntas aguardando** e o contador, como `2 pendentes · 1 grupo`, ou `2 pendentes · 1 pausada · 1 grupo` com uma sessão pausada.
+1. Aperte `1` com o prompt vazio, ou clique em **Responder** na faixa, para abrir o painel. O cabeçalho mostra o logo do AskAway User, o título **Perguntas aguardando** e o contador, como `2 pendentes · 1 grupo`, ou `2 pendentes · 1 pausada · 1 grupo` com uma sessão pausada. Num terminal estreito demais para o painel, o clique mostra um aviso que pede uma janela mais larga ou `/askaway`, que lista as perguntas como texto.
 2. A árvore lista cada grupo do Desktop e cada família de sessões com perguntas abertas, uma abaixo da outra, com o nome em negrito: o nome do grupo na barra lateral do Desktop, ou o título da raiz da família. Embaixo de um grupo, cada sessão desenha a sua própria linha com as suas perguntas. Embaixo do título da raiz de uma família, as perguntas da própria sessão raiz ficam logo abaixo desse título (o título nunca se repete como linha de sessão); embaixo delas, as sessões derivadas da família (`├` ou `└`) guardam as suas perguntas. Uma marca mostra em que ponto está cada pergunta: `●` a que está na tela, `○` aguardando. Uma pergunta com opção escolhida mostra depois do texto `✓ - ▪ Enviar resposta`: esse **Enviar resposta** manda só a resposta dela, na hora, e o cartão fica na pergunta que está na tela; as demais escolhas esperam o **Enviar tudo**, que volta o cartão para a primeira pergunta do grupo. Nada é enviado antes de um dos dois. Os nomes de família e de sessão são texto, não botões; cada linha de pergunta é um link, desenhado pontilhado e sublinhado no Desktop, e apertar uma leva ao cartão dela.
 3. Clique numa opção para registrá-la. O painel avança para a próxima pergunta sem resposta, voltando ao início se preciso, ou para a última pergunta quando todas já têm resposta. Nada é enviado ainda.
 4. Para responder com as suas palavras, o campo embaixo de **Outra…** fica sempre aberto: clique nele e digite. O texto digitado é a resposta sem Enter: ele conta quando o foco sai do campo, quando você aperta qualquer botão do painel e quando o painel fecha; o Enter também confirma. Um campo esvaziado limpa a resposta dada em Outra: uma opção que você já escolheu continua, e sem escolha a pergunta mostra **Sem resposta**. Enquanto o texto conta, o botão **Outra** mostra o texto como rótulo, marcado (`✓ C · texto`). O cartão fica onde está, então aperte **Próxima →** ou **Enviar tudo** quando quiser. O link **Outra…** só leva o foco ao campo.
@@ -701,6 +701,8 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 | Limpeza | 30 dias por padrão (`ASKAWAY_PRUNE_DAYS`), no máximo uma vez por dia; os arquivos de token saem depois de um dia |
 | Token do painel | Uso único, no máximo 120 s de idade |
 | Painel | Consulta a cada 5 s; reconfere sessões encerradas no máximo a cada 30 s; trava de 350 ms numa repetição do mesmo movimento; entrega a uma sessão ociosa respostas com pelo menos 5 s |
+| Execuções do painel | 5 s por operação de arquivo; 10 s por execução da CLI (`list`, `prune`, `answer`); uma execução que estoura o tempo mostra o aviso de falha, desfaz o apagamento do cartão e mantém a escolha |
+| Fade do cartão | Ignorado após 60 s: um fade mais antigo não apaga o cartão nem recusa um clique |
 | `wait` | Consulta a cada 0,5 s; timeout padrão de 110 s |
 | Ganchos | Timeout de 5 s cada |
 | Gravação de risco alto | 4 tentativas, com 50 ms entre elas |
@@ -765,10 +767,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 602 |
-| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1758 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 610 |
+| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1770 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit 64eb563 (o guarda de pausa da 1.1.7), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit f289f84 (as correções de painel da W8), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 

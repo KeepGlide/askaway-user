@@ -309,7 +309,7 @@ While questions are open, a band sits above the prompt: `2 questions waiting · 
 
 ### Answering a question
 
-1. Press `1` from an empty prompt, or click **Answer** on the band, to open the pane. The header shows the AskAway User logo, the heading **Questions waiting** and the counter, such as `2 pending · 1 group`, or `2 pending · 1 paused · 1 group` while a session is paused.
+1. Press `1` from an empty prompt, or click **Answer** on the band, to open the pane. The header shows the AskAway User logo, the heading **Questions waiting** and the counter, such as `2 pending · 1 group`, or `2 pending · 1 paused · 1 group` while a session is paused. On a terminal too narrow for the pane, the press shows a message that asks for a wider window or for `/askaway`, which lists the questions as text.
 2. The tree lists every Desktop Group and session family with open questions, one under the other, each one's name in bold: the Group's name from the Desktop sidebar, or a family's root title. Under a Group, each session draws its own row with its questions. Under a family's root title, the questions of the root session itself sit right under that title (the title is never repeated as a session row); under them, the family's derived sessions (`├` or `└`) hold their questions. A mark shows where each question stands: `●` the one on screen, `○` waiting. A question with a picked option shows `✓ - ▪ Submit Answer` after its text: that **Submit Answer** sends only that question's answer, at once, and the card stays on the question on screen; the other picks wait for **Submit all**, which still returns the card to the group's first question. Nothing is sent until one of them is pressed. Family and session names are text, not buttons; each question row is a link, drawn dotted and underlined on the Desktop, and pressing one jumps to its card.
 3. Click an option to record it. The pane moves to the next question without an answer, wrapping to the start if needed, or to the last question once every question has one. Nothing is sent yet.
 4. For your own answer, the field under **Other…** is always open: click into it and type. The typed text is the answer without Enter: it counts when the focus leaves the field, when you press any button of the panel and when the panel closes; Enter also confirms it. An emptied field clears the Other answer: an option you picked stays, and with no pick the question reads **No answer**. While the text counts, the **Other** button shows it as its label, drawn chosen (`✓ C · text`). The card stays where it is, so press **Next** or **Submit all** when you are ready. The **Other…** link only moves the focus to the field.
@@ -701,6 +701,8 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 | Prune | 30 days by default (`ASKAWAY_PRUNE_DAYS`), at most once a day; token files are cleared after a day |
 | Panel token | One use, at most 120 s old |
 | Pane | Polls every 5 s; re-checks ended sessions at most every 30 s; 350 ms lock on a repeat of the same move; hands an idle session answers at least 5 s old |
+| Pane process runs | 5 s per file operation; 10 s per CLI run (`list`, `prune`, `answer`); a run that times out shows the failure toast, undims the card and keeps the pick |
+| Card dim from a fade | Ignored after 60 s: an older fade neither dims its card nor refuses a press |
 | `wait` | Polls every 0.5 s; 110 s timeout by default |
 | Hooks | 5 s timeout each |
 | High-risk write | 4 attempts, 50 ms apart |
@@ -765,10 +767,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 602 |
-| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1758 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 610 |
+| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1770 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit 64eb563 (the 1.1.7 pause guard), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit f289f84 (the W8 pane fixes), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 

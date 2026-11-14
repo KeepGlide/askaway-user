@@ -9,7 +9,15 @@ Commit hashes name the change in `git log`.
 ## [Unreleased]
 
 ### Fixed
-- `wait` defaults to 110 s, under the 120 s limit of the Bash tool, so an agent that runs `wait <id> --strict` with no `--timeout` gets its JSON and exit code instead of being killed; every `wait` example in the README pair, SPEC.md and the question playbook carries `--timeout`, and `scripts/tests/test_doc_wait_examples.py` checks it (#47).
+- **Wait fits the tool time limit**: the default wait is 110 seconds, under the 120-second limit of the Bash tool, so an agent that waits without a timeout gets the answer's JSON and exit code instead of being cut off.
+- **Pane runs cannot hang**: every file operation and command run of the pane has a time limit, 5 seconds for files and 10 seconds for the command, so a slow run no longer holds a press with its card dimmed. A run that times out shows the failure toast, undims the card and keeps the pick.
+- **Stale fades clear**: a card left dimmed by a reload that cut off a reply is undimmed when the session starts, and a dim older than 60 seconds neither dims a card nor refuses a press.
+- **Failed session id read retried**: a session id that could not be read is tried again on the next poll, so one failed read no longer stops the idle hand-off for the whole session.
+- **Narrow terminal explained**: pressing the band on a terminal too narrow for the pane shows a message that asks for a wider window or for the command that lists the questions as text.
+- **Error messages name the plugin once**: a failed draft save no longer shows the plugin name twice.
+
+### Performance
+- **Answers skip a folder check**: the token folder is created once per session instead of on every answer.
 
 ## [1.1.7] - 2026-11-14
 
