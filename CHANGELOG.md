@@ -8,6 +8,11 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.10] - 2026-11-14
+
+### Security
+- **Read-only tool check reads every spelling**: while a pause holds, a tool of another server passes only when its name reads as a read with no write word, now also in camelCase, mixed case or with dashes and dots, so a name such as get_sendEmail or list_items-delete is held.
+
 ## [1.1.9] - 2026-11-14
 
 ### Documentation
@@ -1006,7 +1011,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.9...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.10...HEAD
+[1.1.10]: https://github.com/KeepGlide/askaway-user/compare/v1.1.9...v1.1.10
 [1.1.9]: https://github.com/KeepGlide/askaway-user/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/KeepGlide/askaway/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/KeepGlide/askaway/compare/v1.1.6...v1.1.7

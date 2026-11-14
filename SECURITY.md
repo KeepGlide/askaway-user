@@ -6,7 +6,7 @@ AskAway User is stable from `1.0.0`. Fixes land on the latest `1.x` release.
 
 | Version | Supported |
 | ------- | --------- |
-| `1.1.9` (latest) | ✅ |
+| `1.1.10` (latest) | ✅ |
 | `1.0.3`, `1.0.2`, `1.0.1`, `1.0.0`, `0.4.3`, `0.4.2`, `0.4.1`, `0.4.0`, `0.4.0` betas and earlier `0.x` releases | ❌ |
 
 ## Reporting a vulnerability
