@@ -777,7 +777,7 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 | Categoria | Testes |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 610 |
-| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1776 |
+| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1786 |
 
 Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit f289f84 (as correções de painel da W8), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
@@ -843,6 +843,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.7 | 2026-11-14 | O guarda de pausa retém toda chamada de ferramenta, salvo as da lista só de leitura, então uma ferramenta nova também fica retida; o guarda de ask avisa quando a pergunta era de seleção múltipla; os exemplos de ask da documentação são testados contra o validador. |
 | 1.1.8 | 2026-11-14 | Cada execução do painel tem um tempo limite, então uma execução lenta não segura mais um clique; um apagamento antigo expira após 60 s; uma leitura de id de sessão que falhou é tentada de novo; um clique em terminal estreito explica o motivo; o padrão de `wait` fica abaixo do limite da ferramenta Bash. |
 | 1.1.9 | 2026-11-14 | A documentação cita o repositório renomeado e o id de plugin askaway-user; o README abre com o logo e a capa do produto; o SECURITY.md cita a versão atual; a regra de escrita do changelog está no CONTRIBUTING.md. |
+| 1.1.10 | 2026-11-14 | Durante uma pausa, a checagem de leitura dos nomes de ferramentas MCP também acha palavras de escrita em camelCase, maiúsculas misturadas e nomes com hífen. |
 
 ## 🤝 Contribuição
 

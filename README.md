@@ -777,7 +777,7 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 | Category | Tests |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 610 |
-| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1776 |
+| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1786 |
 
 Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit f289f84 (the W8 pane fixes), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
@@ -843,6 +843,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.7 | 2026-11-14 | The pause guard holds every tool call except a read-only allow-list, so a tool added later is held too; the ask-guard names a multi-select question; the documented ask examples are tested against the validator. |
 | 1.1.8 | 2026-11-14 | Every run of the pane has a time limit, so a slow run no longer holds a press; a stale dim expires after 60 s; a failed session id read is retried; a press on a narrow terminal explains itself; the `wait` default stays under the Bash tool limit. |
 | 1.1.9 | 2026-11-14 | The docs name the renamed repository and the askaway-user plugin id; the README opens with the product logo and cover; SECURITY.md names the current version; the changelog writing rule is in CONTRIBUTING.md. |
+| 1.1.10 | 2026-11-14 | While a pause holds, the read-only check of MCP tool names also finds write words in camelCase, mixed case and dashed names. |
 
 ## 🤝 Contributing
 

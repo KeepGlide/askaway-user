@@ -6855,3 +6855,13 @@ def test_the_deliver_fast_path_hands_a_subagent_its_copy_in_a_real_process(home,
             item, agent_id)), capture_output=True, text=True, env=env, timeout=20, check=False)
         assert proc.returncode == 0 and (item in proc.stdout) is delivered, proc.stderr
     assert stored(home, "s", item)["recipient"] == "agent-1"
+
+
+@pytest.mark.parametrize("tool", ["get_sendEmail", "list_items-delete", "get_DeleteAll", "Get_Items_Delete", "read_file.write"])
+def test_read_only_mcp_finds_write_words_in_any_case_or_separator(tool):
+    assert not askaway.is_read_only_mcp(f"mcp__srv__{tool}")
+
+
+@pytest.mark.parametrize("tool", ["get_node", "listItems", "getMergeRequest", "query_database", "search-files"])
+def test_read_only_mcp_still_passes_read_names_in_any_case_or_separator(tool):
+    assert askaway.is_read_only_mcp(f"mcp__srv__{tool}")

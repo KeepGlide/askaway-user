@@ -307,6 +307,8 @@ WRITE_WORDS: Final = frozenset({
     "set", "start", "stop", "update", "write", "replace", "rename", "drop", "upload", "merge", "commit", "archive",
     "restore", "upsert", "append"})
 READ_EXEMPT_WORDS: Final = frozenset({"merge", "commit", "archive"})  # the object right after a read verb: get_commit
+CAMEL_BREAK: Final = re.compile(r"([a-z0-9])([A-Z])")  # a lower-to-upper step starts a word in an MCP tool name
+NAME_WORD_BREAK: Final = re.compile(r"[^a-z0-9]+")
 # One simple `askaway.py ask|status|list|wait|export` call of the installed script: its path is SCRIPT_PATH
 # (symlinks resolved), its mirror under ~/.claude/mods (spelled out, or with ~, $HOME or ${HOME}), or the
 # plugin-root form the AskAway User skill teaches (a quoted path only). A planted path such as /x/askaway.py never matches.
@@ -2232,15 +2234,17 @@ def hook_ask_guard(event: Mapping[str, Any]) -> HookOutput:
 
 
 def is_read_only_mcp(tool_name: object) -> bool:
-    """An MCP tool whose own name starts with a read prefix and has no write word, e.g. mcp__graphify__get_node.
+    """An MCP tool whose own name starts with a read prefix and has no write word, e.g. mcp__graphify__get_node. The name is
+    read case-blind, with camelCase steps and every non-alphanumeric run as word breaks.
     merge, commit and archive are not write words right after the read verb: get_commit, list_merge_requests."""
     if not isinstance(tool_name, str) or not tool_name.startswith("mcp__"):
         return False
-    tool = tool_name.rsplit("__", 1)[-1]
-    words = tool.split("_")
+    tool = CAMEL_BREAK.sub(r"\1_\2", tool_name.rsplit("__", 1)[-1]).lower()  # get_sendEmail reads as get_send_email
+    words = NAME_WORD_BREAK.split(tool)  # any non-alphanumeric run splits words: list_items-delete holds delete
+    read_prefixed = "_".join(words).startswith(READ_ONLY_PREFIXES)  # search-files starts with search_ too
     if len(words) > 1 and words[1] in READ_EXEMPT_WORDS:
         del words[1]
-    return tool.startswith(READ_ONLY_PREFIXES) and not (set(words) & WRITE_WORDS)
+    return read_prefixed and not (set(words) & WRITE_WORDS)
 
 
 def _blanked_single_quoted(text: str) -> str:
