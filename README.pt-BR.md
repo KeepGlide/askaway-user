@@ -557,7 +557,7 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 | A exportação CSV põe um apóstrofo no começo das células que começam com `=`, `+`, `-`, `@`, tab ou CR. | Proteger só `=`, `@` e tab | Mais seguro abrir numa planilha. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18) |
 | `prune --id <id> --force` é o modo próprio do usuário para uma pergunta cuja sessão não tem marca de fim; o guarda de Bash o nega ao agente. | Remover só pelo Desktop | Uma sessão de terminal nunca grava marca de fim. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
 | A retenção é de 30 dias (`ASKAWAY_PRUNE_DAYS`), contada do fechamento, nunca da pergunta. | Contar a partir da pergunta | Um item não entregue nunca pode ser limpo. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
-| Respostas não lidas expiram depois de 7 dias; um recuo do relógio nunca estende isso, um salto do relógio pula a limpeza daquele ciclo, e não há uma segunda referência de tempo. | Uma segunda referência de tempo | Simples, com o resíduo documentado. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20), [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
+| Respostas não lidas expiram depois de 7 dias; a sessão que perguntou recebe uma linha `Expired unread` e a execução de outra sessão não fecha o vencimento. Um recuo do relógio nunca estende isso, um salto do relógio pula a limpeza daquele ciclo, e não há uma segunda referência de tempo. | Uma segunda referência de tempo | Simples, com o resíduo documentado. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20), [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
 | Cada resposta registra `who`: `ASKAWAY_WHO`, senão o usuário do sistema, senão `unknown`; o painel pergunta o nome uma vez; o nome é declarado, não verificado. | Uma identidade verificada | Uma ferramenta de um só usuário, com rótulo honesto. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17), [beta.11](CHANGELOG.md#040-beta11---2026-10-18) |
 
 </details>
@@ -743,7 +743,7 @@ Relate uma vulnerabilidade em privado, não numa issue pública. [SECURITY.md](S
 - **O que sai da máquina:** nada. Perguntas, respostas e marcas de entrega são arquivos JSON simples na sua pasta de estado, e o AskAway User não faz chamadas de rede próprias. O texto da resposta é injetado no prompt da sessão que perguntou, então chega ao modelo que essa sessão usa.
 - **Chamadas pagas:** nenhuma. O AskAway User não faz chamadas de rede, então não faz chamadas pagas.
 - **O texto da pergunta** é o que o agente escreveu. Mantenha segredos fora dele.
-- **Expiração:** uma resposta ainda não lida 7 dias depois de você enviá-la é encerrada como expirada. A verificação roda sob demanda nos ganchos de qualquer sessão, e vale mesmo que a sessão que perguntou ainda esteja viva. Uma resposta cuja sessão que perguntou foi liberada pelo Claude Desktop é encerrada na hora, assim que o gancho de qualquer sessão rodar.
+- **Expiração:** uma resposta ainda não lida 7 dias depois de você enviá-la é encerrada como expirada. A verificação roda sob demanda nos ganchos de qualquer sessão, e vale mesmo que a sessão que perguntou ainda esteja viva: essa sessão recebe uma linha `Expired unread` quando o próximo gancho dela roda. Uma resposta cuja sessão que perguntou foi liberada pelo Claude Desktop é encerrada na hora, assim que o gancho de qualquer sessão rodar.
 - **O guarda de Bash é um desestímulo, não uma garantia** (veja [Por que existe](#-por-que-existe)).
 
 ## 🩺 Solução de problemas
