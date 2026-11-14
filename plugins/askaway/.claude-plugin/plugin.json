@@ -1,10 +1,10 @@
 {
   "name": "askaway-user",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "description": "AskAway User: a question inbox for Claude Code. Agents file questions with a recommended default while you are away; you answer them one at a time in a real panel, all at once per group.",
   "author": { "name": "Sophia Phillipa (KeepGlide)", "url": "https://keepglide.com" },
-  "homepage": "https://github.com/KeepGlide/askaway",
-  "repository": "https://github.com/KeepGlide/askaway",
+  "homepage": "https://github.com/KeepGlide/askaway-user",
+  "repository": "https://github.com/KeepGlide/askaway-user",
   "license": "MIT",
   "keywords": ["claude-code", "questions", "inbox", "panel", "mod"],
   "types": "./types/index.d.ts",

@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="assets/askaway-cover-1600x400.png" alt="AskAway User: uma caixa de perguntas para o Claude Code." width="100%" />
+<img src="assets/askaway-user-icon.svg" alt="Logo do AskAway User" width="96" />
+
+<img src="assets/askaway-user-cover-1200x630.png" alt="AskAway User: uma caixa de perguntas para o Claude Code." width="100%" />
 
 # 🔷 AskAway User
 
@@ -8,9 +10,9 @@
 
 **Uma caixa de perguntas para o Claude Code: os agentes registram as decisões de que precisam enquanto você está ausente, e você responde todas num único painel.**
 
-[![Versão](https://img.shields.io/github/v/tag/KeepGlide/askaway?sort=semver&color=2BB8AE&label=version)](https://github.com/KeepGlide/askaway/tags) [![Licença: MIT](https://img.shields.io/badge/license-MIT-1E2A47)](LICENSE) [![Plugin do Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-1E2A47)](#-pré-requisitos) [![Python 3.12+](https://img.shields.io/badge/python-%E2%89%A53.12-1E2A47)](#-pré-requisitos)
+[![Versão](https://img.shields.io/github/v/tag/KeepGlide/askaway-user?sort=semver&color=2BB8AE&label=version)](https://github.com/KeepGlide/askaway-user/tags) [![Licença: MIT](https://img.shields.io/badge/license-MIT-1E2A47)](LICENSE) [![Plugin do Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-1E2A47)](#-pré-requisitos) [![Python 3.12+](https://img.shields.io/badge/python-%E2%89%A53.12-1E2A47)](#-pré-requisitos)
 
-[🌐 Site](https://keepglide.com/pt-br/askaway) · [Instalação](#-instalação) · [Uso](#-uso) · [Changelog](CHANGELOG.md) · [Relatar um bug](https://github.com/KeepGlide/askaway/issues/new) · [Segurança](SECURITY.md)
+[🌐 Site](https://keepglide.com/pt-br/askaway) · [Instalação](#-instalação) · [Uso](#-uso) · [Changelog](CHANGELOG.md) · [Relatar um bug](https://github.com/KeepGlide/askaway-user/issues/new) · [Segurança](SECURITY.md)
 
 </div>
 
@@ -117,7 +119,7 @@ O AskAway User não:
 Um comando instala o marketplace e o plugin (testado com o Claude Code 2.1.296):
 
 ```bash
-claude plugin install askaway --marketplace KeepGlide/claude-plugins
+claude plugin install askaway-user --marketplace KeepGlide/claude-plugins
 ```
 
 Reinicie o Claude Code, ou rode `/reload-plugins` se a sua versão tiver o comando, e depois rode `/askaway` para abrir o painel. A instalação passo a passo está em [Instalação](#-instalação).
@@ -215,7 +217,7 @@ claude plugin marketplace add KeepGlide/claude-plugins
 ### 2️⃣ Instale o plugin
 
 ```bash
-claude plugin install askaway@keepglide
+claude plugin install askaway-user@keepglide
 ```
 
 ### 3️⃣ Carregue o plugin
@@ -226,8 +228,8 @@ Reinicie o Claude Code, ou rode `/reload-plugins` dentro de uma sessão se a sua
 
 Use este caminho quando tiver o `.zip` deste repositório e não tiver acesso ao marketplace. A raiz tem `.claude-plugin/marketplace.json`, então a pasta extraída é um marketplace local:
 
-1. Extraia o zip em uma pasta vazia, por exemplo `askaway-main`.
-2. No Claude Code, rode `/plugin marketplace add ./askaway-main` (um caminho absoluto também funciona).
+1. Extraia o zip em uma pasta vazia, por exemplo `askaway-user-main`.
+2. No Claude Code, rode `/plugin marketplace add ./askaway-user-main` (um caminho absoluto também funciona).
 3. Instale pelo painel `/plugin`, com **+ › Add plugins** (Claude Desktop), ou rode `/plugin install askaway-user@keepglide-local`.
 
 Depois, carregue o plugin como no passo 3 acima.
@@ -242,14 +244,14 @@ Regras básicas:
 - 🧑 precisa da aprovação do usuário: os passos 3, 4 e 9 mudam a configuração do Claude Code ou abrem o painel dele.
 - 💸 Nenhum passo custa dinheiro. O AskAway User não faz chamadas de rede.
 - Plataformas: os passos de shell foram verificados só no Linux.
-- `${CLAUDE_PLUGIN_ROOT}` é a pasta do plugin `askaway` instalado, a que os ganchos e a skill usam; num shell, defina-a você mesmo antes dos comandos. Ache a pasta com `claude plugin list`: a linha `Read from:` sob `askaway@keepglide`. Cada comando leva o próprio `ASKAWAY_HOME`, então a pasta de teste nunca toca a pasta de estado real.
+- `${CLAUDE_PLUGIN_ROOT}` é a pasta do plugin `askaway` instalado, a que os ganchos e a skill usam; num shell, defina-a você mesmo antes dos comandos. Ache a pasta com `claude plugin list`: a linha `Read from:` sob `askaway-user@keepglide`. Cada comando leva o próprio `ASKAWAY_HOME`, então a pasta de teste nunca toca a pasta de estado real.
 
 | # | Passo | Rodar | Expect |
 |---|---|---|---|
 | 1 | Verificar o Python 3.12 ou mais novo | `python3 -c 'import sys; sys.exit(sys.version_info < (3, 12))'` | Código de saída 0. O código 1 quer dizer Python anterior a 3.12: pare e informe. |
 | 2 | Verificar o Claude Code | `claude --version` | Imprime uma versão e `(Claude Code)`; código de saída 0. |
 | 3 | 🧑 Adicionar o marketplace | `claude plugin marketplace add KeepGlide/claude-plugins` | Código de saída 0; `claude plugin marketplace list` mostra `keepglide`. |
-| 4 | 🧑 Instalar o plugin | `claude plugin install askaway@keepglide` | Código de saída 0; `claude plugin list` mostra `askaway@keepglide`. |
+| 4 | 🧑 Instalar o plugin | `claude plugin install askaway-user@keepglide` | Código de saída 0; `claude plugin list` mostra `askaway-user@keepglide`. |
 | 5 | Criar uma pasta de estado de teste | `mkdir -p /tmp/askaway-test` | Código de saída 0; a pasta está vazia. |
 | 6 | Verificar o modo ausente | `ASKAWAY_HOME=/tmp/askaway-test python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" away status` | Imprime `{"away": false}`. |
 | 7 | Registrar uma pergunta de teste | `ASKAWAY_HOME=/tmp/askaway-test python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Test","lang":"en","question":"Pick option A today?","what":"A test question for the AskAway User CLI. It only checks that a question is filed.","problem":"Nothing is decided by this test, so the check has no cost.","context":"Install spec check of the AskAway User CLI.","options":[{"key":"A","label":"Yes","tradeoff":"Safe to accept and easy to change later","fit":90,"does":"The check takes option A.","pros":"Quick to verify.","cons":"Tests nothing else."},{"key":"B","label":"No","tradeoff":"Keeps the current behavior","fit":10,"does":"The check takes option B.","pros":"Changes nothing at all.","cons":"Gives no result."}],"recommended":"A","why":"A is the safe default for this test.","how":"The session continues on A at once.","gains":"The check finishes without a human.","losses":"Nothing is changed by the test.","analogy":"A dry run before the real job.","urgency":"Can wait","undo":"changing later ≈ 1 min","risk":"low"}'` | Imprime `{"id": "q-…", "recommended": "A", "title": "Test", "action": "continue"}`. |
@@ -259,21 +261,21 @@ Regras básicas:
 
 ✅ **Pronto quando:** os passos 1, 2, 6, 7 e 8 batem. Os passos 3, 4 e 9 batem depois que o usuário aprovar.
 
-Para desfazer: `claude plugin uninstall askaway@keepglide`, `claude plugin marketplace remove keepglide` e apague `/tmp/askaway-test` e `/tmp/askaway-test-2`.
+Para desfazer: `claude plugin uninstall askaway-user@keepglide`, `claude plugin marketplace remove keepglide` e apague `/tmp/askaway-test` e `/tmp/askaway-test-2`.
 
 ## 🔄 Atualização
 
-A versão que você recebe é a que o catálogo da KeepGlide fixa. A entrada do AskAway User nele nomeia uma tag do git (`ref`) e um commit (`sha`), e `claude plugin install askaway@keepglide` instala esse par.
+A versão que você recebe é a que o catálogo da KeepGlide fixa. A entrada do AskAway User nele nomeia uma tag do git (`ref`) e um commit (`sha`), e `claude plugin install askaway-user@keepglide` instala esse par.
 
 ### Fixar e voltar a versão
 
-Para listar as tags, rode `git ls-remote --tags https://github.com/KeepGlide/askaway.git`. As tags existem de `v0.4.0-beta.3` em diante, exceto a beta.7, que não tem tag; o commit dela é `9a07ae9`.
+Para listar as tags, rode `git ls-remote --tags https://github.com/KeepGlide/askaway-user.git`. As tags existem de `v0.4.0-beta.3` em diante, exceto a beta.7, que não tem tag; o commit dela é `9a07ae9`.
 
 Para voltar, a KeepGlide move o `ref` e o `sha` do catálogo de volta para a tag anterior e o commit dela. Depois reinstale o plugin com os comandos de [Instalação](#-instalação):
 
 ```bash
-claude plugin uninstall askaway@keepglide
-claude plugin install askaway@keepglide
+claude plugin uninstall askaway-user@keepglide
+claude plugin install askaway-user@keepglide
 ```
 
 ## 🧹 Desinstalação
@@ -281,13 +283,20 @@ claude plugin install askaway@keepglide
 Remova o plugin:
 
 ```bash
-claude plugin uninstall askaway@keepglide
+claude plugin uninstall askaway-user@keepglide
 ```
 
 Opcional: remova a entrada do marketplace, se nenhum outro plugin dele estiver instalado:
 
 ```bash
 claude plugin marketplace remove keepglide
+```
+
+Instalou pelo zip baixado? Remova esse plugin e o marketplace local:
+
+```bash
+claude plugin uninstall askaway-user@keepglide-local
+claude plugin marketplace remove keepglide-local
 ```
 
 **Remova os seus dados.** Desinstalar não remove a pasta de estado, `~/.claude/state/askaway` (ou a pasta `ASKAWAY_HOME` que você definiu), porque ela fica fora da pasta do plugin. Remover é uma escolha sua:
@@ -749,7 +758,7 @@ Relate uma vulnerabilidade em privado, não numa issue pública. [SECURITY.md](S
 
 ## 🐞 Problemas conhecidos
 
-Nenhuma issue aberta traz o rótulo `bug` em 2026-11-13 (`gh issue list -R KeepGlide/askaway --state open --label bug`). Estas limitações vêm do código, do CHANGELOG e desta página; os limites sem contorno estão em [Limites](#-limites):
+Nenhuma issue aberta traz o rótulo `bug` em 2026-11-14 (`gh issue list -R KeepGlide/askaway-user --state open --label bug`); defeitos abertos achados em revisão trazem `type:bug`. Estas limitações vêm do código, do CHANGELOG e desta página; os limites sem contorno estão em [Limites](#-limites):
 
 - **O Windows não é tratado.** A pasta de sessões do Claude Desktop é `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (padrão `~/.config`) no Linux e `~/Library/Application Support/Claude/claude-code-sessions` no macOS (`desktop_sessions_root`, `scripts/askaway.py`), então no Windows ela aponta para uma pasta que o Claude Desktop não usa. Isso não foi testado lá. Contorno: nenhum.
 - **Grupos do Desktop no macOS podem precisar do caminho da configuração.** O caminho padrão da configuração é `~/.config/Claude/claude_desktop_config.json` em todas as plataformas (`desktopConfigPathOf`, `hooks/register.tsx`). Se os grupos do Desktop faltarem no macOS, defina `ASKAWAY_DESKTOP_CONFIG` com o caminho do arquivo de configuração. As perguntas continuam agrupadas por família ou projeto.
@@ -758,17 +767,17 @@ Nenhuma issue aberta traz o rótulo `bug` em 2026-11-13 (`gh issue list -R KeepG
 - **Uma execução do Codex não pode ser pausada.** Nada segura uma execução do Codex, então o script dela precisa esperar a resposta por conta própria. Contorno: [Pelo Codex](#-pelo-codex).
 - **O guarda de Bash é um desestímulo.** Ele nega `askaway.py answer` na chamada de Bash do próprio agente, mas a chamada de CLI do painel não é uma chamada de ferramenta, e o hook não a vê. A CLI também confia em `CLAUDE_CODE_SESSION_ID`, e um processo do mesmo usuário que consiga gravar a pasta de estado pode gerar um token do painel ([SECURITY.md](SECURITY.md#known-limits)). Contorno: um login por pasta de estado.
 - **O nome `who` é declarado, não verificado.** Quem puder digitar um nome pode assinar uma resposta com ele ([Configuração](#%EF%B8%8F-configuração)). Contorno: dê a cada pessoa o seu próprio login.
-- **A cópia congelada do guarda traz de volta alguns excessos.** Até a cópia sair, o guarda de Bash nega alguns comandos inofensivos: `export CDPATH=...; touch a`; um heredoc entre aspas cujo corpo tem uma linha `source` ou `.` e uma gravação relativa, no corpo ou depois do heredoc (como `cat > README.md <<'EOF'` com `source .venv/bin/activate` e `pytest > test.log`; uma linha do corpo que termina em `).` conta como linha `.`); um heredoc entre aspas cujo corpo tem um número ímpar de aspas simples (um `'window\'s'` de TypeScript), negado como resposta quando o comando cita askaway e tem a palavra answer; `sed -i '1s|.*|x|' notes.md` rodado em `~` ou em `~/.claude`, porque a cópia lê o script como caminho e o `*` dele como glob sobre o diretório de trabalho; e `git commit -F - <<'EOF'` cuja mensagem cita palavras do askaway como `cmd_prune`. A cópia nega um `ask` cujo JSON entre aspas simples tem um `askaway.py answer` entre crases, ou um `<<` junto com a palavra away; o leitor já os permite ([#8](https://github.com/KeepGlide/askaway/issues/8)), e a cópia segue negando até sair ([#2](https://github.com/KeepGlide/askaway/issues/2)). A cópia e o leitor negam uma gravação num caminho relativo ou `$VAR` depois de `cd "$VAR"` num comando que cita askaway (`cd "$SRC" && cp $P/askaway.py $P/b/`); essa fica por decisão ([#9](https://github.com/KeepGlide/askaway/issues/9)). Contorno: grave arquivos com a ferramenta Write ou Edit, rode `sed -i` numa pasta fora de `~/.claude` com caminho absoluto (`cd /tmp && sed -i '1s|.*|x|' ~/.claude/notes.md`), faça `cd` para um caminho literal, passe a mensagem de commit por um arquivo (`git commit -F msg.txt`) ou como argumento (`git commit -m "$(cat <<'EOF'` … `EOF` `)"`, sem apóstrofo no corpo), e, enquanto a cópia existir, deixe crases e `<<` fora do JSON do `ask` ([SPEC.md](plugins/askaway/SPEC.md#commands)). O trabalho está nos milestones [W1](https://github.com/KeepGlide/askaway/milestone/1) (os excessos da cópia e a remoção dela), [W2](https://github.com/KeepGlide/askaway/milestone/2) (os dois que o leitor também tem) e [W3](https://github.com/KeepGlide/askaway/milestone/3) (as falhas do leitor que a cópia esconde; a [#10](https://github.com/KeepGlide/askaway/issues/10), um shell que lê o script de um heredoc, está corrigida).
+- **A cópia congelada do guarda traz de volta alguns excessos.** Até a cópia sair, o guarda de Bash nega alguns comandos inofensivos: `export CDPATH=...; touch a`; um heredoc entre aspas cujo corpo tem uma linha `source` ou `.` e uma gravação relativa, no corpo ou depois do heredoc (como `cat > README.md <<'EOF'` com `source .venv/bin/activate` e `pytest > test.log`; uma linha do corpo que termina em `).` conta como linha `.`); um heredoc entre aspas cujo corpo tem um número ímpar de aspas simples (um `'window\'s'` de TypeScript), negado como resposta quando o comando cita askaway e tem a palavra answer; `sed -i '1s|.*|x|' notes.md` rodado em `~` ou em `~/.claude`, porque a cópia lê o script como caminho e o `*` dele como glob sobre o diretório de trabalho; e `git commit -F - <<'EOF'` cuja mensagem cita palavras do askaway como `cmd_prune`. A cópia nega um `ask` cujo JSON entre aspas simples tem um `askaway.py answer` entre crases, ou um `<<` junto com a palavra away; o leitor já os permite ([#8](https://github.com/KeepGlide/askaway-user/issues/8)), e a cópia segue negando até sair ([#2](https://github.com/KeepGlide/askaway-user/issues/2)). A cópia e o leitor negam uma gravação num caminho relativo ou `$VAR` depois de `cd "$VAR"` num comando que cita askaway (`cd "$SRC" && cp $P/askaway.py $P/b/`); essa fica por decisão ([#9](https://github.com/KeepGlide/askaway-user/issues/9)). Contorno: grave arquivos com a ferramenta Write ou Edit, rode `sed -i` numa pasta fora de `~/.claude` com caminho absoluto (`cd /tmp && sed -i '1s|.*|x|' ~/.claude/notes.md`), faça `cd` para um caminho literal, passe a mensagem de commit por um arquivo (`git commit -F msg.txt`) ou como argumento (`git commit -m "$(cat <<'EOF'` … `EOF` `)"`, sem apóstrofo no corpo), e, enquanto a cópia existir, deixe crases e `<<` fora do JSON do `ask` ([SPEC.md](plugins/askaway/SPEC.md#commands)). O trabalho está nos milestones [W1](https://github.com/KeepGlide/askaway-user/milestone/1) (os excessos da cópia e a remoção dela), [W2](https://github.com/KeepGlide/askaway-user/milestone/2) (os dois que o leitor também tem) e [W3](https://github.com/KeepGlide/askaway-user/milestone/3) (as falhas do leitor que a cópia esconde; a [#10](https://github.com/KeepGlide/askaway-user/issues/10), um shell que lê o script de um heredoc, está corrigida).
 - **`status` diz `delivered` enquanto um subagente ainda está retido.** `status`, `list`, `export` e o painel leem só a cópia da sessão principal (`d/`), então uma pergunta diz `delivered` assim que a sessão principal a recebe, enquanto a pausa do subagente que perguntou vale até a própria cópia (`s/`). Contorno: o subagente retido roda uma chamada `askaway.py status <id>`, que traz a cópia dele e encerra a retenção.
 
-Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
+Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/new).
 
 ## 🧪 Testes
 
 | Categoria | Testes |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 610 |
-| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1770 |
+| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1776 |
 
 Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit f289f84 (as correções de painel da W8), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
@@ -833,6 +842,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.6 | 2026-11-14 | Um turno de subagente em segundo plano não marca mais a sessão como ocupada, então o repasse na ociosidade não fica retido; um repasse de pergunta recusado remove as marcas e é tentado de novo, e cada resposta é entregue uma vez. |
 | 1.1.7 | 2026-11-14 | O guarda de pausa retém toda chamada de ferramenta, salvo as da lista só de leitura, então uma ferramenta nova também fica retida; o guarda de ask avisa quando a pergunta era de seleção múltipla; os exemplos de ask da documentação são testados contra o validador. |
 | 1.1.8 | 2026-11-14 | Cada execução do painel tem um tempo limite, então uma execução lenta não segura mais um clique; um apagamento antigo expira após 60 s; uma leitura de id de sessão que falhou é tentada de novo; um clique em terminal estreito explica o motivo; o padrão de `wait` fica abaixo do limite da ferramenta Bash. |
+| 1.1.9 | 2026-11-14 | A documentação cita o repositório renomeado e o id de plugin askaway-user; o README abre com o logo e a capa do produto; o SECURITY.md cita a versão atual; a regra de escrita do changelog está no CONTRIBUTING.md. |
 
 ## 🤝 Contribuição
 
@@ -840,7 +850,7 @@ Leia [CONTRIBUTING.md](CONTRIBUTING.md) para saber como rodar as duas suítes de
 
 ## 🧑‍🔧 Mantenedora
 
-Feito por [Sophia Phillipa](https://github.com/sophia-phillipa) na [KeepGlide](https://keepglide.com). Dúvidas e bugs vão para as [issues do GitHub](https://github.com/KeepGlide/askaway/issues); vulnerabilidades passam pelo [SECURITY.md](SECURITY.md).
+Feito por [Sophia Phillipa](https://github.com/sophia-phillipa) na [KeepGlide](https://keepglide.com). Dúvidas e bugs vão para as [issues do GitHub](https://github.com/KeepGlide/askaway-user/issues); vulnerabilidades passam pelo [SECURITY.md](SECURITY.md).
 
 ## 📄 Licença
 

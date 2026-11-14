@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="assets/askaway-cover-1600x400.png" alt="AskAway User: a question inbox for Claude Code." width="100%" />
+<img src="assets/askaway-user-icon.svg" alt="AskAway User logo" width="96" />
+
+<img src="assets/askaway-user-cover-1200x630.png" alt="AskAway User: a question inbox for Claude Code." width="100%" />
 
 # 🔷 AskAway User
 
@@ -8,9 +10,9 @@
 
 **A question inbox for Claude Code: agents file the decisions they need while you are away, and you answer them in one panel.**
 
-[![Version](https://img.shields.io/github/v/tag/KeepGlide/askaway?sort=semver&color=2BB8AE&label=version)](https://github.com/KeepGlide/askaway/tags) [![License: MIT](https://img.shields.io/badge/license-MIT-1E2A47)](LICENSE) [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-1E2A47)](#-prerequisites) [![Python 3.12+](https://img.shields.io/badge/python-%E2%89%A53.12-1E2A47)](#-prerequisites)
+[![Version](https://img.shields.io/github/v/tag/KeepGlide/askaway-user?sort=semver&color=2BB8AE&label=version)](https://github.com/KeepGlide/askaway-user/tags) [![License: MIT](https://img.shields.io/badge/license-MIT-1E2A47)](LICENSE) [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-1E2A47)](#-prerequisites) [![Python 3.12+](https://img.shields.io/badge/python-%E2%89%A53.12-1E2A47)](#-prerequisites)
 
-[🌐 Website](https://keepglide.com/askaway) · [Installation](#-installation) · [Usage](#-usage) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/KeepGlide/askaway/issues/new) · [Security](SECURITY.md)
+[🌐 Website](https://keepglide.com/askaway) · [Installation](#-installation) · [Usage](#-usage) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/KeepGlide/askaway-user/issues/new) · [Security](SECURITY.md)
 
 </div>
 
@@ -117,7 +119,7 @@ AskAway User does not:
 One command installs the marketplace and the plugin (tested with Claude Code 2.1.296):
 
 ```bash
-claude plugin install askaway --marketplace KeepGlide/claude-plugins
+claude plugin install askaway-user --marketplace KeepGlide/claude-plugins
 ```
 
 Restart Claude Code, or run `/reload-plugins` if your version has it, then run `/askaway` to open the panel. The step-by-step install is in [Installation](#-installation).
@@ -215,7 +217,7 @@ claude plugin marketplace add KeepGlide/claude-plugins
 ### 2️⃣ Install the plugin
 
 ```bash
-claude plugin install askaway@keepglide
+claude plugin install askaway-user@keepglide
 ```
 
 ### 3️⃣ Load it
@@ -226,8 +228,8 @@ Restart Claude Code, or run `/reload-plugins` inside a session if your version h
 
 Use this path when you have the `.zip` of this repository instead of access to the marketplace. The root holds `.claude-plugin/marketplace.json`, so the extracted folder is a local marketplace:
 
-1. Extract the zip into an empty folder, for example `askaway-main`.
-2. In Claude Code, run `/plugin marketplace add ./askaway-main` (an absolute path works too).
+1. Extract the zip into an empty folder, for example `askaway-user-main`.
+2. In Claude Code, run `/plugin marketplace add ./askaway-user-main` (an absolute path works too).
 3. Install from the `/plugin` panel with **+ › Add plugins** (Claude Desktop), or run `/plugin install askaway-user@keepglide-local`.
 
 Then load it as in step 3 above.
@@ -242,14 +244,14 @@ Ground rules:
 - 🧑 needs the user's OK: steps 3, 4 and 9 change Claude Code's configuration or open its panel.
 - 💸 No step costs money. AskAway User makes no network calls.
 - Platforms: the shell steps were checked on Linux only.
-- `${CLAUDE_PLUGIN_ROOT}` is the installed `askaway` plugin folder, the one the hooks and the skill use. In a shell, set it yourself before the commands. Find the folder with `claude plugin list`: the `Read from:` line under `askaway@keepglide`. Each command carries its own `ASKAWAY_HOME`, so the test folder never touches the real state folder.
+- `${CLAUDE_PLUGIN_ROOT}` is the installed `askaway` plugin folder, the one the hooks and the skill use. In a shell, set it yourself before the commands. Find the folder with `claude plugin list`: the `Read from:` line under `askaway-user@keepglide`. Each command carries its own `ASKAWAY_HOME`, so the test folder never touches the real state folder.
 
 | # | Step | Run | Expect |
 |---|---|---|---|
 | 1 | Check Python 3.12 or newer | `python3 -c 'import sys; sys.exit(sys.version_info < (3, 12))'` | Exit 0. Exit 1 means Python is older than 3.12: stop and report it. |
 | 2 | Check Claude Code | `claude --version` | Prints a version and `(Claude Code)`; exit 0. |
 | 3 | 🧑 Add the marketplace | `claude plugin marketplace add KeepGlide/claude-plugins` | Exit 0; `claude plugin marketplace list` shows `keepglide`. |
-| 4 | 🧑 Install the plugin | `claude plugin install askaway@keepglide` | Exit 0; `claude plugin list` shows `askaway@keepglide`. |
+| 4 | 🧑 Install the plugin | `claude plugin install askaway-user@keepglide` | Exit 0; `claude plugin list` shows `askaway-user@keepglide`. |
 | 5 | Make a test state folder | `mkdir -p /tmp/askaway-test` | Exit 0; the folder is empty. |
 | 6 | Check away mode | `ASKAWAY_HOME=/tmp/askaway-test python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" away status` | Prints `{"away": false}`. |
 | 7 | File a test question | `ASKAWAY_HOME=/tmp/askaway-test python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Test","lang":"en","question":"Pick option A today?","what":"A test question for the AskAway User CLI. It only checks that a question is filed.","problem":"Nothing is decided by this test, so the check has no cost.","context":"Install spec check of the AskAway User CLI.","options":[{"key":"A","label":"Yes","tradeoff":"Safe to accept and easy to change later","fit":90,"does":"The check takes option A.","pros":"Quick to verify.","cons":"Tests nothing else."},{"key":"B","label":"No","tradeoff":"Keeps the current behavior","fit":10,"does":"The check takes option B.","pros":"Changes nothing at all.","cons":"Gives no result."}],"recommended":"A","why":"A is the safe default for this test.","how":"The session continues on A at once.","gains":"The check finishes without a human.","losses":"Nothing is changed by the test.","analogy":"A dry run before the real job.","urgency":"Can wait","undo":"changing later ≈ 1 min","risk":"low"}'` | Prints `{"id": "q-…", "recommended": "A", "title": "Test", "action": "continue"}`. |
@@ -259,21 +261,21 @@ Ground rules:
 
 ✅ **Done when:** steps 1, 2, 6, 7 and 8 match. Steps 3, 4 and 9 match once the user has approved them.
 
-To undo: `claude plugin uninstall askaway@keepglide`, `claude plugin marketplace remove keepglide`, and delete `/tmp/askaway-test` and `/tmp/askaway-test-2`.
+To undo: `claude plugin uninstall askaway-user@keepglide`, `claude plugin marketplace remove keepglide`, and delete `/tmp/askaway-test` and `/tmp/askaway-test-2`.
 
 ## 🔄 Updating
 
-The version you get is the one the KeepGlide catalog pins. Its entry for AskAway User names a git tag (`ref`) and a commit (`sha`), and `claude plugin install askaway@keepglide` installs that pair.
+The version you get is the one the KeepGlide catalog pins. Its entry for AskAway User names a git tag (`ref`) and a commit (`sha`), and `claude plugin install askaway-user@keepglide` installs that pair.
 
 ### Pin and roll back
 
-To list the tags, run `git ls-remote --tags https://github.com/KeepGlide/askaway.git`. Tags exist from `v0.4.0-beta.3` on, except beta.7, which has no tag; its release commit is `9a07ae9`.
+To list the tags, run `git ls-remote --tags https://github.com/KeepGlide/askaway-user.git`. Tags exist from `v0.4.0-beta.3` on, except beta.7, which has no tag; its release commit is `9a07ae9`.
 
 To roll back, KeepGlide moves the catalog's `ref` and `sha` back to the previous tag and its commit. Then reinstall the plugin with the commands in [Installation](#-installation):
 
 ```bash
-claude plugin uninstall askaway@keepglide
-claude plugin install askaway@keepglide
+claude plugin uninstall askaway-user@keepglide
+claude plugin install askaway-user@keepglide
 ```
 
 ## 🧹 Uninstall
@@ -281,13 +283,20 @@ claude plugin install askaway@keepglide
 Remove the plugin:
 
 ```bash
-claude plugin uninstall askaway@keepglide
+claude plugin uninstall askaway-user@keepglide
 ```
 
 Optional: remove the marketplace entry, if no other plugin from it is installed:
 
 ```bash
 claude plugin marketplace remove keepglide
+```
+
+Installed from the downloaded zip? Remove that plugin and its local marketplace instead:
+
+```bash
+claude plugin uninstall askaway-user@keepglide-local
+claude plugin marketplace remove keepglide-local
 ```
 
 **Remove your data.** Uninstalling does not remove the state folder, `~/.claude/state/askaway` (or the `ASKAWAY_HOME` folder you set), because it lies outside the plugin folder. Removing it is your choice:
@@ -749,7 +758,7 @@ Report a vulnerability privately, not in a public issue. [SECURITY.md](SECURITY.
 
 ## 🐞 Known issues
 
-No open issue carries the `bug` label as of 2026-11-13 (`gh issue list -R KeepGlide/askaway --state open --label bug`). These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
+No open issue carries the `bug` label as of 2026-11-14 (`gh issue list -R KeepGlide/askaway-user --state open --label bug`); open defects found in review carry `type:bug`. These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
 
 - **Windows is not handled.** The Claude Desktop session folder is `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (default `~/.config`) on Linux and `~/Library/Application Support/Claude/claude-code-sessions` on macOS (`desktop_sessions_root`, `scripts/askaway.py`), so on Windows it points at a folder Claude Desktop does not use. It is not tested there. Workaround: none.
 - **Desktop Groups on macOS may need the config path set.** The default config path is `~/.config/Claude/claude_desktop_config.json` on every platform (`desktopConfigPathOf`, `hooks/register.tsx`). If Desktop Groups are missing on macOS, set `ASKAWAY_DESKTOP_CONFIG` to the config file's path. Questions still group by family or project.
@@ -758,17 +767,17 @@ No open issue carries the `bug` label as of 2026-11-13 (`gh issue list -R KeepGl
 - **A Codex run cannot be paused.** Nothing holds a Codex run, so its script must wait for the answer itself. Workaround: [From Codex](#-from-codex).
 - **The Bash guard is a deterrent.** It denies `askaway.py answer` in an agent's own Bash call, but the panel's CLI call is not a tool call and the hook does not see it. The CLI also trusts `CLAUDE_CODE_SESSION_ID`, and a process of the same user that can write the state folder can mint a panel token ([SECURITY.md](SECURITY.md#known-limits)). Workaround: one login per state folder.
 - **The `who` name is declared, not verified.** Anyone who can type a name can sign an answer with it ([Configuration](#%EF%B8%8F-configuration)). Workaround: give each person their own login.
-- **The frozen guard copy brings back some over-denies.** Until the copy is removed, the Bash guard denies a few harmless commands: `export CDPATH=...; touch a`; a quoted heredoc whose body holds a `source` or `.` line and a relative write, in the body or after the heredoc (such as `cat > README.md <<'EOF'` with `source .venv/bin/activate` and `pytest > test.log`; a body line that ends in `).` counts as a `.` line); a quoted heredoc whose body has an odd number of single quotes (a TypeScript `'window\'s'`), denied as an answer when the command names askaway and holds the word answer; `sed -i '1s|.*|x|' notes.md` run from `~` or `~/.claude`, because the copy reads the script as a path and its `*` as a glob over the working directory; and `git commit -F - <<'EOF'` whose message names askaway words such as `cmd_prune`. The copy denies an `ask` whose single-quoted JSON holds a backquoted `askaway.py answer`, or a `<<` together with the word away; the scanner allows both now ([#8](https://github.com/KeepGlide/askaway/issues/8)), and the copy keeps denying them until it is removed ([#2](https://github.com/KeepGlide/askaway/issues/2)). The copy and the scanner both deny a write to a relative or `$VAR` path after `cd "$VAR"` in a command that names askaway (`cd "$SRC" && cp $P/askaway.py $P/b/`); this one stays by design ([#9](https://github.com/KeepGlide/askaway/issues/9)). Workaround: write files with the Write or Edit tool, run `sed -i` from a folder outside `~/.claude` on an absolute path (`cd /tmp && sed -i '1s|.*|x|' ~/.claude/notes.md`), `cd` to a literal path, pass a commit message from a file (`git commit -F msg.txt`) or as an argument (`git commit -m "$(cat <<'EOF'` … `EOF` `)"`, with no apostrophe in the body), and, while the copy stands, keep backquotes and `<<` out of the `ask` JSON ([SPEC.md](plugins/askaway/SPEC.md#commands)). The work is tracked in milestones [W1](https://github.com/KeepGlide/askaway/milestone/1) (the copy's over-denies and its removal), [W2](https://github.com/KeepGlide/askaway/milestone/2) (the two the scanner shares) and [W3](https://github.com/KeepGlide/askaway/milestone/3) (the scanner under-denies the copy hides; [#10](https://github.com/KeepGlide/askaway/issues/10), a shell reading its script from a heredoc, is fixed).
+- **The frozen guard copy brings back some over-denies.** Until the copy is removed, the Bash guard denies a few harmless commands: `export CDPATH=...; touch a`; a quoted heredoc whose body holds a `source` or `.` line and a relative write, in the body or after the heredoc (such as `cat > README.md <<'EOF'` with `source .venv/bin/activate` and `pytest > test.log`; a body line that ends in `).` counts as a `.` line); a quoted heredoc whose body has an odd number of single quotes (a TypeScript `'window\'s'`), denied as an answer when the command names askaway and holds the word answer; `sed -i '1s|.*|x|' notes.md` run from `~` or `~/.claude`, because the copy reads the script as a path and its `*` as a glob over the working directory; and `git commit -F - <<'EOF'` whose message names askaway words such as `cmd_prune`. The copy denies an `ask` whose single-quoted JSON holds a backquoted `askaway.py answer`, or a `<<` together with the word away; the scanner allows both now ([#8](https://github.com/KeepGlide/askaway-user/issues/8)), and the copy keeps denying them until it is removed ([#2](https://github.com/KeepGlide/askaway-user/issues/2)). The copy and the scanner both deny a write to a relative or `$VAR` path after `cd "$VAR"` in a command that names askaway (`cd "$SRC" && cp $P/askaway.py $P/b/`); this one stays by design ([#9](https://github.com/KeepGlide/askaway-user/issues/9)). Workaround: write files with the Write or Edit tool, run `sed -i` from a folder outside `~/.claude` on an absolute path (`cd /tmp && sed -i '1s|.*|x|' ~/.claude/notes.md`), `cd` to a literal path, pass a commit message from a file (`git commit -F msg.txt`) or as an argument (`git commit -m "$(cat <<'EOF'` … `EOF` `)"`, with no apostrophe in the body), and, while the copy stands, keep backquotes and `<<` out of the `ask` JSON ([SPEC.md](plugins/askaway/SPEC.md#commands)). The work is tracked in milestones [W1](https://github.com/KeepGlide/askaway-user/milestone/1) (the copy's over-denies and its removal), [W2](https://github.com/KeepGlide/askaway-user/milestone/2) (the two the scanner shares) and [W3](https://github.com/KeepGlide/askaway-user/milestone/3) (the scanner under-denies the copy hides; [#10](https://github.com/KeepGlide/askaway-user/issues/10), a shell reading its script from a heredoc, is fixed).
 - **`status` reads `delivered` while a subagent is still held.** `status`, `list`, `export` and the pane read only the main session's copy (`d/`), so a question reads `delivered` once the main session has it, while the asking subagent's pause holds until its own copy (`s/`). Workaround: the held subagent runs one `askaway.py status <id>` call, which brings its copy and ends the hold.
 
-Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
+Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new).
 
 ## 🧪 Tests
 
 | Category | Tests |
 |---|---|
 | Mod (TypeScript), `plugins/askaway/tests/` | 610 |
-| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1770 |
+| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1776 |
 
 Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit f289f84 (the W8 pane fixes), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
@@ -833,6 +842,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.6 | 2026-11-14 | A subagent's background turn no longer marks the session busy, so the idle hand-off is not held; a refused prompt hand-off removes its markers and is retried, so each answer is handed over once. |
 | 1.1.7 | 2026-11-14 | The pause guard holds every tool call except a read-only allow-list, so a tool added later is held too; the ask-guard names a multi-select question; the documented ask examples are tested against the validator. |
 | 1.1.8 | 2026-11-14 | Every run of the pane has a time limit, so a slow run no longer holds a press; a stale dim expires after 60 s; a failed session id read is retried; a press on a narrow terminal explains itself; the `wait` default stays under the Bash tool limit. |
+| 1.1.9 | 2026-11-14 | The docs name the renamed repository and the askaway-user plugin id; the README opens with the product logo and cover; SECURITY.md names the current version; the changelog writing rule is in CONTRIBUTING.md. |
 
 ## 🤝 Contributing
 
@@ -840,7 +850,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the two test suites and w
 
 ## 🧑‍🔧 Maintainer
 
-Made by [Sophia Phillipa](https://github.com/sophia-phillipa) at [KeepGlide](https://keepglide.com). Questions and bugs go to [GitHub issues](https://github.com/KeepGlide/askaway/issues); vulnerabilities go through [SECURITY.md](SECURITY.md).
+Made by [Sophia Phillipa](https://github.com/sophia-phillipa) at [KeepGlide](https://keepglide.com). Questions and bugs go to [GitHub issues](https://github.com/KeepGlide/askaway-user/issues); vulnerabilities go through [SECURITY.md](SECURITY.md).
 
 ## 📄 License
 
