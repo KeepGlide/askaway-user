@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.4`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.5`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -305,11 +305,11 @@ rm -r ~/.claude/state/askaway
 
 Agents file questions instead of stopping. You answer them in the panel, one card at a time, and send each group's answers at once.
 
-While questions are open, a band sits above the prompt: `2 questions waiting · 1 group`, with an **Answer** button on hotkey `1`. A toast announces each new question that arrives while the session is open; questions already open when it starts get no toast.
+While questions are open, a band sits above the prompt: `2 questions waiting · 1 group`, with an **Answer** button on hotkey `1`. When an open high-risk question pauses its session, the band adds a `N paused` segment between the two: `2 questions waiting · 1 paused · 1 group`. A toast announces each new question that arrives while the session is open; questions already open when it starts get no toast.
 
 ### Answering a question
 
-1. Press `1` from an empty prompt, or click **Answer** on the band, to open the pane. The header shows the AskAway User logo, the heading **Questions waiting** and the counter, such as `2 pending · 1 group`.
+1. Press `1` from an empty prompt, or click **Answer** on the band, to open the pane. The header shows the AskAway User logo, the heading **Questions waiting** and the counter, such as `2 pending · 1 group`, or `2 pending · 1 paused · 1 group` while a session is paused.
 2. The tree lists every Desktop Group and session family with open questions, one under the other, each one's name in bold: the Group's name from the Desktop sidebar, or a family's root title. Under a Group, each session draws its own row with its questions. Under a family's root title, the questions of the root session itself sit right under that title (the title is never repeated as a session row); under them, the family's derived sessions (`├` or `└`) hold their questions. A mark shows where each question stands: `●` the one on screen, `○` waiting. A question with a picked option shows `✓ - ▪ Submit Answer` after its text: that **Submit Answer** sends only that question's answer, at once, and the card stays on the question on screen; the other picks wait for **Submit all**, which still returns the card to the group's first question. Nothing is sent until one of them is pressed. Family and session names are text, not buttons; each question row is a link, drawn dotted and underlined on the Desktop, and pressing one jumps to its card.
 3. Click an option to record it. The pane moves to the next question without an answer, wrapping to the start if needed, or to the last question once every question has one. Nothing is sent yet.
 4. For your own answer, the field under **Other…** is always open: click into it and type. The typed text is the answer without Enter: it counts when the focus leaves the field, when you press any button of the panel and when the panel closes; Enter also confirms it. An emptied field clears the Other answer: an option you picked stays, and with no pick the question reads **No answer**. While the text counts, the **Other** button shows it as its label, drawn chosen (`✓ C · text`). The card stays where it is, so press **Next** or **Submit all** when you are ready. The **Other…** link only moves the focus to the field.
@@ -329,11 +329,11 @@ When no question is open, the pane shows one footer line under the History tree,
 
 The labels are the English ones; the panel shows them in Portuguese when the language is `pt-BR`.
 
-The card opens with the title, the Urgency line (coloured by its grade), the explanation before the question (**What it is** and **The problem**, two plain paragraphs with no heading), the **AskAway User Details:** block (the mark and the title, then **Analogy**, **💡 Why A**, **↩️ Undo**, **🛠️ How**, **🎁 What we gain**, **⚖️ What we lose** and **🧭 Context and origin**), the question, the lead line under it, the options with their tradeoff, fit, the **What happens**, **Pros** and **Cons** lines, and the nav row. The details are always open: there is no link or key to open them.
+The card opens with the title, the Urgency line (coloured by its grade when `urgency_level` is set), the explanation before the question (**What it is** and **The problem**, two plain paragraphs with no heading), the **AskAway User Details:** block (the mark and the title, then **Analogy**, **💡 Why A**, **↩️ Undo**, **🛠️ How**, **🎁 What we gain**, **⚖️ What we lose** and **🧭 Context and origin**), the question, the lead line under it, the options with their tradeoff, fit, the **What happens**, **Pros** and **Cons** lines, and the nav row. The details fold by default behind one toggle button, `▸ Show details (n)` (`▾ Hide details` while open), on the focus ring with no hotkey. Its open state is one flag per user, kept across questions, sessions and restarts.
 
 1. **Title row:** the title as a small heading, then ` - See session ↗ - ` (a link that opens the session that asked, when it ran in the Desktop; the arrow marks it as a link, since the Desktop draws no underline), then the risk label and the age, for example `⚠️ medium risk · 12 min ago`; where the surface draws no Markdown, the title is bold text with the risk and age beside it, no link. A question filed without `title` gets its question clipped to 60 characters as its title (the CLI does it). The pane never cuts a title: a stored empty title is drawn as the question's text, whole. The risk wraps under the title when there is no room.
-2. **Urgency:** under the title, a line **⏱️ Urgency** (`urgency`) when it is set, its text coloured by grade: `urgency_level` (`low`, `medium`, `high`), or the words of the text when the level is absent.
-3. **Explanation before the question:** the sections that are set, as plain paragraphs with no headings: the **What it is** text (`what`), then the **The problem** text (`problem`). Then the **AskAway User Details:** block (with the mark): **🔁 Analogy** (`analogy`), **💡 Why A** (`why`; the letter is the recommended key), **↩️ Undo** (`undo`), **🛠️ How** (`how`), **🎁 What we gain** (`gains`), **⚖️ What we lose** (`losses`) and **🧭 Context and origin** (`context`) last. The block has no border: it sits on the theme's own user-message fill (`userMessageBackground`), so it follows light, dark and auto themes. Section titles are bold.
+2. **Urgency:** under the title, a line **⏱️ Urgency** (`urgency`) when it is set, its text coloured by the grade of `urgency_level` (`low`, `medium`, `high`). With no level the text has no grade: it is drawn in the default colour under the plain heading, and no keyword guesses a grade. With a level the heading names it, **⏱️ Urgency (high)**, so colour is never the only signal.
+3. **Explanation before the question:** the sections that are set, as plain paragraphs with no headings: the **What it is** text (`what`), then the **The problem** text (`problem`). Then the **AskAway User Details:** block (with the mark), folded by default behind its toggle: **🔁 Analogy** (`analogy`), **💡 Why A** (`why`; the letter is the recommended key), **↩️ Undo** (`undo`), **🛠️ How** (`how`), **🎁 What we gain** (`gains`), **⚖️ What we lose** (`losses`) and **🧭 Context and origin** (`context`) last. The block has no border: it sits on the theme's own user-message fill (`userMessageBackground`), so it follows light, dark and auto themes. Section titles are bold.
 4. **The question:** the question text, in bold. Always present.
 5. **Lead line:** dim, right under the question: what the agent does now and what happens if nobody answers: `On A since 14:05. Pick another option to switch; no answer keeps A.`, or `Paused since 14:05, waiting for your answer.` for a `high` risk question. The time carries the date too, as in `On A since 17/10 14:05`, when the question was asked on an earlier day.
 6. **The options:** each one a full-width button, `A · Label`, with `(Recommended)` after the label of the recommended one. Under it, a line `└ trade-off · fit 88` (the fit is the agent's estimate), then **What happens** (`does`), **Pros** (`pros`) and **Cons** (`cons`), which show at once. The picked option is the filled button; the recommended one is bold until it is picked. The last one is **Other…**, shown with the letter after the last option (`C · Other…` with two options).
@@ -356,7 +356,7 @@ The risk label is the risk of accepting the recommended option, as the agent jud
 - Each option button shows its key letter and answers to it in lower case: `a` picks A, `b` picks B, and so on, on the terminal and on the desktop.
 - **Other…** takes the letter after the last option (`c` with two options, drawn as `C · Other…`).
 - Back, Next and Submit all take `z`, `x` and `w` on the terminal, and `p`, `f` and `w` on the desktop, where `z` and `x` are spares when an option already uses one of those letters. On the terminal the labels show the letter: `← Back (z)`, `Next → (x)` and `Submit all (N) (w)`.
-- There is no `e` key: the card always shows its details. A letter that one of the card's options uses is skipped, and the keys shift to the next free letters of the same list.
+- There is no `e` key: the details toggle is a button on the focus ring, with no hotkey letter. A letter that one of the card's options uses is skipped, and the keys shift to the next free letters of the same list.
 - For dictation, say a nav key by its letter: `p` (Back), `f` (Next) or `w` (Submit all) on the desktop.
 - The band's **Answer** button keeps hotkey `1`.
 - No hotkey fires while the **Other…** field has focus; keys go to the field.
@@ -423,7 +423,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `analogy`, `urgency`, `undo` | yes | `analogy` is a comparison that makes the trade-off clear; `urgency` is the deadline, such as `Can wait` or `Blocks in ~8 min`; `undo` is the cost of reversing the choice, such as `changing later ≈ 10 min`. Up to 300 characters each. |
 | `risk` | yes | The risk of accepting the recommended option: `low` is safe to accept and easy to change later; `medium` is reversible but costs rework; `high` is irreversible, or touches real files, credentials or money, and pauses the agent that asked until the answer is delivered to it (the whole session when the question has no asker yet). There is no default: a missing `risk` is refiled. |
 | `pause` | no | Type-checked only; it does not pause anything. A question pauses the agent that asked when `risk` is `high` (the whole session when it has no asker yet), and never otherwise. |
-| `urgency_level` | no | `low`, `medium` or `high` (any case): the grade the panel colours the urgency by. Without it the panel grades the urgency text by keywords. Any other value is refiled. |
+| `urgency_level` | no | `low`, `medium` or `high` (any case): the grade the panel colours the urgency by. Without it the urgency text has no grade: it is drawn in the default colour. Any other value is refiled. |
 | `translations` | no | The question's text in the other panel language, keyed by `en` or `pt-BR` (never the entry's own `lang`; another key is refiled), so `/askaway lang` switches the whole card. A language is complete or absent: every required text field, and `label`, `does`, `pros`, `cons` and `tradeoff` for every option; a gap is refiled as `translations.<key>: missing <names>`. |
 | `run_kind` | no | `main`, `subagent`, `goal`, `loop`, `bash` or `codex`. |
 
@@ -526,6 +526,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | The `ask` reply carries the validated `title`. | No title in the reply | The agent sees the title the card shows. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
 | A question may carry its own `translations` (`en`, `pt-BR`); the pane never translates agent text. | Pane-side translation | After `/askaway lang` the labels switched but the agent's text did not. | [beta.34](CHANGELOG.md#040-beta34---2026-10-21) |
 | Optional `urgency_level` (`low`, `medium`, `high`), with keyword grading as the fallback. | Keyword grading only | A stable colour grade; keyword grading changes with the language. | [beta.14](CHANGELOG.md#040-beta14---2026-10-18) |
+| The urgency colour comes only from an explicit `urgency_level`; the keyword lists are gone, and without a level the urgency text has no grade. | Keyword grading as the fallback | Keyword grading ignored negation: "Not urgent, nothing breaks today" was drawn in the error colour (#36). | [1.1.5](CHANGELOG.md#115---2026-11-14) |
 | A repeat ask (same session, same text) returns the open id; a high-risk repeat pauses and raises the twin's risk to `high`. | Filing duplicates | Concurrent identical asks; a high-risk repeat must still pause. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18), [beta.31](CHANGELOG.md#040-beta31---2026-10-21) |
 | A high-risk question that fails to write is tried 4 times, 50 ms apart, then the reply is `pause` with the OS error. | Refile on failure; one try | A refile would let a high-risk question go on unpaused. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
 | A high-risk ask that hits an internal error replies `pause`. | `continue` | Fail toward the pause. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
@@ -558,6 +559,8 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | Decision | Over | Why | Since |
 |---|---|---|---|
 | Nothing in the card folds: each option's What happens, Pros and Cons and the details block are always drawn, and there is no `e` key. | Folding the rationale | The per-option lines were the most used part of the card. | [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
+| The details block folds by default behind one toggle with its count, on the focus ring, with no hotkey and no teaser line; the open state is one sticky flag per user (`details-open`). The per-option lines stay always drawn. | Details always open; a hotkey letter; a teaser line | The owner rarely reads the block (#35). | [1.1.5](CHANGELOG.md#115---2026-11-14) |
+| The band and the header counter add `N paused` between the questions and the groups when a high-risk question pauses its session. | Paused shown only on the card's lead line | The band did not show that an agent was stopped until the card was open (#37). | [1.1.5](CHANGELOG.md#115---2026-11-14) |
 | Context before the decision: the explanation and details, then the question and the options. | Question and options first | The approved card order. | 2026-10-19 |
 | One card at a time, oldest question first; groups in the order of their oldest question. | Newest first | The approved mock. | 0.1.0 |
 | The tree groups by Desktop sidebar Group, else session family, else project. | Grouping by project only | One Desktop family was split across folders; the tree follows the sidebar. | [beta.13](CHANGELOG.md#040-beta13---2026-10-18), [beta.35](CHANGELOG.md#040-beta35---2026-10-21) |
@@ -762,10 +765,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 581 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 600 |
 | CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit 79d4c4b (the 1.1.4 fix), 2026-11-13. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit de88fb7 (the 1.1.5 paused count), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -824,6 +827,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.2 | 2026-11-08 | A hairline rule sits under the pane header, as in KeepAway Repo. |
 | 1.1.3 | 2026-11-13 | The panel's state writes no longer need GNU `mv -fT` (not yet run on macOS), and a dead window's draft lock is removed after two minutes on Linux. |
 | 1.1.4 | 2026-11-13 | Typed Other text is the answer without Enter; a window's draft writes run in order on one chain; the move lock drops only a repeat of the same move; Submit all with an unanswered question names it. |
+| 1.1.5 | 2026-11-14 | The card's details fold by default behind a toggle with its count; the urgency colour comes only from `urgency_level`, with no keyword guess; the band and the counter show the paused count. |
 
 ## 🤝 Contributing
 
