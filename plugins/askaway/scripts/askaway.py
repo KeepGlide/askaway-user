@@ -47,7 +47,8 @@ def _fast_entry(path: str) -> object:
         return None
     with os.fdopen(descriptor, "rb") as handle:
         try:
-            return json.loads(handle.read()) if stat.S_ISREG(os.fstat(descriptor).st_mode) else None
+            # decode first, as read_json does: json.loads on bytes would accept a UTF-8 BOM that the slow path rejects
+            return json.loads(handle.read().decode("utf-8")) if stat.S_ISREG(os.fstat(descriptor).st_mode) else None
         except (OSError, ValueError, RecursionError):
             return None
 

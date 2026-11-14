@@ -1813,6 +1813,7 @@ def test_fast_exit_clears_when_there_is_no_question_folder(home):
     '{"id": "q-2-abcdef", "ts": 1, "pause": false}',
     '{"id": "q-1-abcdef", "ts": "1", "pause": false}',
     "[1, 2]",
+    '﻿{"id": "q-1-abcdef", "ts": 1, "pause": false}',  # read_json rejects a BOM, so the slow path decides
 ])
 def test_fast_exit_takes_the_slow_path_for_a_question_it_cannot_clear(text, home):
     write_raw(home, "q", "q-1-abcdef", text)
