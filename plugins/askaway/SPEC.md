@@ -638,7 +638,7 @@ The race suites (`tests/race.test.ts`, `tests/panel-race.test.ts`) keep the stat
 ## Idle hand-off
 
 In each session's interval poll, when the session is idle (no main-loop turn running: `turn.start`
-begins a turn and `turn.complete` without `agentId` ends it), the answers whose question has
+without `agentId` begins a turn and `turn.complete` without `agentId` ends it; a subagent's turn never marks the session busy), the answers whose question has
 `session` equal to this session's id, at least 5 s old, with no readable d/ marker, are handed to the prompt. An answer whose ts lies after the clock is handed at once, without the 5 s wait (`promptsDue`, `hooks/model.ts`).
 All due answers of one asking session go in ONE `$.prompt.submit({ text })`, one line per answer,
 joined by "\n". The d/ markers (`via:"prompt"`) are written first, only where absent, each one with `publishMarker`: an exclusive `ln` of a dot-prefixed temp beside the marker, so a readable marker is kept; a torn one falls back to `writeAtomic`, which writes a dot-prefixed temp `.<name>.<random>.tmp` beside the target and moves it with `mv -f`, so a folder at the target is refused by `test -d` before any temp file is written, a failed move removes its temp file with `rm -f`, and the CLI's stale-temp prune covers that name; a marker that does not parse counts as absent.

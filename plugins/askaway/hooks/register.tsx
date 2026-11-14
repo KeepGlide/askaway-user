@@ -1518,8 +1518,9 @@ export const register: Register = on => {
   })
 
   // The main loop's turns. A subagent's turn.complete carries its agentId and leaves the main turn alone.
+  // Only the main loop's turn marks the session busy, as only its turn.complete clears it: a subagent turn never holds the hand-off.
   on('turn.start', async ($, e, next) => {
-    await update($, turn, () => ({ isBusy: true }))
+    if (e.agentId === undefined) await update($, turn, () => ({ isBusy: true }))
     return next(e)
   })
   on('turn.complete', async ($, e, next) => {

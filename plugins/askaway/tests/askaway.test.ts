@@ -4631,6 +4631,21 @@ test('a busy session is handed nothing until its turn completes, and a subagent 
   expect(submits).toHaveLength(1)
 })
 
+test('#38 a subagent turn that starts after the main turn completed does not mark the session busy', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 0, { session: SELF })],
+    [path('a', 'q-l1-aaaaaa'), answer('q-l1-aaaaaa', 'B', 0)],
+  ])
+  const { submits, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  await $.turn.start({ text: 'work', turnId: 't1' })
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'completed' } as never)
+  await $.turn.start({ text: 'background', turnId: 't-sub', agentId: 'a-1' } as never)
+  await clock.advance(5000)
+  expect(submits).toHaveLength(1)
+  expect(submits[0]).toContain('q-l1-aaaaaa')
+})
+
 test('an answer for another session is never handed to this one', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 0, { session: 'sess-other' })],
