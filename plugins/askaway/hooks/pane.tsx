@@ -56,8 +56,6 @@ export type PaneView = {
   active: Group | undefined
   // Already pruned to the open questions by the register.
   wizard: Wizard
-  // A move (a pick, Next or Back) ran within the last MOVE_LOCK_MS: its buttons are drawn disabled until it lifts.
-  moveLocked: boolean
   // Next on the last question of a group of two or more asked for the review of that question set (reviewKeyOf): it is drawn in
   // place of the card until Back, or until the group's questions change.
   review: string | null
@@ -88,7 +86,7 @@ export type PaneActions = {
   saveWho: (text: string) => void
   skipWho: () => void
   pick: (id: string, choice: Pick) => void
-  focusOther: (id: string) => void
+  pressOther: (id: string) => void
   submitOne: (id: string) => void
   jump: (id: string) => void
   typeOther: (id: string, text: string) => void
@@ -108,7 +106,6 @@ type CardContext = {
   isLeaving: boolean
   // The pick of this question was not delivered by the last submit (PaneView.undelivered).
   isUndelivered: boolean
-  isMoveLocked: boolean
   held: HeldButtons
   surface: RenderSurface
 }
@@ -518,7 +515,6 @@ function renderQuestion(
     isLeaving: view.leaving[question.id] !== undefined,
     isUndelivered: view.undelivered.includes(question.id),
     otherRows: view.otherRows[question.id] ?? OTHER_MIN_ROWS,
-    isMoveLocked: view.moveLocked,
     held,
     surface: view.surface,
   }
@@ -657,8 +653,8 @@ function renderFirstBlock(ui: Ui, question: Question, isLeaving: boolean): Rende
 // break in a label cannot draw a fake option row.
 function renderOption(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, option: QuestionOption): RenderElement {
   const { Box, Button, Text } = ui
-  const { question, isLeaving, isMoveLocked, wizard, held } = card
-  const isDisabled = isLeaving || isMoveLocked
+  const { question, isLeaving, wizard, held } = card
+  const isDisabled = isLeaving
   // The sub-rows are plain on both surfaces; a leaving card dims them with the rest of it (M58 reverted, 2026-10-21).
   const isSubRowDim = isLeaving
   const isPicked = wizard.picks[question.id]?.key === option.key
@@ -678,7 +674,7 @@ function renderOption(ui: Ui, lang: Lang, actions: PaneActions, card: CardContex
   }
   return (
     <Box key={`optrow-${question.id}-${option.key}`} flexDirection="column">
-      {held.hold(key, [text, isPicked, isBold, isLeaving, isMoveLocked, hotkey], onPress, press => (
+      {held.hold(key, [text, isPicked, isBold, isLeaving, hotkey], onPress, press => (
         <Button
           key={key}
           label={text}
@@ -707,53 +703,56 @@ function renderOption(ui: Ui, lang: Lang, actions: PaneActions, card: CardContex
 
 // "Other…": the last row under the options, a link drawn with its letter: "C · Other…" in the terminal, a plain link
 // (otherLetterOf); on the desktop a Button with the letter as its hotkey chip after the label, as the options draw it. Its field sits on the row under it, under the same "└ " branch glyph the option sub-rows
-// draw. The field is always open, ready to type. Typing keeps the text in the
-// pane's memory (typeOther), with no redraw. Keep (Enter)
-// moves the text to the link, which then draws "C · <label>", picks it and empties the field; the focus goes to the link.
-// A press on the link with a label picks it, else it only focuses the field. Text typed and not kept is recorded as the
-// pick when the field loses focus or before a nav action. A pick never moves the card. The link is bold once Other is the
-// pick, and with a kept label that is the pick it is the primary button (see isKeptChosen). A surface with no Input
-// (mobile) draws no field, so no Other option either.
+// draw. The field is always open, ready to type. Typing keeps the text in the pane's memory (onInput, no redraw).
+// Keep (Enter) moves the text to the link as its label, picks it and empties the field; the focus goes to the link.
+// Typed text that is not yet picked is committed as the Other pick when the ring leaves the field for a stop that is not
+// one of the pane's own Buttons (commitsOnFocus), when one of those Buttons is pressed (afterPendingOther), and when the
+// pane closes (ui.close). A ring move onto one of those Buttons commits nothing; its press does.
+// A pick of Other is drawn chosen whatever its text: the primary button, "✓ <letter> · <text>", bold. Otherwise a kept
+// label draws "<letter> · <label>" underlined, and no label draws "<letter> · Other…". A press only names the question: the
+// action decides once the pending text is committed (pressOther), from the wizard it then reads. A pick never moves the card. A surface with no Input (mobile) draws no
+// field, so no Other option either.
 function renderOther(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext): RenderElement | false {
   if (!('Input' in ui)) return false
   const { Box, Button, Input, Text } = ui
-  const { question, isLeaving, isMoveLocked, wizard, held } = card
-  const isDisabled = isLeaving || isMoveLocked
+  const { question, isLeaving, wizard, held } = card
+  const isDisabled = isLeaving
   const pick = wizard.picks[question.id]
   const kept: string | undefined = wizard.labels[question.id]
-  // With a kept label, the Other button is chosen only for that text: the drawn label and the pick never disagree.
-  const isChosen = pick?.key === OTHER_KEY && (kept === undefined || pick.text === kept)
+  // An Other pick is drawn chosen with its own text, so the drawn text and the reply sent always agree; otherwise the link
+  // draws the kept label, or "Other…" when there is none.
+  const chosenText: string | undefined = pick?.key === OTHER_KEY ? pick.text : undefined
+  const isChosen = chosenText !== undefined
+  const shownText = chosenText ?? kept
   const key = otherButtonKey(question.id)
   const letter = otherLetterOf(question.options)
-  const linkText = kept === undefined ? t(lang, 'option.other') : singleLine(kept)
+  const linkText = shownText === undefined ? t(lang, 'option.other') : singleLine(shownText)
   const bareLabel = letter === undefined ? linkText : `${letterPrefixOf(card, letter.toUpperCase(), letter)}${linkText}`
-  // A chosen kept label is drawn as a picked option is: the primary button, its label starting "✓ ", bold. Unpicked, or with
-  // no label, it stays the plain link.
-  const isKeptChosen = isChosen && kept !== undefined
-  const label = isKeptChosen ? `✓ ${bareLabel}` : bareLabel
+  // A chosen Other is drawn as a picked option is: the primary button, its label starting "✓ ", bold. Otherwise it is the
+  // underlined link.
+  const label = isChosen ? `✓ ${bareLabel}` : bareLabel
   const hotkey = letter
   const onPress = () => {
     if (isDisabled) return
-    if (kept === undefined) actions.focusOther(question.id)
-    else actions.pick(question.id, { key: OTHER_KEY, text: kept })
+    actions.pressOther(question.id)
   }
   // The desktop draws a plain Button's hotkey cue before its label and any other Button's after it, so there the link is not
   // plain: its letter sits at the end, as the options' letters do. The terminal draws no cue and keeps the plain link.
-  const isPlain = !isKeptChosen && card.surface !== 'desktop'
+  const isPlain = !isChosen && card.surface !== 'desktop'
   return (
     <Box key={`other-row-${question.id}`} flexDirection="column">
-      {held.hold(key, [label, isChosen, isLeaving, isMoveLocked, hotkey, isPlain], onPress, press => (
+      {held.hold(key, [label, isChosen, isLeaving, hotkey, isPlain], onPress, press => (
         <Button
           key={key}
           label={label}
           plain={isPlain ? true : undefined}
-          variant={isKeptChosen ? 'primary' : 'secondary'}
+          variant={isChosen ? 'primary' : 'secondary'}
           dimColor={isDisabled}
           hotkey={hotkey}
           onPress={press}
         >
-          {!isKeptChosen && <Text dimColor>{`${LINK_MARK} `}</Text>}
-          <Text underline={!isKeptChosen} bold={isChosen} dimColor={isLeaving}>{label}</Text>
+          {!isChosen && <Text dimColor>{`${LINK_MARK} `}</Text>}
+          <Text underline={!isChosen} bold={isChosen} dimColor={isLeaving}>{label}</Text>
         </Button>
       ))}
       {/* The branch glyph stays on the field's first row however tall the field grows; the field runs to the pane's edge.
@@ -807,12 +806,13 @@ function renderUnanswered(ui: Ui, lang: Lang, card: CardContext, shown: boolean)
 
 // Back, and forward: Next on every question of a group of two or more (on its last question, Next opens the review); on a
 // group of one question, Submit all, which writes its one answer. Submit all needs every question picked, with the KeepGlide
-// mark beside it on the desktop. A dim button does nothing when pressed. Back, Next and Submit carry their letters on the
-// terminal and on the desktop (letterFor). Back and forward show the card's answer first (answerLabelOf).
+// mark beside it on the desktop. A dim Back or Next does nothing when pressed. A dim Submit all still sends its press: an
+// unanswered question answers it with a toast, and the card moves to that question (submitGroup). Back, Next and Submit
+// carry their letters on the terminal and on the desktop (letterFor). Back and forward show the card's answer first (answerLabelOf).
 function renderNav(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, screen: Screen): RenderElement {
   const { Box, Button } = ui
-  const { question, isLeaving, isMoveLocked, held } = card
-  const isBackOff = !screen.canBack || isLeaving || isMoveLocked
+  const { question, isLeaving, held } = card
+  const isBackOff = !screen.canBack || isLeaving
   const label = navLabelOf(card, 'back', answerLabelOf(lang, card, t(lang, 'nav.back')))
   const hotkey = letterFor(card, 'back')
   const onPress = () => {
@@ -837,8 +837,8 @@ function renderNav(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, 
 // the group; nothing waits for a pick, because no answer can be sent. Its labels stay plain.
 function renderEndedNav(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, screen: Screen): RenderElement {
   const { Box, Button } = ui
-  const { question, isLeaving, isMoveLocked, held } = card
-  const isBackOff = !screen.canBack || isLeaving || isMoveLocked
+  const { question, isLeaving, held } = card
+  const isBackOff = !screen.canBack || isLeaving
   const backLabel = navLabelOf(card, 'back', t(lang, 'nav.back'))
   const dismissLabel = t(lang, 'card.dismiss')
   const hotkey = letterFor(card, 'back')
@@ -861,7 +861,7 @@ function renderEndedNav(ui: Ui, lang: Lang, actions: PaneActions, card: CardCont
 // it is on, and its press opens the review (actions.next decides).
 function renderNext(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, screen: Screen, label: string): RenderElement {
   const { Button } = ui
-  const isOff = !(screen.canNext || screen.canReview) || card.isLeaving || card.isMoveLocked
+  const isOff = !(screen.canNext || screen.canReview) || card.isLeaving
   const drawnLabel = navLabelOf(card, 'next', label)
   const hotkey = letterFor(card, 'next')
   const onPress = () => {
@@ -892,11 +892,9 @@ function renderReview(tree: TreeContext, group: Group, screen: Screen): RenderEl
     wizard: view.wizard,
     isLeaving: view.leaving[lastQuestion.id] !== undefined,
     isUndelivered: view.undelivered.includes(lastQuestion.id),
-    isMoveLocked: view.moveLocked,
     held,
     surface: view.surface,
   }
-  const isBackOff = card.isMoveLocked
   const backLabel = navLabelOf(card, 'back', answerLabelOf(lang, card, t(lang, 'nav.back')))
   const hotkey = letterFor(card, 'back')
   const order = group.questions.map(question => question.id)
@@ -924,8 +922,8 @@ function renderReview(tree: TreeContext, group: Group, screen: Screen): RenderEl
       </Box>
       {renderDivider(ui, view.surface, 'divider-review')}
       <Box flexDirection="row" justifyContent="space-between">
-        {held.hold('review-back', [backLabel, isBackOff, hotkey], () => !isBackOff && actions.leaveReview(), press => (
-          <Button key="review-back" label={backLabel} variant="secondary" dimColor={isBackOff} hotkey={hotkey} onPress={press} />
+        {held.hold('review-back', [backLabel, hotkey], () => actions.leaveReview(), press => (
+          <Button key="review-back" label={backLabel} variant="secondary" hotkey={hotkey} onPress={press} />
         ))}
         {renderSubmitAll(ui, lang, actions, card, screen, t(lang, 'review.submit', { n: screen.total }))}
       </Box>

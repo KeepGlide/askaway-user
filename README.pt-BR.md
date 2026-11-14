@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.3`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`1.1.4`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -312,9 +312,9 @@ Enquanto há perguntas abertas, uma faixa fica acima do prompt: `2 perguntas agu
 1. Aperte `1` com o prompt vazio, ou clique em **Responder** na faixa, para abrir o painel. O cabeçalho mostra o logo do AskAway User, o título **Perguntas aguardando** e o contador, como `2 pendentes · 1 grupo`.
 2. A árvore lista cada grupo do Desktop e cada família de sessões com perguntas abertas, uma abaixo da outra, com o nome em negrito: o nome do grupo na barra lateral do Desktop, ou o título da raiz da família. Embaixo de um grupo, cada sessão desenha a sua própria linha com as suas perguntas. Embaixo do título da raiz de uma família, as perguntas da própria sessão raiz ficam logo abaixo desse título (o título nunca se repete como linha de sessão); embaixo delas, as sessões derivadas da família (`├` ou `└`) guardam as suas perguntas. Uma marca mostra em que ponto está cada pergunta: `●` a que está na tela, `○` aguardando. Uma pergunta com opção escolhida mostra depois do texto `✓ - ▪ Enviar resposta`: esse **Enviar resposta** manda só a resposta dela, na hora, e o cartão fica na pergunta que está na tela; as demais escolhas esperam o **Enviar tudo**, que volta o cartão para a primeira pergunta do grupo. Nada é enviado antes de um dos dois. Os nomes de família e de sessão são texto, não botões; cada linha de pergunta é um link, desenhado pontilhado e sublinhado no Desktop, e apertar uma leva ao cartão dela.
 3. Clique numa opção para registrá-la. O painel avança para a próxima pergunta sem resposta, voltando ao início se preciso, ou para a última pergunta quando todas já têm resposta. Nada é enviado ainda.
-4. Para responder com as suas palavras, o campo embaixo de **Outra…** fica sempre aberto: clique nele e digite. Aperte Enter (o botão do campo diz **Aplicar**) para pôr o texto no botão **Outra** como rótulo; o cartão fica onde está, então aperte **Próxima →** ou **Enviar tudo** quando quiser. Enquanto não há rótulo mantido, o texto é registrado como sua resposta quando o campo perde o foco e em **Enviar tudo**, e um campo em branco tira a resposta. Com um rótulo mantido, sair do campo, **Próxima →** ou **← Voltar** não registra o texto dele, um campo em branco não muda nada, e o rótulo só é escolhido com um clique no botão; **Enviar tudo** ainda registra o texto digitado no campo. O link **Outra…** só leva o foco ao campo.
+4. Para responder com as suas palavras, o campo embaixo de **Outra…** fica sempre aberto: clique nele e digite. O texto digitado é a resposta sem Enter: ele conta quando o foco sai do campo, quando você aperta qualquer botão do painel e quando o painel fecha; o Enter também confirma. Um campo esvaziado limpa a resposta dada em Outra: uma opção que você já escolheu continua, e sem escolha a pergunta mostra **Sem resposta**. Enquanto o texto conta, o botão **Outra** mostra o texto como rótulo, marcado (`✓ C · texto`). O cartão fica onde está, então aperte **Próxima →** ou **Enviar tudo** quando quiser. O link **Outra…** só leva o foco ao campo.
 5. **← Voltar** vai para a pergunta anterior. **Próxima →** vai para a seguinte, com ou sem resposta. Ele aparece em todas as perguntas, menos na última.
-6. Na última pergunta do grupo, o botão de avançar é **Enviar tudo (N)**, em que N é o número de perguntas do grupo na tela. Ele só fica disponível quando todas as perguntas têm resposta. Ao apertá-lo, todas as respostas do grupo vão para as sessões que perguntaram. Nada é enviado antes desse botão.
+6. Na última pergunta do grupo, o botão de avançar é **Enviar tudo (N)**, em que N é o número de perguntas do grupo na tela. Ele fica apagado até que todas as perguntas tenham resposta; um clique antes disso mostra um aviso com o nome da primeira pergunta sem resposta e leva o cartão até ela. Ao apertá-lo com todas respondidas, todas as respostas do grupo vão para as sessões que perguntaram. Nada é enviado antes desse botão.
 
 ### Histórico
 
@@ -564,8 +564,8 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 | As linhas da árvore são links, sem teclas de atalho. | Linhas como botões com dígitos | O Markdown do motor não aceita tecla de atalho. | [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
 | Enviar tudo manda a rodada de um grupo, o Enviar resposta de uma linha manda uma, e nada é enviado antes de um clique. | Enviar ao escolher | O usuário revisa antes de enviar. | [beta.12](CHANGELOG.md#040-beta12---2026-10-18), [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
 | As letras das opções são teclas de atalho; Voltar, Próxima e Enviar tudo são `z`, `x`, `w` no terminal e `p`, `f`, `w` no desktop; o Responder da faixa é `1`. | `b`, `n`, `s` | Essas batem com as opções B, N e S. | [beta.8](CHANGELOG.md#040-beta8---2026-10-18), [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
-| O campo Outra fica sempre aberto; o texto é registrado ao sair do campo, ao navegar e no Enviar tudo, nunca a cada tecla; Aplicar o torna o rótulo do botão Outra. | Registrar a cada tecla; só no Enter | Redesenhar a cada tecla piscava e perdia caracteres. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18), [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
-| Uma escolha, Próxima ou Voltar inicia uma trava de movimento visível de 350 ms. | Sem trava | Um clique duplo pulava uma pergunta. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
+| O campo Outra fica sempre aberto; o texto é a resposta sem Enter, registrado ao sair do campo, em qualquer aperto de botão e ao fechar, nunca a cada tecla; o botão Outra mostra o texto como rótulo. | Registrar a cada tecla; só no Enter | Redesenhar a cada tecla piscava e perdia caracteres. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18), [beta.32](CHANGELOG.md#040-beta32---2026-10-21), [1.1.4](CHANGELOG.md#114---2026-11-13) |
+| Uma repetição do mesmo movimento (a mesma escolha numa pergunta, Próxima ou Voltar) em 350 ms é descartada; a trava nunca é desenhada. | Descartar qualquer movimento em 350 ms, desenhado como apagado | Um clique duplo pulava uma pergunta; uma escolha e depois Próxima perdia o Próxima (#34). | [beta.30](CHANGELOG.md#040-beta30---2026-10-20), [1.1.4](CHANGELOG.md#114---2026-11-13) |
 | Um cartão respondido fica esmaecido até a resposta ser gravada e volta na hora em caso de falha. | Um esmaecimento fixo de 250 ms | O esmaecimento diz a verdade sobre a gravação. | [beta.38](CHANGELOG.md#040-beta38---2026-10-22) |
 | As escolhas são compartilhadas por todas as sessões pelo `draft.json` (mescladas por id, a mais nova vence); um rascunho datado à frente do relógio é trazido de volta. | Escolhas por sessão | Um só quadro de respostas em toda janela. | [beta.24](CHANGELOG.md#040-beta24---2026-10-18) |
 | Uma linha entregue do Histórico fica até o Limpar histórico. | Sumir em 30 s | O usuário decide quando o histórico sai. | [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
@@ -661,7 +661,7 @@ Cada linha nomeia o valor que o AskAway User escolheu e o que ele abriu mão.
 - **Fidelidade ao tema em vez da cor da marca.** A cor de destaque nunca é usada em texto, e o preenchimento dos detalhes é a própria chave de tema do motor.
 - **Legibilidade medida em vez de estilo sutil.** O rodapé e as sublinhas das opções são normais, não esmaecidos.
 - **Retorno honesto em vez de tempo fixo.** Um cartão fica esmaecido até a resposta ser gravada; uma falha o devolve na hora.
-- **Movimentos deliberados em vez de velocidade.** Uma trava de 350 ms depois de uma escolha, Próxima ou Voltar impede pulos por clique duplo.
+- **Movimentos deliberados em vez de velocidade.** Uma trava de 350 ms numa repetição do mesmo movimento (uma escolha, Próxima ou Voltar) impede pulos por clique duplo; um movimento diferente nunca é descartado.
 - **Último estado bom em vez de uma tela vazia.** Uma listagem que falha mantém o último quadro e os últimos grupos do Desktop, então a visão pode estar uma consulta atrasada, mas nunca em branco.
 - **TTL simples em vez de robustez ao relógio.** Não há segunda referência de tempo, então uma máquina parada por mais de 7 dias pode entregar uma resposta vencida uma vez.
 - **Um padrão neutro em vez do idioma da dona.** O inglês é o padrão; quem usa pt-BR define um locale ou `/askaway lang`.
@@ -697,7 +697,7 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 | TTL de resposta não lida | 7 dias |
 | Limpeza | 30 dias por padrão (`ASKAWAY_PRUNE_DAYS`), no máximo uma vez por dia; os arquivos de token saem depois de um dia |
 | Token do painel | Uso único, no máximo 120 s de idade |
-| Painel | Consulta a cada 5 s; reconfere sessões encerradas no máximo a cada 30 s; trava de movimento de 350 ms; entrega a uma sessão ociosa respostas com pelo menos 5 s |
+| Painel | Consulta a cada 5 s; reconfere sessões encerradas no máximo a cada 30 s; trava de 350 ms numa repetição do mesmo movimento; entrega a uma sessão ociosa respostas com pelo menos 5 s |
 | `wait` | Consulta a cada 0,5 s; timeout padrão de 300 s |
 | Ganchos | Timeout de 5 s cada |
 | Gravação de risco alto | 4 tentativas, com 50 ms entre elas |
@@ -762,10 +762,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 560 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 581 |
 | CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit da versão 1.1.3, em 2026-11-13. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit 79d4c4b (a correção da 1.1.4), em 2026-11-13. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -823,6 +823,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.1 | 2026-11-08 | O título da aba vem do dicionário, e a linha do cabeçalho fica igual à do KeepAway Repo. |
 | 1.1.2 | 2026-11-08 | Uma linha fina fica logo abaixo do cabeçalho do painel, como no KeepAway Repo. |
 | 1.1.3 | 2026-11-13 | As gravações de estado do painel deixam de precisar do `mv -fT` do GNU (ainda não testadas no macOS), e a trava de rascunho de uma janela morta sai depois de dois minutos no Linux. |
+| 1.1.4 | 2026-11-13 | O texto digitado em Outra é a resposta sem Enter; as gravações de rascunho de uma janela rodam em ordem numa só fila; a trava de movimento só descarta a repetição do mesmo movimento; Enviar tudo com uma pergunta sem resposta a nomeia. |
 
 ## 🤝 Contribuição
 

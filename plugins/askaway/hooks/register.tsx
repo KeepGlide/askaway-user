@@ -11,16 +11,14 @@ import { detectLang, resolveLang, t, type Lang } from './i18n'
 import { renderPane, type PaneActions, type PaneView } from './pane'
 import {
   EMPTY_BOARD,
-  OTHER_INPUT_PREFIX,
   OTHER_KEY,
-  SUBMIT_ALL_KEY,
   ageLabel,
   answerWho,
   footerText,
   groupBySession,
   isOpenIn,
+  isOwnButtonKey,
   leadOf,
-  leavesOtherField,
   listText,
   openQuestions,
   otherButtonKey,
@@ -61,7 +59,8 @@ const DRAFT_SKEW_MS = 60_000
 // (ceil(age) > N, so over one minute). `+1` therefore never matches a fresh lock on either.
 const DRAFT_LOCK_STALE_MINUTES = 1
 const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES}`
-// A pick, Next or Back locks the moves for this long: a second press inside the window (a double click) does nothing.
+// A move (a pick, Next or Back) drops a repeat of the same action for this long: a second press of that action inside the window
+// (a double click) does nothing. A different action goes through at once.
 const MOVE_LOCK_MS = 350
 // The `list --open` run that finds the ended sessions repeats at most this often while the linked open questions do not change.
 const ENDED_RECHECK_MS = 30_000
@@ -111,8 +110,6 @@ const damagedAtom = atom({ plugin: 'askaway-user', key: 'damagedPauses' } as con
 const whoAtom = atom({ plugin: 'askaway-user', key: 'who' } as const, null as string | null)
 const quietAtom = atom({ plugin: 'askaway-user', key: 'quiet' } as const, false)
 const wizardAtom = atom({ plugin: 'askaway-user', key: 'wizard' } as const, flow.EMPTY_WIZARD)
-// Whether a move (a pick, Next or Back) ran within MOVE_LOCK_MS: the pane draws its buttons disabled meanwhile.
-const moveLockAtom = atom({ plugin: 'askaway-user', key: 'moveLock' } as const, false)
 // The question set (reviewKeyOf) the review (every chosen answer, Back and Submit all) is drawn for in place of the card, or null:
 // set by Next on the last question of a group of two or more, cleared by Back on the review (leaveReview), a move, a jump, a
 // submit, and a poll that finds the group's questions changed (closeChangedReview).
@@ -124,8 +121,8 @@ const undeliveredAtom = atom({ plugin: 'askaway-user', key: 'undelivered' } as c
 const otherRowsAtom = atom({ plugin: 'askaway-user', key: 'otherRows' } as const, {} as Record<string, number>)
 // The ts of the picks this session last wrote to draft.json or applied from it. A draft with a newer ts is applied.
 let draftTs = 0
-// Whether a move (a pick, Next or Back) ran within MOVE_LOCK_MS; cleared by the timer set in moveOnce. The atom mirrors it.
-let moveLocked = false
+// The move that holds the lock, or undefined. Module-level only: nothing is drawn from it (moveOnce).
+let moveLock: { key: string } | undefined
 // The changes to draft.json, by question id: a pick or a kept label, undefined when it was removed.
 type DraftChanges = { picks: Map<string, Pick | undefined>; labels: Map<string, string | undefined> }
 // The picks and kept labels whose draft.json write has not landed yet. Each poll retries them (H2), so a failed write
@@ -135,8 +132,9 @@ const unsaved: DraftChanges = { picks: new Map(), labels: new Map() }
 let draftFailing = false
 // The text of the last draft.json save failure logged, undefined once a save lands (see logDraftSaveFailure).
 let draftSaveFailure: string | undefined
-// The draft.json saves of this window in flight: the poll's retry skips its turn meanwhile rather than meet their draft.lock.
-let draftSaves = 0
+// The draft.json writes of this window, one after the other (the pollAfterRunning chain): a write never meets the draft.lock
+// of an earlier one of this window, so "locked by another window" always means another window. It never rejects.
+let draftWrites: Promise<unknown> = Promise.resolve()
 // The poll running now, undefined when none: a tick that comes meanwhile starts no second poll (the `handing` pattern), and
 // a poll asked for meanwhile (Dismiss) runs after it, so two polls never read `seen` or take draft.lock at once.
 let polling: Promise<void> | undefined
@@ -1051,17 +1049,21 @@ function forgetLanded<V>(queue: Map<string, V>, landed: ReadonlyMap<string, V>):
 }
 
 // Writes the picks and labels not yet on draft.json. Returns whether the write landed; a failure is logged and they stay pending.
-async function writeUnsaved($: EngineInterface, home: string): Promise<boolean> {
+// The write waits for the writes queued before it; its batch is taken when its turn comes, so picks queued meanwhile ride it.
+function writeUnsaved($: EngineInterface, home: string): Promise<boolean> {
+  const run = draftWrites.then(() => writeUnsavedNow($, home))
+  draftWrites = run.catch(() => undefined)
+  return run
+}
+
+async function writeUnsavedNow($: EngineInterface, home: string): Promise<boolean> {
   if (unsaved.picks.size === 0 && unsaved.labels.size === 0) return true
   const batch: DraftChanges = { picks: new Map(unsaved.picks), labels: new Map(unsaved.labels) }
-  draftSaves += 1
   try {
     await saveDraft($, home, batch)
   } catch (error: unknown) {
     logDraftSaveFailure($, error)
     return false
-  } finally {
-    draftSaves -= 1
   }
   draftSaveFailure = undefined
   forgetLanded(unsaved.picks, batch.picks)
@@ -1081,9 +1083,6 @@ function logDraftSaveFailure($: EngineInterface, error: unknown): void {
 // The poll's retry of the pending picks (H2). The person is told once while the write keeps failing; a write that lands
 // clears the mark.
 async function retryDraft($: EngineInterface, home: string): Promise<void> {
-  // A save of this window holds draft.lock now: the retry would only meet that lock and report a failure (pane-conc5-2). The
-  // changes the save did not take stay queued for the next poll.
-  if (draftSaves > 0) return
   if (await writeUnsaved($, home)) {
     draftFailing = false
     return
@@ -1131,6 +1130,17 @@ async function setUndelivered($: EngineInterface, asked: readonly string[], sett
   await update($, undeliveredAtom, prev => [...prev.filter(id => !asked.includes(id)), ...failed])
 }
 
+// Submit all with a question still unanswered (Issue #34): one toast names the first such question, and the card moves to it
+// (jumpToQuestion draws the card and closes the review). Nothing is written.
+async function sayUnanswered($: EngineInterface, group: Group): Promise<void> {
+  const { wizard } = await snapshot($)
+  const first = group.questions.find(question => wizard.picks[question.id] === undefined)
+  if (first === undefined) return
+  const lang = await read($, langAtom)
+  $.ui.toast(t(lang, 'toast.unanswered', { title: questionLabel(localizedQuestion(first, lang)) }))
+  await jumpToQuestion($, first.id)
+}
+
 // Submit all: the draft other windows wrote is applied first (H5), then each question of the group gets its answer through the
 // answer path, and the picks that settled are cleared with the step back on the first question. Nothing is written unless
 // every question has a pick.
@@ -1141,7 +1151,10 @@ async function submitGroup($: EngineInterface, group: Group): Promise<void> {
   try {
     await applyDraft($, folder)
     const items = flow.submittable(group, (await snapshot($)).wizard)
-    if (items === undefined) return
+    if (items === undefined) {
+      await sayUnanswered($, group)
+      return
+    }
     // Each answer takes the pick on screen when its turn comes: a pick changed during the earlier writes is the one sent.
     for (const { id } of items) {
       const pick: Pick | undefined = (await snapshot($)).wizard.picks[id]
@@ -1254,6 +1267,20 @@ async function focusOther($: EngineInterface, id: string): Promise<void> {
   await $.ui.focus({ requestId: PANE, key: otherInputKey(id, (await read($, wizardAtom)).fieldRound) })
 }
 
+// The "Other…" link's press, run after the pending text is committed (afterPendingOther), so it reads the wizard the person
+// left. An Other pick already there stays. A kept label is picked, under the move lock like any pick. No label focuses the
+// field.
+async function pressOther($: EngineInterface, id: string): Promise<void> {
+  const { wizard } = await snapshot($)
+  if (wizard.picks[id]?.key === OTHER_KEY) return
+  const kept = wizard.labels[id]
+  if (kept === undefined) {
+    await focusOther($, id)
+    return
+  }
+  moveOnce($, `other:${id}`, () => report($, pickOption($, id, { key: OTHER_KEY, text: kept })))
+}
+
 // The tree's press on a question: the card on screen becomes that question, as if the wizard had walked there with Next or
 // Back, and its group becomes the group on screen; then the card scrolls into view. A question that is fading out takes
 // nothing.
@@ -1268,30 +1295,28 @@ async function jumpToQuestion($: EngineInterface, id: string): Promise<void> {
 }
 
 // The Other text typed but not recorded yet, by question id. Typing keeps it here, not in the store, so a key does not
-// redraw the pane; it is recorded when the field loses focus and before a nav action (recordPendingOther), and Keep drops it.
+// redraw the pane; it is recorded when the ring leaves the field (commitsOnFocus), before the pane's own button presses, and
+// when the pane closes (recordPendingOther). Keep drops it.
 const pendingOther = new Map<string, string>()
 // The height last drawn for each Other field (otherRowsAtom), so a key that keeps the height does not redraw.
 const fieldRows = new Map<string, number>()
 
-// How a typed Other text becomes the pick: the label rule (flow.submittedOther) or Submit all's (flow.submittedTypedOther).
-type OtherRecord = typeof flow.submittedOther
-
 // The key the pane's focus ring stood on last, as the ui.focus hook saw it: undefined for one of the engine's own stops.
 let focusedKey: string | undefined
 
-// True when a focus move takes the typed Other text off the ring. From Submit all it counts for an element that is not an
-// Other field: Submit all's own press records the text, but a move off it must not drop the text the pane then clears.
-function leavesOtherText(previous: string | undefined, next: string | undefined): boolean {
-  if (previous === SUBMIT_ALL_KEY) return next !== SUBMIT_ALL_KEY && next?.startsWith(OTHER_INPUT_PREFIX) !== true
-  return leavesOtherField(previous, next) && next !== SUBMIT_ALL_KEY
+// True when a focus move commits the typed Other text: text is pending, the ring moves, and it does not land on one of the
+// pane's own Buttons (its press commits the text). A move onto an Other field or an Input commits too.
+function commitsOnFocus(previous: string | undefined, next: string | undefined): boolean {
+  return pendingOther.size > 0 && next !== previous && !isOwnButtonKey(next)
 }
 
-// The text of an "Other…" field recorded as the pick, not kept: blank text takes the pick away. A question
-// that is not open, or fading out, takes nothing.
-async function submitOther($: EngineInterface, id: string, text: string, record: OtherRecord): Promise<void> {
-  const { open, leaving: fading } = await snapshot($)
+// The text of an "Other…" field committed as the pick (flow.typedOther): blank text clears the label and an Other pick. A
+// question that is not open, or fading out, takes nothing. A commit that changes nothing writes and redraws nothing.
+async function submitOther($: EngineInterface, id: string, text: string): Promise<void> {
+  const { open, leaving: fading, wizard } = await snapshot($)
   if (fading[id] !== undefined || !open.some(question => question.id === id)) return
-  await changeWizard($, prev => record(prunedWizard(prev, open), id, text))
+  if (flow.typedOther(wizard, id, text) === wizard) return
+  await changeWizard($, prev => flow.typedOther(prunedWizard(prev, open), id, text))
   await forgetUndelivered($, id)
 }
 
@@ -1300,36 +1325,42 @@ const samePick = (first: Pick | undefined, second: Pick | undefined): boolean =>
   first?.key === second?.key && first?.text === second?.text
 
 // Keep in the "Other…" field (Enter) moves its text to the question's label, picks it, and empties the
-// field: the focus goes to the Other button, which now draws the label chosen. The card stays. Blank text keeps nothing and
-// leaves the field as it is. A question that is not open, or fading out, takes nothing.
+// field: the focus goes to the Other button, which now draws the label chosen. The card stays. Blank text is not kept here:
+// the keepOther action decides it. A question that is not open, or fading out, takes nothing.
 async function keepOther($: EngineInterface, id: string, text: string): Promise<void> {
   const { open, leaving: fading, wizard: before } = await snapshot($)
-  if (fading[id] !== undefined || !open.some(question => question.id === id) || text.trim() === '') return
+  if (fading[id] !== undefined || !open.some(question => question.id === id)) return
   await changeWizard($, prev => flow.keptOther(prunedWizard(prev, open), id, text))
   // Keeping the text the failed pick already had is not a change: the not-delivered line stays until the pick changes.
   if (!samePick(before.picks[id], (await snapshot($)).wizard.picks[id])) await forgetUndelivered($, id)
   await $.ui.focus({ requestId: PANE, key: otherButtonKey(id) })
 }
 
-// Records every pending Other text through submitOther, one after another. An entry whose question is no longer open is
-// dropped, not recorded: the card it was typed on is gone. On a blur (`keepsSetAside`), a text a kept label sets aside
-// (flow.setsTypedOtherAside) stays pending, as its field is still on screen, so a later Submit all sends the text the field
-// shows (SPEC, Other; pane-exec3-1). A nav action drops it: Next and Back take the field off screen, and a pick, a jump or a
-// row's Submit chooses something else.
-async function recordPendingOther($: EngineInterface, record: OtherRecord, keepsSetAside = false): Promise<void> {
-  const { open, wizard } = await snapshot($)
+// The recordings queue on one chain, as the draft writes do: a press that follows a blur waits for the blur's write, so the
+// action reads the pick the person typed. An entry whose question is no longer open is dropped, not recorded: the card it
+// was typed on is gone.
+let pendingRecords: Promise<unknown> = Promise.resolve()
+
+// Records every pending Other text through submitOther, one after another, and clears each entry as it is taken. The
+// chain runs the recording after an earlier one; the returned promise settles once this one is written.
+function recordPendingOther($: EngineInterface): Promise<void> {
+  const run = pendingRecords.then(() => recordPendingNow($))
+  pendingRecords = run.catch(() => undefined)
+  return run
+}
+
+async function recordPendingNow($: EngineInterface): Promise<void> {
+  const { open } = await snapshot($)
   for (const [id, text] of [...pendingOther]) {
-    const isOpen = open.some(question => question.id === id)
-    if (keepsSetAside && isOpen && flow.setsTypedOtherAside(wizard, id)) continue
     pendingOther.delete(id)
-    if (isOpen) await submitOther($, id, text, record)
+    if (open.some(question => question.id === id)) await submitOther($, id, text)
   }
 }
 
-// A nav action records the pending Other text first, so the move or the write reads the pick the person typed. A failure
-// is logged, and the action goes on. Submit all passes its own record (a kept label does not stop the typed answer).
-async function afterPendingOther($: EngineInterface, act: () => Promise<void>, record: OtherRecord = flow.submittedOther): Promise<void> {
-  await recordPendingOther($, record).catch((error: unknown) => logFailure($, error))
+// A nav action, an option press or a submit records the pending Other text first, so the move or the write reads the pick
+// the person typed. A failure is logged, and the action goes on.
+async function afterPendingOther($: EngineInterface, act: () => Promise<void>): Promise<void> {
+  await recordPendingOther($).catch((error: unknown) => logFailure($, error))
   await act()
 }
 
@@ -1376,18 +1407,16 @@ async function dismissOrSay($: EngineInterface, id: string, force: boolean): Pro
   })
 }
 
-// Sets the move lock: the flag the guard reads, and the atom the pane draws its buttons disabled from (so the pane redraws).
-function setMoveLock($: EngineInterface, locked: boolean): Promise<void> {
-  moveLocked = locked
-  return update($, moveLockAtom, () => locked)
-}
-
-// Runs a move (a pick, Next, Back or the review's Back) unless one ran within MOVE_LOCK_MS; while the lock holds, the pane
-// draws those buttons disabled. Submit and the other actions are not moves.
-function moveOnce($: EngineInterface, move: () => void): void {
-  if (moveLocked) return
-  report($, setMoveLock($, true))
-  $.clock.after(MOVE_LOCK_MS, () => report($, setMoveLock($, false)))
+// Runs a move (a pick, Next, Back or the review's Back) unless the same action (its key) ran within MOVE_LOCK_MS. A different
+// action goes through and takes the lock. The timer clears only the lock it set, so an older timer never frees a newer lock.
+// Submit and the other actions are not moves.
+function moveOnce($: EngineInterface, key: string, move: () => void): void {
+  if (moveLock?.key === key) return
+  const lock = { key }
+  moveLock = lock
+  $.clock.after(MOVE_LOCK_MS, () => {
+    if (moveLock === lock) moveLock = undefined
+  })
   move()
 }
 
@@ -1395,8 +1424,8 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
   clearHistory: () => report($, clearHistory($)),
   dismissEndedForced: id => report($, dismissOrSay($, id, true)),
   dismissDamagedUnforced: id => report($, dismissOrSay($, id, false)),
-  pick: (id, choice) => moveOnce($, () => report($, afterPendingOther($, () => pickOption($, id, choice)))),
-  focusOther: id => report($, afterPendingOther($, () => focusOther($, id))),
+  pick: (id, choice) => moveOnce($, `pick:${id}:${choice.key}`, () => report($, afterPendingOther($, () => pickOption($, id, choice)))),
+  pressOther: id => report($, afterPendingOther($, () => pressOther($, id))),
   submitOne: id => report($, afterPendingOther($, () => submitOne($, id))),
   jump: id => report($, afterPendingOther($, () => jumpToQuestion($, id))),
   typeOther: (id, text) => {
@@ -1409,15 +1438,24 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
     }
   },
   keepOther: (id, text) => {
-    pendingOther.delete(id)
+    const wasTyped = pendingOther.delete(id)
     fieldRows.delete(id)
     report($, update($, otherRowsAtom, ({ [id]: _, ...rest }) => rest))
-    report($, keepOther($, id, text))
+    if (text.trim() !== '') {
+      report($, keepOther($, id, text))
+      return
+    }
+    // A blank Enter after real typing commits the blank text, queued as a typed entry: it clears the label and an Other pick.
+    // With no typing it changes nothing.
+    if (wasTyped) {
+      pendingOther.set(id, text)
+      report($, recordPendingOther($))
+    }
   },
-  back: () => moveOnce($, () => report($, afterPendingOther($, () => moveWizard($, (current, group) => flow.back(current, group))))),
-  next: () => moveOnce($, () => report($, afterPendingOther($, () => nextOrReview($)))),
-  submit: () => report($, afterPendingOther($, () => submitCurrent($), flow.submittedTypedOther)),
-  leaveReview: () => moveOnce($, () => report($, leaveReview($))),
+  back: () => moveOnce($, 'back', () => report($, afterPendingOther($, () => moveWizard($, (current, group) => flow.back(current, group))))),
+  next: () => moveOnce($, 'next', () => report($, afterPendingOther($, () => nextOrReview($)))),
+  submit: () => report($, afterPendingOther($, () => submitCurrent($))),
+  leaveReview: () => moveOnce($, 'back', () => report($, afterPendingOther($, () => leaveReview($)))),
   saveWho: text => report($, saveWho($, text)),
   skipWho: () => report($, saveWho($, '')),
 })
@@ -1443,7 +1481,7 @@ export const register: Register = on => {
     await update($, wizardAtom, prev => (hasWizardData(prev) ? prev : flow.EMPTY_WIZARD))
     // A session starts with no draft seen: the awaited first poll below applies the picks the folder holds.
     draftTs = 0
-    await setMoveLock($, false)
+    moveLock = undefined
     const folder = await folderOf($)
     poller?.cancel()
     if (folder !== undefined) {
@@ -1518,7 +1556,6 @@ export const register: Register = on => {
       active,
       wizard,
       screen,
-      moveLocked: await read($, moveLockAtom),
       review: await read($, reviewAtom),
       undelivered: await read($, undeliveredAtom),
       otherRows: await read($, otherRowsAtom),
@@ -1527,21 +1564,22 @@ export const register: Register = on => {
     return renderPane($.ui.resolve(e), view, actionsFor($), lang, heldFor(e.surface, e.requestId))
   })
 
-  // The ring leaving the Other field: the move is passed on first, then the field's pending text is recorded, so a person
-  // who never pressed Keep keeps it; a text a kept label sets aside stays pending for Submit all (recordPendingOther). A move onto Submit all records nothing: its press records the text as the answer
-  // (submittedTypedOther), a kept label included. The hook never blocks, rewrites or re-targets the move.
+  // The ring moving off the Other text commits it: the move is passed on first, then the pending text is recorded. A move
+  // onto one of the pane's own Buttons commits nothing; that button's press commits it (afterPendingOther). The hook never
+  // blocks, rewrites or re-targets the move.
   on('ui.focus', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
-    const isLeavingOther = leavesOtherText(focusedKey, e.element)
+    const isCommitting = commitsOnFocus(focusedKey, e.element)
     focusedKey = e.element
     const result = await next(e)
-    if (isLeavingOther) await recordPendingOther($, flow.submittedOther, true).catch((error: unknown) => logFailure($, error))
+    if (isCommitting) await recordPendingOther($).catch((error: unknown) => logFailure($, error))
     return result
   })
 
-  // Closing the pane drops the pending Other drafts and the remembered ring: their field leaves with the pane.
-  on('ui.close', { id: PANE }, (_$, e, next) => {
-    pendingOther.clear()
+  // Closing the pane commits the pending Other text first (fire and forget; a failure is logged), so the text typed in its
+  // field is not lost with the pane. The recording takes its entries from the queue, so nothing is cleared here.
+  on('ui.close', { id: PANE }, ($, e, next) => {
     focusedKey = undefined
+    recordPendingOther($).catch((error: unknown) => logFailure($, error))
     return next(e)
   })
 

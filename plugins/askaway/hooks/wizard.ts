@@ -112,36 +112,27 @@ export function keptOther(wizard: Wizard, id: string, text: string): Wizard {
   }
 }
 
-// The Other pick of a question as its typed text leaves the field: trimmed and capped; blank text takes the pick away.
-// The pick is the only thing that moves; the wizard keeps its step.
-function recordedOther(wizard: Wizard, id: string, text: string): Wizard {
+// The text typed in an Other field, committed (the field lost the ring, or a button was pressed): the Other pick and the
+// question's label take its trimmed text, which replaces an option pick and a kept label alike. Blank text clears the label,
+// and takes the Other pick away; an option pick stays. The step and the field round never move. The same wizard comes back
+// when nothing changes, so the caller can skip the write and the redraw.
+export function typedOther(wizard: Wizard, id: string, text: string): Wizard {
   const trimmed = otherTextOf(text)
+  const pick: Pick | undefined = wizard.picks[id]
+  const isSame = trimmed === ''
+    ? wizard.labels[id] === undefined && pick?.key !== OTHER_KEY
+    : pick?.key === OTHER_KEY && pick.text === trimmed && wizard.labels[id] === trimmed
+  if (isSame) return wizard
   const picks = { ...wizard.picks }
-  const pick: Pick | undefined = picks[id]
-  if (trimmed !== '') picks[id] = { key: OTHER_KEY, text: trimmed }
-  else if (pick?.key === OTHER_KEY) delete picks[id]
-  return { ...wizard, picks }
-}
-
-// Whether submittedOther sets a typed Other text aside instead of recording it: a kept label stays the pick until Enter.
-export const setsTypedOtherAside = (wizard: Wizard, id: string): boolean => wizard.labels[id] !== undefined
-
-// The text typed in an Other field and not kept yet, recorded when the field loses focus or a nav action runs: its trimmed
-// text is the Other pick, and keeps the wizard where it is; blank text takes an Other pick away when no label is kept. It
-// never moves on. While the question has a kept label, nothing is recorded, typed or blank: Keep is the only way to set the
-// Other text, so the pick and the drawn label cannot disagree, and a blank text never removes the kept label's pick. The
-// text stays in the field until Keep. Submit all is the one exception (submittedTypedOther).
-export function submittedOther(wizard: Wizard, id: string, text: string): Wizard {
-  if (setsTypedOtherAside(wizard, id)) return wizard
-  return recordedOther(wizard, id, text)
-}
-
-// Submit all records the text typed in an Other field as the answer, a kept label included (SPEC, Submit all: a text typed
-// and followed by a click on Submit all is the answer). The pick is submitted at once, so it does not need to match the label.
-// Blank text changes nothing while a label is kept: blank text never removes a kept label (owner reply, M46).
-export function submittedTypedOther(wizard: Wizard, id: string, text: string): Wizard {
-  if (otherTextOf(text) === '' && wizard.labels[id] !== undefined) return wizard
-  return recordedOther(wizard, id, text)
+  const labels = { ...wizard.labels }
+  if (trimmed !== '') {
+    picks[id] = { key: OTHER_KEY, text: trimmed }
+    labels[id] = trimmed
+  } else {
+    delete labels[id]
+    if (pick?.key === OTHER_KEY) delete picks[id]
+  }
+  return { ...wizard, picks, labels }
 }
 
 // A draft's Other pick whose text is not the kept label of its question takes the label as its text: the Other button is

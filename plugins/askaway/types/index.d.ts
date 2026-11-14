@@ -129,8 +129,6 @@ declare module 'claude-code' {
       cleared: string[]
       // The answered cards still fading out (until their reply is written): question id → press time. Drawn dim, then gone.
       leaving: Record<string, number>
-      // The move lock (350 ms after a pick, Next or Back): the option, Other, Next and Back buttons are drawn disabled and presses do nothing.
-      moveLock: boolean
       // The question set (reviewKeyOf: the sorted ids of the group) the review of every chosen answer is drawn for, null when
       // the card is drawn. Set by Next on the last question of a group of two or more; a question with no pick reads "No answer"
       // there. A change to the group's questions closes it (the poll), so the review never comes back for another set.
@@ -159,7 +157,8 @@ declare module 'claude-code' {
         step: number
         questionId: string | null
         picks: Record<string, { key: string; text?: string }>
-        // The kept Other labels by question id: the text the Other button draws (draft.json `labels`).
+        // The Other labels by question id: the text the Other button draws, typed or kept (draft.json `labels`). While the
+        // pick is Other, the label equals the pick's text; a blank commit removes it.
         labels: Record<string, string>
         // The Other field round: Keep moves on to a new one, so the field empties.
         fieldRound: number

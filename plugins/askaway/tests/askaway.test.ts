@@ -14,7 +14,7 @@ import {
   footerText,
   groupBySession,
   leadOf,
-  leavesOtherField,
+  isOwnButtonKey,
   listText,
   localizedQuestion,
   cardLangOf,
@@ -1491,6 +1491,66 @@ test('Back keeps the picks: the picked option stays the primary button when the 
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
   expect((await pane.find({ type: 'Button', key: 'opt-q-l1-aaaaaa-B' }))?.props.variant).toBe('primary')
   expect(writes).toEqual([])
+  await pane.unmount()
+})
+
+// Issue #34: the move lock drops only a repeat of the same action inside its window. A pick then Next is two actions, so the
+// Next is not lost; the Next button keeps its element object through the lock, so it is not drawn twice.
+test('#34: a pick then Next inside the move lock window still moves on, and the Next button keeps its press handle through the lock', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  // The Button's element is the one the held table keeps while its look is unchanged; its press handle shows that (see the held suite).
+  const nextBefore = buttonHandles(await pane.drawn())['nav-next']
+  await clock.advance(350)
+  expect(buttonHandles(await pane.drawn())['nav-next']).toBe(nextBefore)
+  await pane.unmount()
+})
+
+test('#34: a repeat of the same Next inside the move lock window is dropped, so one press moves one question', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('q', 'q-l3-cccccc'), question('q-l3-cccccc', 3000)],
+  ])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'nav-next' })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l3-cccccc')
+  await pane.unmount()
+})
+
+test('#34: Submit all with an unanswered question gives one toast naming it and moves the card to that question', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { toasts, writes, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'nav-next' })
+  await pane.press({ key: 'opt-q-l2-bbbbbb-B' })
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Revise as suas respostas')
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([])
+  expect(toasts).toEqual(['Enviar tudo espera: Title q-l1-aaaaaa ainda não tem resposta.'])
+  const drawn = await textsOf(pane)
+  expect(drawn).toContain('Title q-l1-aaaaaa')
+  expect(drawn).not.toContain('Revise as suas respostas')
   await pane.unmount()
 })
 
@@ -3191,7 +3251,7 @@ test('Enter drops the pending draft: the link picks the text Enter kept, not the
   await pane.unmount()
 })
 
-test('blank Other… text typed after a recorded Other pick leaves the kept label picked when Next leaves the field (M46)', async ($, on) => {
+test('blank Other… text typed after a recorded Other pick clears the kept label and the pick when Next leaves the field (M46)', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -3216,9 +3276,9 @@ test('blank Other… text typed after a recorded Other pick leaves the kept labe
   await pane.press({ key: 'nav-next' })
   await clock.advance(350)
   await pane.press({ key: 'nav-back' })
-  // Blur with blank text is a no-op on a kept label: the label stays picked, and its text is still the reply's text.
-  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
-  expect(JSON.stringify(await pane.find({ type: 'Button', key: 'other-q-l1-aaaaaa' }))).toContain('Use a fork')
+  // Blank text committed by Next clears the kept label and the Other pick (flow.typedOther): the link is "Other…" again.
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
+  expect(JSON.stringify(await pane.find({ type: 'Button', key: 'other-q-l1-aaaaaa' }))).not.toContain('Use a fork')
   await pane.unmount()
 })
 
@@ -3256,12 +3316,17 @@ test('a kept label drawn chosen is the primary button with a ✓ mark and bold, 
   await pane.unmount()
 })
 
-test('model: a focus move leaves the Other field only when the ring goes from its field to another element or an engine stop', () => {
-  expect(leavesOtherField('other-input-q-l1-aaaaaa', 'nav-next')).toBe(true)
-  expect(leavesOtherField('other-input-q-l1-aaaaaa', undefined)).toBe(true)
-  expect(leavesOtherField('other-input-q-l1-aaaaaa', 'other-input-q-l1-aaaaaa')).toBe(false)
-  expect(leavesOtherField('nav-next', 'other-input-q-l1-aaaaaa')).toBe(false)
-  expect(leavesOtherField(undefined, 'opt-q-l1-aaaaaa-A')).toBe(false)
+test('model: a focus move onto an own Button is recognised by its key; an Other or who Input is not', () => {
+  expect(isOwnButtonKey('nav-next')).toBe(true)
+  expect(isOwnButtonKey('opt-q-l1-aaaaaa-A')).toBe(true)
+  expect(isOwnButtonKey('other-q-l1-aaaaaa')).toBe(true)
+  expect(isOwnButtonKey('other-input-q-l1-aaaaaa')).toBe(false)
+  expect(isOwnButtonKey('who-input')).toBe(false)
+  expect(isOwnButtonKey(undefined)).toBe(false)
+  for (const key of ['dismiss-ended', 'dismiss-damaged-x', 'who-skip', 'history-clear', 'review-back', 'tree-jump-x', 'tree-submit-x']) {
+    expect(isOwnButtonKey(key)).toBe(true)
+  }
+  expect(isOwnButtonKey('nav-other')).toBe(false)
 })
 
 // The ring moves through the engine's own ui.focus event: onto `element`, or to one of the engine's stops when it is absent.
@@ -3271,7 +3336,7 @@ const moveRing = ($: Engine, element?: string) =>
 const otherBold = async (pane: Awaited<ReturnType<typeof mountPane>>, id: string): Promise<boolean> =>
   JSON.stringify(await pane.find({ type: 'Button', key: `other-${id}` })).includes('"bold":true')
 
-test('a focus move off the Other field records its typed text: the move is passed on, then the pick is recorded', async ($, on) => {
+test('a focus move onto an own Button writes nothing; the first move onto an engine stop records the Other text typed before it', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -3290,6 +3355,10 @@ test('a focus move off the Other field records its typed text: the move is passe
   expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
   await moveRing($, 'nav-next')
   expect(moves).toEqual(['other-input-q-l1-aaaaaa', 'nav-next'])
+  // A move onto one of the pane's own Buttons writes nothing: its press records the text.
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
+  await moveRing($)
+  expect(moves).toEqual(['other-input-q-l1-aaaaaa', 'nav-next', undefined])
   expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
   await pane.unmount()
 })
@@ -3308,7 +3377,7 @@ test('a focus move within the Other field records nothing, and a move to an engi
   await pane.unmount()
 })
 
-test('a focus move from Submit all onto another element records the Other text typed before it; a move within Submit all records nothing', async ($, on) => {
+test('focus moves among the own Buttons, Submit all included, write nothing; the first move onto an engine stop records the Other text typed before them', async ($, on) => {
   const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
   stubHost(on, files)
   await $.session.start(SESSION)
@@ -3319,7 +3388,264 @@ test('a focus move from Submit all onto another element records the Other text t
   await moveRing($, 'submit-all')
   expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
   await moveRing($, 'nav-next')
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
+  await moveRing($)
   expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
+  await pane.unmount()
+})
+
+// The shared picks file the pane writes and a second window reads (draft.json).
+const draftFile = `${STATE}/draft.json`
+
+test('Next after typing Other text writes its pick and label to draft.json before the card moves on', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'other-q-l1-aaaaaa' })
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await pane.press({ key: 'nav-next' })
+  expect(readJson(files, draftFile)).toMatchObject({
+    picks: { 'q-l1-aaaaaa': { key: 'other', text: 'abc' } },
+    labels: { 'q-l1-aaaaaa': 'abc' },
+  })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  await pane.unmount()
+})
+
+test('a ring onto an engine stop after typing commits the Other text: the field draws ✓ C · abc bold and Next reads Answer: C', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  // English labels: a group of one question has no Next, so the card keeps two.
+  stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await moveRing($)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
+  expect(String(await labelOf(pane, 'nav-next'))).toMatch(/^Answer: C · /)
+  await pane.unmount()
+})
+
+test('a ring from the Other field to another field commits the Other text of the first one', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await moveRing($, 'who-input')
+  expect(readJson(files, draftFile)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'other', text: 'abc' } } })
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
+  await pane.unmount()
+})
+
+test('Other text committed, then other text typed and committed: the draw and draft.json hold the new text only', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await moveRing($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'xyz', kind: 'change' })
+  await moveRing($)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · xyz')
+  expect(readJson(files, draftFile)).toMatchObject({
+    picks: { 'q-l1-aaaaaa': { key: 'other', text: 'xyz' } },
+    labels: { 'q-l1-aaaaaa': 'xyz' },
+  })
+  expect(files.get(draftFile)).not.toContain('abc')
+  await pane.unmount()
+})
+
+test('an emptied Other field after a committed text clears its label and pick: the field reads C · Other… and Next reads No answer', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await moveRing($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: '', kind: 'change' })
+  await moveRing($)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('C · Other…')
+  expect(String(await labelOf(pane, 'nav-next'))).toMatch(/^No answer · /)
+  const draft = readJson(files, draftFile) as { picks?: Record<string, unknown>; labels?: Record<string, unknown> }
+  expect(draft.picks?.['q-l1-aaaaaa']).toBeUndefined()
+  expect(draft.labels?.['q-l1-aaaaaa']).toBeUndefined()
+  await pane.unmount()
+})
+
+test('an Other press after a committed text and new typing: the typed text is the pick and the label, and Submit all sends it', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await moveRing($)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  // The text is typed again and not yet committed: the link's press must commit it before it picks anything.
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'xyz', kind: 'change' })
+  await pane.press({ key: 'other-q-l1-aaaaaa' })
+  expect(readJson(files, draftFile)).toMatchObject({
+    picks: { 'q-l1-aaaaaa': { key: 'other', text: 'xyz' } },
+    labels: { 'q-l1-aaaaaa': 'xyz' },
+  })
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · xyz')
+  await pane.press({ key: 'submit-all' })
+  expect(readJson(files, path('a', 'q-l1-aaaaaa'))).toMatchObject({ key: 'other', text: 'xyz' })
+  await pane.unmount()
+})
+
+test('an Other press over an option pick with a kept label and new typing: the typed text is the pick and the label, not the kept one', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { clock } = stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'foo', kind: 'change' })
+  await moveRing($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  // The option pick keeps the label "foo"; the text typed next is not committed until a press or a ring move.
+  await clock.advance(350)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'bar', kind: 'change' })
+  await pane.press({ key: 'other-q-l1-aaaaaa' })
+  expect(readJson(files, draftFile)).toMatchObject({
+    picks: { 'q-l1-aaaaaa': { key: 'other', text: 'bar' } },
+    labels: { 'q-l1-aaaaaa': 'bar' },
+  })
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · bar')
+  await pane.unmount()
+})
+
+test('a blank Enter after a committed text is a blank commit: the label and the Other pick go, and Next reads No answer', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await moveRing($)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  // The field is emptied by typing (a real onInput entry), then Enter sends the blank text.
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: '', kind: 'change' })
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: '' })
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('C · Other…')
+  expect(String(await labelOf(pane, 'nav-next'))).toMatch(/^No answer · /)
+  const draft = readJson(files, draftFile) as { picks?: Record<string, unknown>; labels?: Record<string, unknown> }
+  expect(draft.picks?.['q-l1-aaaaaa']).toBeUndefined()
+  expect(draft.labels?.['q-l1-aaaaaa']).toBeUndefined()
+  await pane.unmount()
+})
+
+// Regression guard: this passes on the code before the press change too.
+test('leaving the Other field after Keep writes no draft.json: the Keep write is the only one', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { drafts } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'other-q-l1-aaaaaa' })
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'Use a fork' })
+  const writesAfterKeep = drafts.length
+  expect(writesAfterKeep).toBeGreaterThan(0)
+  // Keep moved the focus to the Other button; the field is empty under its new round, so leaving it commits nothing.
+  await moveRing($, 'other-input-q-l1-aaaaaa-1')
+  await moveRing($)
+  expect(drafts.length).toBe(writesAfterKeep)
+  await pane.unmount()
+})
+
+// Regression guard: this passes on the code before the press change too; a failed save is logged and never rejects the chain.
+test('a failed draft write does not stop the next Other commit: the text typed after it is written', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const holds: Holds = { failingMoveTo: draftFile }
+  const { logs } = stubHost(on, files, true, {}, holds, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await moveRing($)
+  expect(logs.some(line => line.includes('could not write'))).toBe(true)
+  holds.failingMoveTo = undefined
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'xyz', kind: 'change' })
+  await moveRing($)
+  expect(readJson(files, draftFile)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'other', text: 'xyz' } } })
+  await pane.unmount()
+})
+
+// Regression guard: this passes on the code before the press change too; it pins the option press's commit order.
+test('an option press after typing Other text makes the option the pick, and no Other pick replaces it after a second', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'other-q-l1-aaaaaa' })
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.advance(1000)
+  expect(readJson(files, draftFile).picks).toEqual({ 'q-l1-aaaaaa': { key: 'B' } })
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
+  await pane.unmount()
+})
+
+// Regression guard: this passes on the code before the press change too.
+test('a second window draws the Other text kept in draft.json as ✓ C · abc, bold', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  files.set(draftFile, JSON.stringify({ ts: 100, picks: { 'q-l1-aaaaaa': { key: 'other', text: 'abc' } }, labels: { 'q-l1-aaaaaa': 'abc' } }))
+  await clock.advance(5000)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
+  await pane.unmount()
+})
+
+// Regression guard: this passes on the code before the press change too.
+test('a focus move onto an untouched Other field and off writes no draft.json', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { drafts } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const writesBefore = drafts.length
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await moveRing($)
+  expect(drafts.length).toBe(writesBefore)
+  await pane.unmount()
+})
+
+test('an old draft.json Other pick with no label draws ✓ C · x bold, and Submit all replies key other with text x', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  files.set(draftFile, JSON.stringify({ ts: 100, picks: { 'q-l1-aaaaaa': { key: 'other', text: 'x' } } }))
+  await clock.advance(5000)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · x')
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
+  await pane.press({ key: 'submit-all' })
+  expect(readJson(files, path('a', 'q-l1-aaaaaa'))).toMatchObject({ key: 'other', text: 'x' })
   await pane.unmount()
 })
 
@@ -3435,7 +3761,7 @@ test('Submit all drawn off with an Other text on one of two questions records th
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
   ])
-  const { writes, clock } = stubHost(on, files)
+  const { writes, toasts, clock } = stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
   await pane.press({ key: 'nav-next' })
@@ -3448,9 +3774,13 @@ test('Submit all drawn off with an Other text on one of two questions records th
   expect((await pane.find({ type: 'Button', key: 'submit-all' }))?.props.dimColor).toBe(true)
   await pane.press({ key: 'submit-all' })
   expect(writes).toEqual([])
-  // Back to the last card, a blank text typed over the field, then Next: the Other pick goes away, and nothing is written.
+  // Submit all with q-l1-aaaaaa unanswered: one toast names it, and the wizard jumps to that question.
+  expect(toasts).toEqual(['Enviar tudo espera: Title q-l1-aaaaaa ainda não tem resposta.'])
+  expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
+  expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
+  // Next walks on to the last card, a blank text typed over its field, then Next: the Other pick goes away, and nothing is written.
   await clock.advance(350)
-  await pane.press({ key: 'review-back' })
+  await pane.press({ key: 'nav-next' })
   await clock.advance(350)
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l2-bbbbbb', text: '   ', kind: 'change' })
   await pane.press({ key: 'nav-next' })
@@ -3474,9 +3804,9 @@ test('an Other text recorded from its field that completes a group of two keeps 
   await moveRing($, 'other-input-q-l2-bbbbbb')
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l2-bbbbbb', text: 'Use a fork', kind: 'change' })
   expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
-  // Leaving the field records the text as the pick; the card stays on its question until Next.
+  // A move onto nav-back writes nothing; Next's press records the text, and the card stays on its question until then.
   await moveRing($, 'nav-back')
-  expect(await otherBold(pane, 'q-l2-bbbbbb')).toBe(true)
+  expect(await otherBold(pane, 'q-l2-bbbbbb')).toBe(false)
   expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
   await clock.advance(350)
   await pane.press({ key: 'nav-next' })
@@ -3582,7 +3912,7 @@ test('Keep in Other… draws the text on the link and picks it, empties the fiel
   await pane.unmount()
 })
 
-test('Keep, click, type without Keep, Next, Back: the pick stays the kept label, the field keeps its text, and the button draws the label bold', async ($, on) => {
+test('Keep, click, type without Keep, Next, Back: Next records the typed text, which replaces the kept label, and the button draws it bold', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -3605,8 +3935,7 @@ test('Keep, click, type without Keep, Next, Back: the pick stays the kept label,
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa-1', text: 'Second text', kind: 'change' })
   // The harness does not expose the typed text on the Input node; the field is still there under its round key.
   expect(await pane.find({ type: 'Input', key: 'other-input-q-l1-aaaaaa-1' })).toBeDefined()
-  // Next leaves the field without Keep: the typed text is not recorded as the pick; the pick and the link are what the
-  // person sees and what Submit all sends.
+  // Next leaves the field without Keep: the typed text is committed as the pick and replaces the kept label (typedOther).
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
   await clock.advance(350)
@@ -3614,13 +3943,13 @@ test('Keep, click, type without Keep, Next, Back: the pick stays the kept label,
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
   expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
   const link = JSON.stringify(await pane.find({ type: 'Button', key: 'other-q-l1-aaaaaa' }))
-  expect(link).toContain('C · First text')
-  expect(link).not.toContain('Second text')
-  // The last draft written is still the click's pick: the blocked Next wrote nothing.
+  expect(link).toContain('C · Second text')
+  expect(link).not.toContain('First text')
+  // The last draft written is Next's commit of the typed text; no Submit ran, so no answer file was written.
   expect(JSON.parse(drafts[drafts.length - 1] ?? '{}')).toEqual({
     ts: expect.any(Number),
-    picks: { 'q-l1-aaaaaa': { key: 'other', text: 'First text' } },
-    labels: { 'q-l1-aaaaaa': 'First text' },
+    picks: { 'q-l1-aaaaaa': { key: 'other', text: 'Second text' } },
+    labels: { 'q-l1-aaaaaa': 'Second text' },
   })
   expect(writes).toEqual([])
   await pane.unmount()
@@ -3790,7 +4119,7 @@ test('draft.json has no labels key while no Other text is kept, and writes the l
   await pane.unmount()
 })
 
-test('the move lock dims option, Other, Next and Back for 350 ms after a move, presses do nothing then, and they work after the window', async ($, on) => {
+test('the move lock draws nothing: no button dims after a move, a repeat of a move inside the window does nothing, and every move works after the window', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -3801,28 +4130,28 @@ test('the move lock dims option, Other, Next and Back for 350 ms after a move, p
   const pane = await mountPane($)
   await pane.press({ key: 'other-q-l1-aaaaaa' })
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'Use a fork' })
-  // A pick is a move: it locks the moves for 350 ms, and the card stays on its question.
+  // A pick is a move, and it draws nothing: no button is dimmed for its window, and the card stays on its question.
   await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
   for (const key of ['opt-q-l1-aaaaaa-B', 'other-q-l1-aaaaaa', 'nav-next']) {
-    expect((await pane.find({ type: 'Button', key }))?.props.dimColor).toBe(true)
+    expect((await pane.find({ type: 'Button', key }))?.props.dimColor).not.toBe(true)
   }
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  await pane.press({ key: 'nav-next' })
-  expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
-  expect((await pane.find({ type: 'Button', key: 'opt-q-l1-aaaaaa-B' }))?.props.variant).not.toBe('primary')
-  await clock.advance(350)
-  expect((await pane.find({ type: 'Button', key: 'nav-next' }))?.props.dimColor).toBe(false)
+  // Next is another move than the pick, so it goes through inside the window. Its repeat does not: a second Next would open
+  // question 3, so the card stays on question 2.
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
-  // Back works once the window has lifted; its move locks the links on question 1 again.
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Title q-l3-cccccc')
+  // Back works once the window has lifted; two Backs walk to question 1, and its Other link picks the kept label.
+  await clock.advance(350)
+  await pane.press({ key: 'nav-back' })
   await clock.advance(350)
   await pane.press({ key: 'nav-back' })
   expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
-  expect((await pane.find({ type: 'Button', key: 'other-q-l1-aaaaaa' }))?.props.dimColor).toBe(true)
-  await pane.press({ key: 'other-q-l1-aaaaaa' })
-  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
-  await clock.advance(350)
+  expect((await pane.find({ type: 'Button', key: 'other-q-l1-aaaaaa' }))?.props.dimColor).not.toBe(true)
   await pane.press({ key: 'other-q-l1-aaaaaa' })
   expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
   await clock.advance(350)
@@ -4251,7 +4580,7 @@ test('a one-question group drawn after a submitted two-question group shows no r
   await pane.unmount()
 })
 
-test('Back on the review is under the move lock: dim and no-op for 350 ms after the pick that drew it, then it leaves the review', async ($, on) => {
+test('Back on the review is not dimmed: its Back goes through right after the Next that drew it, and a repeat of the card Back inside the window is dropped', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -4267,14 +4596,17 @@ test('Back on the review is under the move lock: dim and no-op for 350 ms after 
   await clock.advance(350)
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Revise as suas respostas')
-  expect((await pane.find({ type: 'Button', key: 'review-back' }))?.props.dimColor).toBe(true)
-  await pane.press({ key: 'review-back' })
-  expect(await textsOf(pane)).toContain('Revise as suas respostas')
-  await clock.advance(350)
-  expect((await pane.find({ type: 'Button', key: 'review-back' }))?.props.dimColor).toBe(false)
+  expect((await pane.find({ type: 'Button', key: 'review-back' }))?.props.dimColor).not.toBe(true)
+  // The review Back is a 'back' action, not the 'next' that drew the review, so it goes through at once.
   await pane.press({ key: 'review-back' })
   expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
   expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
+  // The card Back shares the 'back' key with the review Back: a repeat inside the window is dropped.
+  await pane.press({ key: 'nav-back' })
+  expect(await textsOf(pane)).toContain('Title q-l2-bbbbbb')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-back' })
+  expect(await textsOf(pane)).toContain('Title q-l1-aaaaaa')
   await pane.unmount()
 })
 
@@ -5366,8 +5698,9 @@ for (const surface of SURFACES) {
     await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
     const after = buttonHandles(await pane.drawn())
     expect(after['opt-q-l1-aaaaaa-A']).not.toBe(before['opt-q-l1-aaaaaa-A'])
-    // The pick starts the move lock (SPEC, Move lock), which dims every option and nav button, so their handles renew with
-    // it. Once the window ends, the handles are stable across a redraw again.
+    // The move lock draws nothing (SPEC, Move lock), so the unpicked option keeps its element and its handle. The nav
+    // handles may renew, because their labels show the answer. Once the window ends, the handles are stable across a redraw.
+    expect(after['opt-q-l1-aaaaaa-B']).toBe(before['opt-q-l1-aaaaaa-B'])
     await clock.advance(350)
     const settled = buttonHandles(await pane.drawn())
     await pane.redraw()
@@ -6183,28 +6516,36 @@ test('Gauntlet M52: a far-ahead draft applies every pick it holds, the one made 
   await pane.unmount()
 })
 
-test('Gauntlet M64: a second option press inside the move lock is ignored, and the press after MOVE_LOCK_MS is taken', async ($, on) => {
-  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
-  const { clock } = stubHost(on, files)
-  await $.session.start(SESSION)
-  const pane = await mountPane($)
-  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'A' } } })
-  // The lock lower bound (Gauntlet 5 B3 M54): at 349 ms the lock still holds, and the press at 350 ms is taken.
-  await clock.advance(349)
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'A' } } })
-  await clock.advance(1)
-  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
-  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'B' } } })
-  await pane.unmount()
-})
-
-test('Gauntlet M64: Back and Next presses inside the move lock are ignored; the press after the window is taken', async ($, on) => {
+test('Gauntlet M64: a repeat of the same move inside the move lock is ignored, and the one after MOVE_LOCK_MS is taken', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  // A pick then another option of the same question are two different actions, so both are taken: the draft holds B.
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  expect(readJson(files, `${STATE}/draft.json`)).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'B' } } })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  // The lock lower bound (Gauntlet 5 B3 M54): a repeat of Next at 349 ms is dropped, so no review opens; at 350 ms it is taken.
+  await clock.advance(349)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  expect(await textsOf(pane)).not.toContain('Revise as suas respostas')
+  await clock.advance(1)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Revise as suas respostas')
+  await pane.unmount()
+})
+
+test('Gauntlet M64: a repeat of Next inside the move lock is dropped, a Back right after is taken, and Next walks on after the window', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('q', 'q-l3-cccccc'), question('q-l3-cccccc', 3000)],
   ])
   const { clock } = stubHost(on, files)
   await $.session.start(SESSION)
@@ -6215,16 +6556,18 @@ test('Gauntlet M64: Back and Next presses inside the move lock are ignored; the 
   await clock.advance(350)
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
-  await pane.press({ key: 'nav-back' })
-  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
-  await clock.advance(350)
-  await pane.press({ key: 'nav-back' })
-  expect(await textsOf(pane)).toContain('Which way for q-l1-aaaaaa?')
-  await pane.press({ key: 'nav-next' })
-  expect(await textsOf(pane)).toContain('Which way for q-l1-aaaaaa?')
-  await clock.advance(350)
+  // The repeated Next is dropped and the card stays on q-l2; the Back is another action, so it goes through at once.
   await pane.press({ key: 'nav-next' })
   expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  await pane.press({ key: 'nav-back' })
+  expect(await textsOf(pane)).toContain('Which way for q-l1-aaaaaa?')
+  // After the window the Next walks on again, one question per press.
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  await clock.advance(350)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l3-cccccc?')
   await pane.unmount()
 })
 
@@ -6367,7 +6710,27 @@ test('Gauntlet B1 H19: a second session start keeps the card on screen and its s
   }
 })
 
-// Gauntlet 5 B3 M16 (probe, part 1 of 2): the hook module keeps moveLocked and pendingOther between presses. This test ends
+// #34: a session start clears the move lock. Next takes the `next` lock; a new session inside its window walks on at once.
+test('#34 a session start clears the move lock, so a Next right after a reload is taken', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('q', 'q-l3-cccccc'), question('q-l3-cccccc', 3000)],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
+  await pane.unmount()
+  await $.session.start(SESSION)
+  const again = await mountPane($)
+  await again.press({ key: 'nav-next' })
+  expect(await textsOf(again)).toContain('Which way for q-l3-cccccc?')
+  await again.unmount()
+})
+
+// Gauntlet 5 B3 M16 (probe, part 1 of 2): the hook module keeps the move lock and pendingOther between presses. This test ends
 // with a move lock still running (its timer never fires) and an Other text typed on the second card but not recorded.
 test('Gauntlet 5 B3 M16 probe: a pick, then an Other text typed on the next card, and the test ends with both open', async ($, on) => {
   const files = new Map([
@@ -6387,8 +6750,10 @@ test('Gauntlet 5 B3 M16 probe: a pick, then an Other text typed on the next card
   await pane.unmount()
 })
 
-// Gauntlet 5 B3 M16 (probe, part 2 of 2): the test right after the one above starts clean. A leaked move lock would ignore
-// its first pick; a leaked pending Other text would be recorded as a pick by it. Its draft is then exactly the one pick.
+// Gauntlet 5 B3 M16 (probe, part 2 of 2): the test right after the one above starts clean. Part 1 ends with the `next` move
+// lock open, so a leaked lock would drop this test's Next at once; a leaked pending Other text would be recorded as a pick
+// by that Next. The card walks to the second question and the draft is exactly the one pick. The reset inside one session
+// start is proved by the "#34 a session start clears the move lock" test.
 test('Gauntlet 5 B3 M16 probe: the next test starts with no move lock and no pending Other text', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
@@ -6398,6 +6763,8 @@ test('Gauntlet 5 B3 M16 probe: the next test starts with no move lock and no pen
   await $.session.start(SESSION)
   const pane = await mountPane($)
   await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await pane.press({ key: 'nav-next' })
+  expect(await textsOf(pane)).toContain('Which way for q-l2-bbbbbb?')
   expect(JSON.parse(drafts.at(-1) ?? '{}')).toEqual({ ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'A' } } })
   await pane.unmount()
 })
@@ -8051,7 +8418,7 @@ test('gauntlet 7 pane-exec3-1: with a kept label, Esc out of the Other field, th
   await pane.unmount()
 })
 
-test('gauntlet 7 pane-exec3-1: a text a kept label set aside is dropped once Next takes its field off screen: Submit all then sends the label', async ($, on) => {
+test('gauntlet 7 pane-exec3-1: a text typed in a kept label\'s field replaces the label when Next leaves the field, and Submit all sends it', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
     [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
@@ -8082,7 +8449,7 @@ test('gauntlet 7 pane-exec3-1: a text a kept label set aside is dropped once Nex
   await pane.press({ key: 'nav-next' })
   await pane.press({ key: 'submit-all' })
   expect(writes).toEqual([path('a', 'q-l1-aaaaaa'), path('a', 'q-l2-bbbbbb')])
-  expect(readJson(files, path('a', 'q-l1-aaaaaa'))).toMatchObject({ key: 'other', text: 'First text' })
+  expect(readJson(files, path('a', 'q-l1-aaaaaa'))).toMatchObject({ key: 'other', text: 'Second text' })
   await pane.unmount()
 })
 
@@ -8426,7 +8793,7 @@ for (const surface of SURFACES) {
     await $.session.start(SESSION)
     const pane = await mountPane($, surface)
     const drawn = JSON.stringify(await pane.drawn())
-    for (const word of ['Próxima', 'Recomendada', 'Outra…', 'Pressione Enter para aplicar a resposta.', 'Sem resposta']) {
+    for (const word of ['Próxima', 'Recomendada', 'Outra…', 'Digite sua resposta em um parágrafo. Ela conta quando você sai do campo ou aperta um botão; Enter também confirma.', 'Sem resposta']) {
       expect(drawn).toContain(word)
     }
     expect(drawn).toContain('Qual caminho para a fila?')
@@ -8444,7 +8811,7 @@ test('an English card with a complete pt-BR translation in a Portuguese pane dra
   await $.session.start(SESSION)
   const pane = await mountPane($, 'desktop')
   const portuguese = JSON.stringify(await pane.drawn())
-  for (const word of ['Qual caminho?', 'Manter', 'Reescrever', 'Outra…', 'Pressione Enter para aplicar a resposta.', 'Enviar tudo', 'Perguntas aguardando']) {
+  for (const word of ['Qual caminho?', 'Manter', 'Reescrever', 'Outra…', 'Digite sua resposta em um parágrafo. Ela conta quando você sai do campo ou aperta um botão; Enter também confirma.', 'Enviar tudo', 'Perguntas aguardando']) {
     expect(portuguese).toContain(word)
   }
   expect(portuguese).not.toContain('Which way for')
