@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.4`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`1.1.5`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -305,11 +305,11 @@ rm -r ~/.claude/state/askaway
 
 Os agentes registram perguntas em vez de parar. Você responde no painel, um cartão por vez, e envia as respostas de cada grupo de uma vez.
 
-Enquanto há perguntas abertas, uma faixa fica acima do prompt: `2 perguntas aguardando · 1 grupo`, com um botão **Responder** na tecla `1`. Um aviso anuncia cada pergunta nova que chega com a sessão aberta; as perguntas já abertas quando ela começa não geram aviso.
+Enquanto há perguntas abertas, uma faixa fica acima do prompt: `2 perguntas aguardando · 1 grupo`, com um botão **Responder** na tecla `1`. Quando uma pergunta de alto risco aberta pausa a sessão, a faixa ganha um trecho `N pausada(s)` entre os dois: `2 perguntas aguardando · 1 pausada · 1 grupo`. Um aviso anuncia cada pergunta nova que chega com a sessão aberta; as perguntas já abertas quando ela começa não geram aviso.
 
 ### Responder uma pergunta
 
-1. Aperte `1` com o prompt vazio, ou clique em **Responder** na faixa, para abrir o painel. O cabeçalho mostra o logo do AskAway User, o título **Perguntas aguardando** e o contador, como `2 pendentes · 1 grupo`.
+1. Aperte `1` com o prompt vazio, ou clique em **Responder** na faixa, para abrir o painel. O cabeçalho mostra o logo do AskAway User, o título **Perguntas aguardando** e o contador, como `2 pendentes · 1 grupo`, ou `2 pendentes · 1 pausada · 1 grupo` com uma sessão pausada.
 2. A árvore lista cada grupo do Desktop e cada família de sessões com perguntas abertas, uma abaixo da outra, com o nome em negrito: o nome do grupo na barra lateral do Desktop, ou o título da raiz da família. Embaixo de um grupo, cada sessão desenha a sua própria linha com as suas perguntas. Embaixo do título da raiz de uma família, as perguntas da própria sessão raiz ficam logo abaixo desse título (o título nunca se repete como linha de sessão); embaixo delas, as sessões derivadas da família (`├` ou `└`) guardam as suas perguntas. Uma marca mostra em que ponto está cada pergunta: `●` a que está na tela, `○` aguardando. Uma pergunta com opção escolhida mostra depois do texto `✓ - ▪ Enviar resposta`: esse **Enviar resposta** manda só a resposta dela, na hora, e o cartão fica na pergunta que está na tela; as demais escolhas esperam o **Enviar tudo**, que volta o cartão para a primeira pergunta do grupo. Nada é enviado antes de um dos dois. Os nomes de família e de sessão são texto, não botões; cada linha de pergunta é um link, desenhado pontilhado e sublinhado no Desktop, e apertar uma leva ao cartão dela.
 3. Clique numa opção para registrá-la. O painel avança para a próxima pergunta sem resposta, voltando ao início se preciso, ou para a última pergunta quando todas já têm resposta. Nada é enviado ainda.
 4. Para responder com as suas palavras, o campo embaixo de **Outra…** fica sempre aberto: clique nele e digite. O texto digitado é a resposta sem Enter: ele conta quando o foco sai do campo, quando você aperta qualquer botão do painel e quando o painel fecha; o Enter também confirma. Um campo esvaziado limpa a resposta dada em Outra: uma opção que você já escolheu continua, e sem escolha a pergunta mostra **Sem resposta**. Enquanto o texto conta, o botão **Outra** mostra o texto como rótulo, marcado (`✓ C · texto`). O cartão fica onde está, então aperte **Próxima →** ou **Enviar tudo** quando quiser. O link **Outra…** só leva o foco ao campo.
@@ -329,11 +329,11 @@ Quando nenhuma pergunta está aberta, o painel mostra uma linha de rodapé sob a
 
 Os rótulos estão em inglês; o painel os mostra em português quando o idioma é `pt-BR`.
 
-O cartão abre com o título, a Urgência (na cor do seu grau), a explicação antes da pergunta (**O que é** e **O problema**, dois parágrafos simples, sem título), o bloco **Detalhes do AskAway User:** (o logo e o título, depois **Analogia**, **💡 Por que A**, **↩️ Como desfazer**, **🛠️ Como**, **🎁 O que ganhamos**, **⚖️ O que perdemos** e **🧭 Contexto e origem**), a pergunta, a linha de estado logo abaixo dela, as opções com a troca, a aderência, as linhas **O que acontece**, **Prós** e **Contras**, e a linha de navegação. Os detalhes ficam sempre abertos: não há link nem tecla para abri-los.
+O cartão abre com o título, a Urgência (na cor do seu grau, quando `urgency_level` vier), a explicação antes da pergunta (**O que é** e **O problema**, dois parágrafos simples, sem título), o bloco **Detalhes do AskAway User:** (o logo e o título, depois **Analogia**, **💡 Por que A**, **↩️ Como desfazer**, **🛠️ Como**, **🎁 O que ganhamos**, **⚖️ O que perdemos** e **🧭 Contexto e origem**), a pergunta, a linha de estado logo abaixo dela, as opções com a troca, a aderência, as linhas **O que acontece**, **Prós** e **Contras**, e a linha de navegação. Os detalhes ficam recolhidos por padrão, atrás de um botão de alternância, **▸ Mostrar detalhes (n)** (**▾ Ocultar detalhes** enquanto aberto), no anel de foco e sem tecla de atalho. O estado de aberto é uma marca por usuário, guardada entre perguntas, sessões e reinícios.
 
 1. **Linha do título:** o título como um cabeçalho pequeno, depois ` - Ver sessão ↗ - ` (um link que abre a sessão que perguntou, quando ela rodou no Desktop; a seta marca o link, já que o Desktop não sublinha), depois o rótulo de risco e a idade, por exemplo `⚠️ risco médio · há 12 min`; onde a superfície não desenha Markdown, o título é texto em negrito com o risco e a idade ao lado, sem link. Uma pergunta registrada sem `title` recebe a pergunta cortada em 60 caracteres como título (a CLI faz isso). O painel nunca corta um título: um título salvo vazio é desenhado como o texto da pergunta, inteiro. O risco quebra para baixo do título quando não cabe na linha.
-2. **Urgência:** logo abaixo do título, uma linha **⏱️ Urgência** (`urgency`), quando estiver preenchida, com o texto na cor do seu grau: `urgency_level` (`low`, `medium`, `high`), ou as palavras do texto quando o grau não vier.
-3. **Explicação antes da pergunta:** as seções preenchidas, como parágrafos simples sem título: o texto de **O que é** (`what`) e depois o de **O problema** (`problem`). Depois, o bloco **Detalhes do AskAway User:** (com o logo): **🔁 Analogia** (`analogy`), **💡 Por que A** (`why`; a letra é a chave recomendada), **↩️ Como desfazer** (`undo`), **🛠️ Como** (`how`), **🎁 O que ganhamos** (`gains`), **⚖️ O que perdemos** (`losses`) e **🧭 Contexto e origem** (`context`) por último. O bloco não tem borda: fica sobre o preenchimento de mensagem do usuário do próprio tema (`userMessageBackground`), então segue os temas claro, escuro e automático. Os títulos das seções vão em negrito.
+2. **Urgência:** logo abaixo do título, uma linha **⏱️ Urgência** (`urgency`), quando estiver preenchida, com o texto na cor do grau de `urgency_level` (`low`, `medium`, `high`). Sem o grau, o texto não tem grau: é desenhado na cor padrão, sob o título simples, e nenhuma palavra-chave adivinha um grau. Com o grau, o título diz qual é, **⏱️ Urgência (alta)**, então a cor nunca é o único sinal.
+3. **Explicação antes da pergunta:** as seções preenchidas, como parágrafos simples sem título: o texto de **O que é** (`what`) e depois o de **O problema** (`problem`). Depois, o bloco **Detalhes do AskAway User:** (com o logo), recolhido por padrão atrás do seu botão: **🔁 Analogia** (`analogy`), **💡 Por que A** (`why`; a letra é a chave recomendada), **↩️ Como desfazer** (`undo`), **🛠️ Como** (`how`), **🎁 O que ganhamos** (`gains`), **⚖️ O que perdemos** (`losses`) e **🧭 Contexto e origem** (`context`) por último. O bloco não tem borda: fica sobre o preenchimento de mensagem do usuário do próprio tema (`userMessageBackground`), então segue os temas claro, escuro e automático. Os títulos das seções vão em negrito.
 4. **A pergunta:** o texto da pergunta, em negrito. Sempre presente.
 5. **Linha de estado:** discreta, logo abaixo da pergunta: o que o agente faz agora e o que acontece se ninguém responder: `Na opção A desde 14:05. Escolha outra opção para trocar; sem resposta, fica a opção A.`, ou `Pausado desde 14:05, esperando a sua resposta.` para uma pergunta de risco `high`. A hora leva também a data, como em `Na opção A desde 17/10 14:05`, quando a pergunta foi feita em um dia anterior.
 6. **As opções:** cada uma é um botão de largura total, `A · Rótulo`, com `(Recomendada)` depois do rótulo da recomendada. Embaixo, uma linha `└ troca · aderência 88` (a aderência é a estimativa do agente), depois **O que acontece** (`does`), **Prós** (`pros`) e **Contras** (`cons`), que aparecem de uma vez. A opção escolhida é o botão preenchido; a recomendada fica em negrito até ser escolhida. A última é **Outra…**, com a letra depois da última opção (`C · Outra…` com duas opções).
@@ -356,7 +356,7 @@ O rótulo de risco é o risco de aceitar a opção recomendada, como o agente av
 - Cada botão de opção mostra a sua letra e responde a ela em minúscula: `a` escolhe A, `b` escolhe B, e assim por diante, no terminal e no desktop.
 - **Outra…** usa a letra depois da última opção (`c` com duas opções, mostrada como `C · Outra…`).
 - Voltar, Próxima e Enviar tudo usam `z`, `x` e `w` no terminal, e `p`, `f` e `w` no desktop, onde `z` e `x` são reservas quando uma opção já usa uma dessas letras. No terminal, os rótulos mostram a letra: `← Voltar (z)`, `Próxima → (x)` e `Enviar tudo (N) (w)`.
-- Não há tecla `e`: o cartão sempre mostra os detalhes. Uma letra que uma das opções do cartão usa é pulada, e as teclas passam para as próximas letras livres da mesma lista.
+- Não há tecla `e`: o botão de detalhes fica no anel de foco, sem tecla de atalho. Uma letra que uma das opções do cartão usa é pulada, e as teclas passam para as próximas letras livres da mesma lista.
 - Para ditado, diga uma tecla de navegação pela sua letra: `p` (Voltar), `f` (Próxima) ou `w` (Enviar tudo) no desktop.
 - O botão **Responder** da faixa mantém a tecla `1`.
 - Nenhuma tecla de atalho dispara enquanto o campo **Outra…** tem o foco; as teclas vão para o campo.
@@ -423,7 +423,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `analogy`, `urgency`, `undo` | sim | `analogy` é uma comparação que deixa a troca clara; `urgency` é o prazo, como `Can wait` ou `Blocks in ~8 min`; `undo` é o custo de reverter a escolha, como `changing later ≈ 10 min`. Até 300 caracteres cada. |
 | `risk` | sim | O risco de aceitar a opção recomendada: `low` é seguro de aceitar e fácil de mudar depois; `medium` é reversível, mas mudar custa retrabalho; `high` é irreversível, ou toca arquivos reais, credenciais ou dinheiro, e pausa o agente que perguntou até a resposta ser entregue a ele (a sessão inteira quando a pergunta não tem autor). Não há padrão: um `risk` faltando faz a entrada voltar como `refile`. |
 | `pause` | não | Só é verificado quanto ao tipo; não pausa nada. Uma pergunta pausa o agente que perguntou quando `risk` é `high` (a sessão inteira quando ainda não tem autor), e nunca em outro caso. |
-| `urgency_level` | não | `low`, `medium` ou `high` (qualquer caixa): o grau pelo qual o painel colore a urgência. Sem ele, o painel gradua o texto da urgência por palavras-chave. Qualquer outro valor volta como `refile`. |
+| `urgency_level` | não | `low`, `medium` ou `high` (qualquer caixa): o grau pelo qual o painel colore a urgência. Sem ele, o texto da urgência não tem grau: é desenhado na cor padrão. Qualquer outro valor volta como `refile`. |
 | `translations` | não | O texto da pergunta no outro idioma do painel, com a chave `en` ou `pt-BR` (nunca o `lang` da própria entrada; outra chave volta como `refile`), para que `/askaway lang` troque o cartão inteiro. Um idioma vem completo ou não vem: todos os campos de texto obrigatórios, e `label`, `does`, `pros`, `cons` e `tradeoff` de cada opção; uma falta volta como `translations.<chave>: missing <nomes>`. |
 | `run_kind` | não | `main`, `subagent`, `goal`, `loop`, `bash` ou `codex`. |
 
@@ -526,6 +526,7 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 | A resposta de `ask` traz o `title` validado. | Resposta sem título | O agente vê o título que o cartão mostra. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
 | Uma pergunta pode trazer as próprias `translations` (`en`, `pt-BR`); o painel nunca traduz o texto do agente. | Tradução feita pelo painel | Depois de `/askaway lang`, os rótulos trocavam e o texto do agente não. | [beta.34](CHANGELOG.md#040-beta34---2026-10-21) |
 | `urgency_level` opcional (`low`, `medium`, `high`), com a graduação por palavras-chave como reserva. | Só palavras-chave | Uma cor estável; as palavras-chave mudam com o idioma. | [beta.14](CHANGELOG.md#040-beta14---2026-10-18) |
+| A cor da urgência vem só de um `urgency_level` explícito; as listas de palavras-chave saíram, e sem o grau o texto da urgência não tem grau. | Palavras-chave como reserva | A graduação por palavras-chave ignorava a negação: "Não é urgente, nada quebra hoje" saía na cor de erro (#36). | [1.1.5](CHANGELOG.md#115---2026-11-14) |
 | Um `ask` repetido (mesma sessão, mesmo texto) devolve o id aberto; uma repetição de risco alto pausa e eleva o risco da gêmea para `high`. | Registrar duplicatas | `ask` idênticos simultâneos; uma repetição de risco alto ainda precisa pausar. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18), [beta.31](CHANGELOG.md#040-beta31---2026-10-21) |
 | Uma pergunta de risco alto que não grava é tentada 4 vezes, com 50 ms entre elas, e então a resposta é `pause` com o erro do sistema. | Pedir correção na falha; uma tentativa | Um pedido de correção deixaria uma pergunta de risco alto seguir sem pausa. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
 | Um `ask` de risco alto que bate num erro interno responde `pause`. | `continue` | Falhar em direção à pausa. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
@@ -558,6 +559,8 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 | Decisão | Em vez de | Por quê | Desde |
 |---|---|---|---|
 | Nada no cartão recolhe: O que acontece, Prós e Contras de cada opção e o bloco de detalhes aparecem sempre, e não há tecla `e`. | Recolher a justificativa | As linhas de cada opção eram a parte mais usada do cartão. | [beta.27](CHANGELOG.md#040-beta27---2026-10-19) |
+| O bloco de detalhes recolhe por padrão atrás de um botão com a contagem de seções, no anel de foco, sem tecla nem linha de teaser; o estado aberto é uma marca por usuário (`details-open`). As linhas de cada opção continuam sempre desenhadas. | Detalhes sempre abertos; uma tecla; uma linha de teaser | A aba de detalhes era pouco lida (#35). | [1.1.5](CHANGELOG.md#115---2026-11-14) |
+| A faixa e o contador do cabeçalho somam `N pausadas` entre as perguntas e os grupos quando uma pergunta de alto risco pausa a sessão. | Pausa só na linha de estado do cartão | A faixa não mostrava que um agente estava parado até abrir o cartão (#37). | [1.1.5](CHANGELOG.md#115---2026-11-14) |
 | Contexto antes da decisão: a explicação e os detalhes, depois a pergunta e as opções. | Pergunta e opções primeiro | A ordem de cartão aprovada. | 2026-10-19 |
 | Um cartão por vez, a pergunta mais antiga primeiro; os grupos na ordem da sua pergunta mais antiga. | A mais nova primeiro | O mock aprovado. | 0.1.0 |
 | A árvore agrupa pelo grupo da barra lateral do Desktop, senão pela família de sessões, senão pelo projeto. | Agrupar só por projeto | Uma família do Desktop se dividia entre pastas; a árvore segue a barra lateral. | [beta.13](CHANGELOG.md#040-beta13---2026-10-18), [beta.35](CHANGELOG.md#040-beta35---2026-10-21) |
@@ -762,10 +765,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 581 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 600 |
 | CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit 79d4c4b (a correção da 1.1.4), em 2026-11-13. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit de88fb7 (o contador de pausadas da 1.1.5), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -824,6 +827,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.2 | 2026-11-08 | Uma linha fina fica logo abaixo do cabeçalho do painel, como no KeepAway Repo. |
 | 1.1.3 | 2026-11-13 | As gravações de estado do painel deixam de precisar do `mv -fT` do GNU (ainda não testadas no macOS), e a trava de rascunho de uma janela morta sai depois de dois minutos no Linux. |
 | 1.1.4 | 2026-11-13 | O texto digitado em Outra é a resposta sem Enter; as gravações de rascunho de uma janela rodam em ordem numa só fila; a trava de movimento só descarta a repetição do mesmo movimento; Enviar tudo com uma pergunta sem resposta a nomeia. |
+| 1.1.5 | 2026-11-14 | Os detalhes do cartão recolhem por padrão atrás de um botão com a contagem; a cor da urgência vem só de `urgency_level`, sem palavra-chave; a faixa e o contador mostram as pausadas. |
 
 ## 🤝 Contribuição
 

@@ -40,6 +40,7 @@ import {
   withAnswer,
   withLocalAnswers,
   damagedPauseOf,
+  pausedText,
   NO_DESKTOP_GROUPS,
   parseDesktopGroups,
   withDesktopGroup,
@@ -70,6 +71,8 @@ const LIST_FAILURE_LOG_MAX = 500
 // The plugin's own store keys: the ids of the History lines the person cleared, and the chosen language.
 const CLEARED_KEY = 'cleared'
 const LANG_KEY = 'lang'
+// The details block's open state (issue #35): one sticky flag per user, true while the person has it open; absent is folded.
+const DETAILS_OPEN_KEY = 'details-open'
 // The name the person signs answers with: a name, '' once they skipped the question, absent before it was asked.
 const WHO_KEY = 'who'
 // Quiet mode (/askaway quiet on|off): true stops the toast per new question and the fade after an answer.
@@ -109,6 +112,8 @@ const damagedAtom = atom({ plugin: 'askaway-user', key: 'damagedPauses' } as con
 // The stored answerer name: null before the question was asked, '' after a skip, else the name.
 const whoAtom = atom({ plugin: 'askaway-user', key: 'who' } as const, null as string | null)
 const quietAtom = atom({ plugin: 'askaway-user', key: 'quiet' } as const, false)
+// The details block is open (DETAILS_OPEN_KEY): read at session.start, folded until then.
+const detailsOpenAtom = atom({ plugin: 'askaway-user', key: 'details-open' } as const, false)
 const wizardAtom = atom({ plugin: 'askaway-user', key: 'wizard' } as const, flow.EMPTY_WIZARD)
 // The question set (reviewKeyOf) the review (every chosen answer, Back and Submit all) is drawn for in place of the card, or null:
 // set by Next on the last question of a group of two or more, cleared by Back on the review (leaveReview), a move, a jump, a
@@ -1357,6 +1362,17 @@ async function recordPendingNow($: EngineInterface): Promise<void> {
   }
 }
 
+// The details toggle's press (issue #35): flips the open state, keeps it in the store for the next session start, and redraws.
+// The flip happens on the atom first, so a second press during the store write reads this flip, not the stored flag.
+async function flipDetails($: EngineInterface): Promise<void> {
+  let open = false
+  await update($, detailsOpenAtom, prev => {
+    open = !prev
+    return open
+  })
+  await $.store.set(DETAILS_OPEN_KEY, open)
+}
+
 // A nav action, an option press or a submit records the pending Other text first, so the move or the write reads the pick
 // the person typed. A failure is logged, and the action goes on.
 async function afterPendingOther($: EngineInterface, act: () => Promise<void>): Promise<void> {
@@ -1422,6 +1438,7 @@ function moveOnce($: EngineInterface, key: string, move: () => void): void {
 
 const actionsFor = ($: EngineInterface): PaneActions => ({
   clearHistory: () => report($, clearHistory($)),
+  toggleDetails: () => report($, afterPendingOther($, () => flipDetails($))),
   dismissEndedForced: id => report($, dismissOrSay($, id, true)),
   dismissDamagedUnforced: id => report($, dismissOrSay($, id, false)),
   pick: (id, choice) => moveOnce($, `pick:${id}:${choice.key}`, () => report($, afterPendingOther($, () => pickOption($, id, choice)))),
@@ -1475,6 +1492,8 @@ export const register: Register = on => {
     const storedWho = await $.store.get(WHO_KEY)
     const storedQuiet = (await $.store.get(QUIET_KEY)) === true
     await update($, quietAtom, () => storedQuiet)
+    const storedDetailsOpen = (await $.store.get(DETAILS_OPEN_KEY)) === true
+    await update($, detailsOpenAtom, () => storedDetailsOpen)
     await update($, whoAtom, () => (typeof storedWho === 'string' ? storedWho : null))
     await update($, turn, () => ({ isBusy: false }))
     // A start keeps the wizard it holds, so a reload keeps the card and its step; only a wizard with no prior data starts empty.
@@ -1559,6 +1578,7 @@ export const register: Register = on => {
       review: await read($, reviewAtom),
       undelivered: await read($, undeliveredAtom),
       otherRows: await read($, otherRowsAtom),
+      detailsOpen: await read($, detailsOpenAtom),
       surface: e.surface,
     }
     return renderPane($.ui.resolve(e), view, actionsFor($), lang, heldFor(e.surface, e.requestId))
@@ -1590,7 +1610,7 @@ export const register: Register = on => {
     const lang = await read($, langAtom)
     return renderBand(
       $.ui.resolve(e),
-      { lang, questions: open.length, groups: flow.groupsOf(open).length, surface: e.surface },
+      { lang, questions: open.length, groups: flow.groupsOf(open).length, paused: pausedText(lang, open), surface: e.surface },
       () => report($, openPane($)),
       heldFor(e.surface, e.requestId),
     )

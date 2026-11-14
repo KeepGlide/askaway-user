@@ -72,17 +72,9 @@ const isRecord = (raw: unknown): raw is Record<string, unknown> =>
 const urgencyLevelOf = (raw: unknown): UrgencyGrade | undefined =>
   raw === 'low' || raw === 'medium' || raw === 'high' ? raw : undefined
 
-// The keyword fallback: the words of the Urgency text in English and Portuguese, high first.
-const HIGH_URGENCY_WORDS = /\b(now|today|immediately|urgent|urgente|agora|hoje|imediat\w*|alta)\b/
-const MEDIUM_URGENCY_WORDS = /\b(this week|soon|days?|semana|breve|dias|moderad\w*|\bm[ée]dia)\b/
-
-// The grade of a question's Urgency line: the grade the file names, else the one the words of `urgency` suggest, else low.
-export function urgencyGradeOf(question: Question): UrgencyGrade {
-  if (question.urgency_level !== undefined) return question.urgency_level
-  const words = (question.urgency ?? '').toLowerCase()
-  if (HIGH_URGENCY_WORDS.test(words)) return 'high'
-  if (MEDIUM_URGENCY_WORDS.test(words)) return 'medium'
-  return 'low'
+// The grade of a question's Urgency line: the grade the file names, or undefined when it names none (the text is then drawn plain).
+export function urgencyGradeOf(question: Question): UrgencyGrade | undefined {
+  return question.urgency_level
 }
 
 const optionalText = (raw: unknown): string | undefined =>
@@ -778,14 +770,25 @@ export const clearableIdsOf = (history: readonly HistoryGroup[]): string[] =>
     group.sessions.flatMap(session => session.entries.map(entry => entry.id)),
   )
 
+// An open question pauses its session when it is high-risk: the card's "Paused since" line and the paused count both read this.
+export const pausesSession = (question: Question): boolean => question.risk === 'high'
+
+// The paused segment of the band and of the header counter: "N paused" for the open questions that pause their session, else undefined.
+export function pausedText(lang: Lang, questions: readonly Question[]): string | undefined {
+  const count = questions.filter(pausesSession).length
+  return count === 0 ? undefined : plural(lang, count, 'count.paused.one', 'count.paused.many')
+}
+
 // The header counter: the open questions and the distinct groups (Desktop groups, else session families, else projects).
 export function counterText(lang: Lang, questions: readonly Question[]): string {
   if (questions.length === 0) return t(lang, 'counter.none')
   const groups = new Set(questions.map(groupKeyOf)).size
-  return t(lang, 'counter.line', {
+  const vars = {
     pending: plural(lang, questions.length, 'counter.pending.one', 'counter.pending.many'),
     groups: plural(lang, groups, 'count.group.one', 'count.group.many'),
-  })
+  }
+  const paused = pausedText(lang, questions)
+  return paused === undefined ? t(lang, 'counter.line', vars) : t(lang, 'counter.linePaused', { ...vars, paused })
 }
 
 // The footer line shown while no question is open: counts from the same folders the poll reads. Answered covers the last
@@ -874,7 +877,7 @@ function clockOf(ts: number): string {
 // Its time is timeOf's: the clock time, with the date when the question was asked on an earlier day than `now`.
 export function leadOf(lang: Lang, question: Question, now: number): string {
   const time = timeOf(question.ts, now)
-  return question.risk === 'high'
+  return pausesSession(question)
     ? t(lang, 'card.lead.paused', { time })
     : t(lang, 'card.lead.agent', { key: question.recommended, time })
 }
@@ -903,11 +906,11 @@ export const otherButtonKey = (questionId: string): string => `other-${questionI
 // The key of the Submit all button.
 export const SUBMIT_ALL_KEY = 'submit-all'
 
-// The keys of the pane's own Buttons (options, Other, navigation, Submit all, dismiss, the who skip, history clear, and the
-// tree links). A focus move onto one of them does not commit the Other text: its press does. An Input is not a Button (the
-// who field and the Other fields are left out), so a move onto one of them commits.
+// The keys of the pane's own Buttons (options, Other, navigation, Submit all, dismiss, the who skip, history clear, the details
+// toggle, and the tree links). A focus move onto one of them does not commit the Other text: its press does. An Input is not a
+// Button (the who field and the Other fields are left out), so a move onto one of them commits.
 const OWN_BUTTON_KEY = new RegExp(
-  `^(opt-|(?!${OTHER_INPUT_PREFIX})other-|nav-(back|next)$|review-back$|submit-all$|dismiss-|who-skip$|history-clear$|tree-jump-|tree-submit-)`,
+  `^(opt-|(?!${OTHER_INPUT_PREFIX})other-|nav-(back|next)$|review-back$|submit-all$|dismiss-|who-skip$|history-clear$|details-toggle-|tree-jump-|tree-submit-)`,
 )
 
 export const isOwnButtonKey = (key: string | undefined): boolean => key !== undefined && OWN_BUTTON_KEY.test(key)

@@ -2,7 +2,7 @@
 // markers; this mod reads them and writes answers only. Field names follow the spec.
 
 // The urgency grade of a question's Urgency line: its colour (look.ts URGENCY_COLOR). Optional in q/<id>.json; absent, the
-// grade is read from the words of `urgency` (model.ts urgencyGradeOf).
+// Urgency text has no grade and is drawn in the default colour (model.ts urgencyGradeOf).
 export type UrgencyGrade = 'low' | 'medium' | 'high'
 
 export type AnswerBy = 'panel' | 'accept_recommended' | 'accept_all' | 'cli' | 'agent'
@@ -150,6 +150,9 @@ declare module 'claude-code' {
       quiet: boolean
       // The language in use: the stored choice, else the environment's. Set at session start and by /askaway lang.
       lang: 'en' | 'pt'
+      // Whether the details block is open (store key "details-open", the details toggle): one flag per user, folded when absent,
+      // read at session start and kept across sessions and restarts.
+      detailsOpen: boolean
       // The question wizard (hooks/wizard.ts `Wizard`): the group on screen, the step, the question on screen and the picks
       // by question id. An Other pick carries its free text in `text`.
       wizard: {

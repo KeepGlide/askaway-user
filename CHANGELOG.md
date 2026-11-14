@@ -8,6 +8,22 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-11-14
+
+### Added
+- The band and the header counter add an `N paused` segment (pt-BR `N pausada(s)`) between the questions and the groups segments when an open high-risk question pauses its session: `2 questions waiting · 1 paused · 1 group` and `2 pending · 1 paused · 1 group` (`pausedText`, `band.textPaused`, `counter.linePaused`). With none paused the text is unchanged (#37).
+
+### Changed
+- The card's details block folds by default behind one toggle Button, `▸ Show details (n)` / `▾ Hide details` (pt-BR `details.show`, `details.hide`), with no hotkey letter and no teaser line. Its open state is one sticky per-user flag (store key `details-open`), read at `session.start` and kept across questions, sessions and restarts (#35).
+
+### Fixed
+- The urgency colour comes only from an explicit `urgency_level`: the keyword guess is gone, and so is its negation bug, where "Not urgent, nothing breaks today" was drawn in the error colour (`urgencyGradeOf`) (#36). Without a level the Urgency text is drawn in the default colour under the plain heading; with one, the heading names the grade, "Urgency (high):" (pt-BR "Urgência (alta):"), and the text takes its colour.
+- The inline copy "Not delivered yet: submit it again." (en and pt-BR, `card.undelivered`) no longer names a button, and the pt-BR review hint says "Selecione uma pergunta" instead of "Clique numa pergunta" (`review.hint`).
+
+### Not yet
+- #31 (the Claude Desktop repro of the Other commit) and #55 (committing Other text on the first key or on an idle timer) moved to W6.
+- The by-hand check of #35, #36 and #37 on Claude Desktop is pending. Focus staying on the details toggle after a press is not verifiable in the test harness (#35).
+
 ## [1.1.4] - 2026-11-13
 
 ### Fixed
@@ -945,7 +961,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.4...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.5...HEAD
+[1.1.5]: https://github.com/KeepGlide/askaway/compare/v1.1.4...v1.1.5
 [1.1.4]: https://github.com/KeepGlide/askaway/compare/v1.1.3...v1.1.4
 [1.1.3]: https://github.com/KeepGlide/askaway/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/KeepGlide/askaway/compare/v1.1.1...v1.1.2

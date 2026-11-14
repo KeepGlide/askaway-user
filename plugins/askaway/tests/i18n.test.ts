@@ -52,6 +52,17 @@ test('no message is left empty in either language', () => {
   expect(empty).toEqual([])
 })
 
+test('the paused segment reads in English and pt-BR, singular and plural, in the band and the header (#37)', () => {
+  expect(plural('en', 1, 'count.paused.one', 'count.paused.many')).toBe('1 paused')
+  expect(plural('en', 2, 'count.paused.one', 'count.paused.many')).toBe('2 paused')
+  expect(plural('pt', 1, 'count.paused.one', 'count.paused.many')).toBe('1 pausada')
+  expect(plural('pt', 2, 'count.paused.one', 'count.paused.many')).toBe('2 pausadas')
+  expect(t('en', 'band.textPaused', { questions: '2 questions', paused: '1 paused', groups: '1 group' })).toBe('2 questions waiting · 1 paused · 1 group')
+  expect(t('pt', 'band.textPaused', { questions: '2 perguntas', paused: '1 pausada', groups: '1 grupo' })).toBe('2 perguntas aguardando · 1 pausada · 1 grupo')
+  expect(t('en', 'counter.linePaused', { pending: '2 pending', paused: '1 paused', groups: '2 groups' })).toBe('2 pending · 1 paused · 2 groups')
+  expect(t('pt', 'counter.linePaused', { pending: '2 pendentes', paused: '1 pausada', groups: '2 grupos' })).toBe('2 pendentes · 1 pausada · 2 grupos')
+})
+
 test('the language comes from the first set locale variable, and pt-BR means pt', () => {
   expect(detectLang({ LC_ALL: 'pt_BR.UTF-8', LANG: 'en_US.UTF-8' })).toBe('pt')
   expect(detectLang({ LC_ALL: 'en_US.UTF-8', LANG: 'pt_BR.UTF-8' })).toBe('en')
@@ -112,4 +123,21 @@ test('gauntlet 4, B2 M33: the three keys M33 removed are absent from both dictio
     expect(Object.keys(MESSAGES.pt)).not.toContain(key)
   }
   expect('langName' in i18nModule).toBe(false)
+})
+
+// Issue #35: the details toggle reads its words in the card's language; the copy fixes of the same change.
+test('the details toggle says show with the count, or hide, in both languages (issue #35)', () => {
+  expect(t('en', 'details.show', { n: 7 })).toBe('▸ Show details (7)')
+  expect(t('pt', 'details.show', { n: 7 })).toBe('▸ Mostrar detalhes (7)')
+  expect(t('en', 'details.hide')).toBe('▾ Hide details')
+  expect(t('pt', 'details.hide')).toBe('▾ Ocultar detalhes')
+})
+
+test('an undelivered card asks for a new submit without naming Submit all, which a one-question card does not draw (issue #35)', () => {
+  expect(t('en', 'card.undelivered')).toBe('Not delivered yet: submit it again.')
+  expect(t('pt', 'card.undelivered')).toBe('Ainda não entregue: envie de novo.')
+})
+
+test('the pt-BR review hint says to select a question, as the English hint says to press one (issue #35)', () => {
+  expect(t('pt', 'review.hint')).toBe('Selecione uma pergunta para mudar a resposta.')
 })
