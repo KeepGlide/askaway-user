@@ -19,6 +19,7 @@ Commit hashes name the change in `git log`.
 ### Fixed
 - The urgency colour comes only from an explicit `urgency_level`: the keyword guess is gone, and so is its negation bug, where "Not urgent, nothing breaks today" was drawn in the error colour (`urgencyGradeOf`) (#36). Without a level the Urgency text is drawn in the default colour under the plain heading; with one, the heading names the grade, "Urgency (high):" (pt-BR "Urgência (alta):"), and the text takes its colour.
 - The inline copy "Not delivered yet: submit it again." (en and pt-BR, `card.undelivered`) no longer names a button, and the pt-BR review hint says "Selecione uma pergunta" instead of "Clique numa pergunta" (`review.hint`).
+- The details flag's state key is `detailsOpen`, as `PluginState` declares it, so `claude plugin validate` passes; the store key stays `details-open`. Found by the release check before 1.1.5 reached any installed copy.
 
 ### Not yet
 - #31 (the Claude Desktop repro of the Other commit) and #55 (committing Other text on the first key or on an idle timer) moved to W6.
