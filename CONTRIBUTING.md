@@ -45,3 +45,18 @@ biome lint plugins/askaway
 - Branch from `main` as `<type>/<scope>-<slug>`, one change per branch, then open a pull request.
 - Keep `README.md` and `README.pt-BR.md` in step: a change to one is a change to both.
 - `SPEC.md` describes the public state folder contract. When the code changes it, update the spec in the same pull request.
+
+## Changelog and release
+
+`CHANGELOG.md` feeds the public changelog on keepglide.com, so its text follows the site's feed contract.
+
+- Each release is one heading, `## [X.Y.Z] - YYYY-MM-DD`, newest first; `[Unreleased]` is not published.
+- Sections are `Added`, `Changed`, `Fixed`, `Security`, `Performance` and `Documentation`.
+- Every bullet opens with a bold feature name in plain words, then plain text, for example
+  `- **Pause guard holds every tool**: while a high-risk question waits, only reading tools run.`
+- The public text has no backticks, links, SPEC- ids, issue or pull request numbers, milestone names or file paths.
+  Keep those in the commit body and the pull request, where they help the next reader. The rule applies from the
+  feed's contract version on; older entries stay as written.
+
+Release step: after the release is merged and tagged, run the site exporter in keepglide-web
+(`scripts/publish-changelogs.mjs`), which reads this file and publishes the new version.
