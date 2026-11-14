@@ -119,6 +119,8 @@ function stubHost(on: On, files: Map<string, string>, env: Record<string, string
   // The CLI's `list`, `prune` and `answer`: the first answer for an id lands, and a later one is refused.
   on('process.run', (_$, e) => {
     if (e.argv[0] !== 'python3') {
+      // `test -d target` is exit 0 only for a folder the stub holds (a file under that path): writeAtomic's folder check.
+      if (e.argv[0] === 'test') return cliReply('', [...files.keys()].some(file => file.startsWith(`${e.argv[2] ?? ''}/`)) ? 0 : 1)
       // `mv -f from to` renames in the stub's folder; the draft file is recorded apart, as the picks it stands for.
       if (e.argv[0] === 'mv') {
         const [from = '', to = ''] = e.argv.slice(2)

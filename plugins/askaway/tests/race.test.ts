@@ -140,9 +140,11 @@ function stubHost(on: On, files: Map<string, string>, holds: Holds = {}) {
     files.set(event.path, event.text)
     return { value: undefined }
   })
-  // The shell commands the pane runs beside the CLI: `mv -fT` renames within the folder (writeAtomic's last step), `ln`
-  // publishes only when no file is there (the CLI's create_once), `rm -f` and `mkdir`/`rmdir` mirror the draft lock.
+  // The shell commands the pane runs beside the CLI: `test -d` (writeAtomic's folder check: exit 0 only for a folder the stub
+  // holds, a file under that path), `mv -f` renames within the folder (writeAtomic's last step), `ln` publishes only when no
+  // file is there (the CLI's create_once), `rm -f` and `mkdir`/`rmdir` mirror the draft lock.
   on('process.run', async (_$, event) => {
+    if (event.argv[0] === 'test') return cliReply('', [...files.keys()].some(file => file.startsWith(`${event.argv[2] ?? ''}/`)) ? 0 : 1)
     if (event.argv[0] === 'mv') {
       const [from = '', to = ''] = event.argv.slice(2)
       const text = files.get(from)
@@ -179,8 +181,9 @@ function stubHost(on: On, files: Map<string, string>, holds: Holds = {}) {
       for (const file of holds.staleTemps ?? []) files.delete(file)
       return cliReply('')
     }
-    // `find <lock> -maxdepth 0 -mmin +N` prints the lock's path when its age is above N whole minutes (find truncates the age to
-    // minutes), and nothing when it is not. So `+0` reports a lock a minute old or more, and `+1` one of two minutes or more.
+    // `find <lock> -maxdepth 0 -mmin +N` prints the lock's path when its truncated age is above N whole minutes, and nothing when it
+    // is not. This stub models GNU find, which truncates the age: `+1` reports a lock two minutes old or more. BSD rounds the age
+    // up and reports one over a minute; this suite models GNU only.
     if (event.argv[0] === 'find') {
       const limit = Number((event.argv[event.argv.indexOf('-mmin') + 1] ?? '+0').slice(1))
       const ageSeconds = holds.lockAgeSeconds?.get(event.argv[1] ?? '') ?? 0
@@ -416,8 +419,8 @@ test('race: a pick made while another draft.json write is in flight is not lost:
 
 test('race: a draft.lock left by a crashed window is removed once stale, and the pick is written at the next poll', async ($, on) => {
   const files = new Map([[path('q', QUESTION), question(QUESTION, 1000)]])
-  // The lock a crashed window left behind is 61 s old, past one minute: the pick's write removes it, and waits for the next poll.
-  const holds: Holds = { lockAgeSeconds: new Map([[DRAFT_LOCK, 61]]) }
+  // The lock a crashed window left behind is 121 s old, past the stale age on GNU and BSD alike: the pick's write removes it, and waits for the next poll.
+  const holds: Holds = { lockAgeSeconds: new Map([[DRAFT_LOCK, 121]]) }
   const { drafts, locks, clock } = stubHost(on, files, holds)
   locks.add(DRAFT_LOCK)
   await $.session.start(SESSION)
@@ -437,23 +440,39 @@ test('race: the draft temp file a crashed window left is swept with its stale lo
     [staleTemp, '{"ts":1,"picks":{}}'],
   ])
   // The lock and its temp file are older than the stale age: the write removes both, and waits for the next poll.
-  const holds: Holds = { lockAgeSeconds: new Map([[DRAFT_LOCK, 61]]), staleTemps: new Set([staleTemp]) }
+  const holds: Holds = { lockAgeSeconds: new Map([[DRAFT_LOCK, 121]]), staleTemps: new Set([staleTemp]) }
   const { drafts, locks, sweeps, clock } = stubHost(on, files, holds)
   locks.add(DRAFT_LOCK)
   await $.session.start(SESSION)
   const pane = await mountPane($)
   await pane.press({ key: `opt-${QUESTION}-B` })
   expect(files.has(staleTemp)).toBe(false)
-  expect(sweeps).toEqual([['find', STATE, '-maxdepth', '1', '-name', '.draft.json.*.tmp', '-mmin', '+0', '-delete']])
+  expect(sweeps).toEqual([['find', STATE, '-maxdepth', '1', '-name', '.draft.json.*.tmp', '-mmin', '+1', '-delete']])
   await clock.advance(5000)
   expect(picksOf(drafts.at(-1))).toEqual({ [QUESTION]: { key: 'B' } })
   await pane.unmount()
 })
 
-// Gauntlet 5 review R8: the stale age is one minute. find's `-mmin +0` matches a lock a minute old or more, so a lock 59 s old is fresh.
+// Gauntlet 5 review R8: the stale age is over one minute (`-mmin +1`: BSD needs over one minute, GNU two whole minutes), so a lock 59 s old is fresh on both.
 test('race: a draft.lock 59 seconds old is still fresh: the pick waits, and no lock or temp file is swept', async ($, on) => {
   const files = new Map([[path('q', QUESTION), question(QUESTION, 1000)]])
   const holds: Holds = { lockAgeSeconds: new Map([[DRAFT_LOCK, 59]]) }
+  const { drafts, locks, sweeps, clock } = stubHost(on, files, holds)
+  locks.add(DRAFT_LOCK)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: `opt-${QUESTION}-B` })
+  await clock.advance(5000)
+  expect(drafts).toEqual([])
+  expect(locks.has(DRAFT_LOCK)).toBe(true)
+  expect(sweeps).toEqual([])
+  await pane.unmount()
+})
+
+// The GNU model of find (it truncates the age): a lock 90 s old truncates to one minute, which `-mmin +1` does not match, so it is held.
+test('race: a draft.lock 90 seconds old is still held under -mmin +1 (GNU model): the pick waits, and no lock or temp file is swept', async ($, on) => {
+  const files = new Map([[path('q', QUESTION), question(QUESTION, 1000)]])
+  const holds: Holds = { lockAgeSeconds: new Map([[DRAFT_LOCK, 90]]) }
   const { drafts, locks, sweeps, clock } = stubHost(on, files, holds)
   locks.add(DRAFT_LOCK)
   await $.session.start(SESSION)

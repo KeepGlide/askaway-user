@@ -8,6 +8,16 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-13
+
+### Fixed
+- The pane's state writes no longer use GNU `mv -fT`, which BSD `mv` rejects: `writeAtomic` moves its temp file with `mv -f` and refuses a folder at its target before any temp file exists (#44). Not yet run on macOS.
+- A failed draft.json save is logged once per distinct message, not on every 5 s poll; the next save that lands clears it.
+- A failed write or move removes its temp file, and its error names the target path.
+
+### Changed
+- The draft.lock stale age is over one minute on macOS (BSD `find -mmin` rounds the age up) and two whole minutes on Linux (GNU truncates it). Before, Linux removed a lock at one minute and macOS removed a lock of any age. On Linux a window that died mid-write can block draft saves for up to two minutes; picks stay pending until the lock goes.
+
 ## [1.1.2] - 2026-11-08
 
 ### Changed
@@ -920,7 +930,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/KeepGlide/askaway/compare/v1.1.2...v1.1.3
 [1.1.2]: https://github.com/KeepGlide/askaway/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/KeepGlide/askaway/compare/v1.1.0...v1.1.1
 [1.0.2]: https://github.com/KeepGlide/askaway/compare/v1.0.1...v1.0.2

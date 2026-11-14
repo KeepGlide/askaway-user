@@ -56,10 +56,11 @@ const PANE = 'askaway'
 const POLL_MS = 5000
 // A draft.json stamped more than this past the clock is pulled back to the clock: a far-future stamp would hold off later drafts.
 const DRAFT_SKEW_MS = 60_000
-// A draft.lock folder this many minutes old or older is a dead window's lock (saveDraft removes it). find's `-mmin +N` matches an
-// age above N whole minutes, so the test is `+(minutes - 1)`: `+0` is a minute or older.
+// A draft.lock folder over this many minutes old is a dead window's lock (saveDraft removes it). find's `-mmin +N` reads the age per
+// platform: GNU truncates it to whole minutes (a match needs trunc(age) > N, so two minutes or more for N = 1), BSD rounds it up
+// (ceil(age) > N, so over one minute). `+1` therefore never matches a fresh lock on either.
 const DRAFT_LOCK_STALE_MINUTES = 1
-const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES - 1}`
+const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES}`
 // A pick, Next or Back locks the moves for this long: a second press inside the window (a double click) does nothing.
 const MOVE_LOCK_MS = 350
 // The `list --open` run that finds the ended sessions repeats at most this often while the linked open questions do not change.
@@ -132,6 +133,8 @@ type DraftChanges = { picks: Map<string, Pick | undefined>; labels: Map<string, 
 const unsaved: DraftChanges = { picks: new Map(), labels: new Map() }
 // Whether the poll's retry of unsavedPicks failed and the person was told; the toast shows once per failure.
 let draftFailing = false
+// The text of the last draft.json save failure logged, undefined once a save lands (see logDraftSaveFailure).
+let draftSaveFailure: string | undefined
 // The draft.json saves of this window in flight: the poll's retry skips its turn meanwhile rather than meet their draft.lock.
 let draftSaves = 0
 // The poll running now, undefined when none: a tick that comes meanwhile starts no second poll (the `handing` pattern), and
@@ -209,14 +212,31 @@ function randomHex(bytes: number): string {
   return [...crypto.getRandomValues(new Uint8Array(bytes))].map(byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-// Writes a file whole or not at all: the text goes to a temp file beside it, and `mv` renames it over the target (a rename
+// Writes a file whole or not at all: the text goes to a temp file beside it, and `mv -f` renames it over the target (a rename
 // within one folder is atomic; $.fs has no rename). The temp name is dot-prefixed and random, so two writers of one target
-// never share a temp file, and the CLI's `.*.tmp` prune finds an orphan. `mv -T` refuses a folder target instead of moving into it.
+// never share a temp file, and the CLI's `.*.tmp` prune finds an orphan. `mv -T` is not POSIX, so a folder at the target is
+// refused by `test -d` before any temp file exists. A folder that appears between that check and the move is not caught: `mv -f`
+// would move the temp file into it and exit 0. Nothing in the plugin or the CLI creates a folder at these paths, so the gap is
+// accepted. A failed move removes its temp file, and the message names the
+// target, not the random temp name, so two failures of one cause read the same.
 export async function writeAtomic($: EngineInterface, path: string, text: string): Promise<void> {
+  if ((await $.process.run(['test', '-d', path])).exitCode === 0) throw new Error(`could not write ${path}: it is a folder`)
   const temp = tempPathOf(path)
-  await $.fs.write(temp, text)
-  const run = await $.process.run(['mv', '-fT', temp, path])
-  if (run.exitCode !== 0) throw new Error(`askaway-user: could not move ${temp} into place: ${(run.stderr || run.stdout).trim()}`)
+  try {
+    await $.fs.write(temp, text)
+  } catch (error: unknown) {
+    await $.process.run(['rm', '-f', temp]).catch(() => undefined) // best effort: a partial temp file may be there
+    throw writeFailure(path, temp, error instanceof Error ? error.message : String(error))
+  }
+  const run = await $.process.run(['mv', '-f', temp, path])
+  if (run.exitCode === 0) return
+  await $.process.run(['rm', '-f', temp]).catch(() => undefined) // best effort: the move's own failure is the one reported
+  throw writeFailure(path, temp, (run.stderr || run.stdout).trim())
+}
+
+// The error of a failed write of `path`: the reason with its temp file named by a fixed token, so the same cause gives the same text.
+function writeFailure(path: string, temp: string, reason: string): Error {
+  return new Error(`could not write ${path}: ${reason.split(temp).join('the temp file')}`)
 }
 
 // The temp file a write of `path` goes to first: dot-named beside it, with a random part, so two writers never share one.
@@ -1038,14 +1058,24 @@ async function writeUnsaved($: EngineInterface, home: string): Promise<boolean> 
   try {
     await saveDraft($, home, batch)
   } catch (error: unknown) {
-    logFailure($, error)
+    logDraftSaveFailure($, error)
     return false
   } finally {
     draftSaves -= 1
   }
+  draftSaveFailure = undefined
   forgetLanded(unsaved.picks, batch.picks)
   forgetLanded(unsaved.labels, batch.labels)
   return true
+}
+
+// Logs a failed draft.json save once: the poll retries it every 5 s, so the same text is logged again only when it changes or
+// a save lands in between (the endedListFailure pattern).
+function logDraftSaveFailure($: EngineInterface, error: unknown): void {
+  const text = error instanceof Error ? error.message : String(error)
+  if (text === draftSaveFailure) return
+  draftSaveFailure = text
+  logFailure($, error)
 }
 
 // The poll's retry of the pending picks (H2). The person is told once while the write keeps failing; a write that lands

@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.2`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.3`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -197,10 +197,10 @@ Step by step:
 | Platform | Status | Notes |
 |---|---|---|
 | Linux | ✅ | Tested with Claude Code 2.1.296 and Python 3.12.3. The shell steps of the install spec were checked here only. |
-| macOS | ⚠️ | The Claude Desktop session folder is `~/Library/Application Support/Claude/claude-code-sessions` since 0.4.0-beta.37, covered by unit tests only (`scripts/tests/test_platform_paths.py`). |
+| macOS | ⚠️ | The Claude Desktop session folder is `~/Library/Application Support/Claude/claude-code-sessions` since 0.4.0-beta.37, covered by unit tests only (`scripts/tests/test_platform_paths.py`). Since 1.1.3 the panel's state writes use a portable `mv -f` and a stale-lock age per platform; the tests ran on Linux only, and a by-hand check on macOS is pending. |
 | Windows | ❌ | Not tested. The code has no Windows path for the Claude Desktop session folder (`DESKTOP_SESSIONS_ROOT` and `desktop_sessions_root`, `scripts/askaway.py`). |
 
-The panel is Linux-only: its state writes use GNU `mv -fT`, and its stale-lock check uses GNU `find -mmin` truncation. The macOS support of 0.4.0-beta.37 covers only the CLI's Claude Desktop session lookup.
+The panel's shell calls use only POSIX or BSD-documented options since 1.1.3 (`mv -f` instead of GNU `mv -fT`; a stale-lock age that no fresh lock matches under GNU or BSD `find -mmin`), and the tests ran on Linux only. The macOS support of 0.4.0-beta.37 covers only the CLI's Claude Desktop session lookup.
 
 ## 🚀 Installation
 
@@ -667,7 +667,7 @@ Each line names the value AskAway User chose and the one it gave up.
 - **A neutral default over the owner's language.** English is the default; pt-BR users set a locale or `/askaway lang`.
 - **Agent-written translations over pane translation.** A question without `translations` stays in its own language.
 - **Links over hotkeys for tree rows.** There is no keyboard jump to a row.
-- **Linux first over portability.** The panel uses GNU `mv -fT` and `find -mmin`, so it is Linux-only.
+- **Linux first over portability.** Since 1.1.3 the panel's shell calls use POSIX or BSD-documented options (`mv -f`, `find -mmin`), but only Linux runs have been checked.
 - **Local tests over CI.** No GitHub Actions run; contributors run both suites themselves.
 
 ## 🚧 Limits
@@ -678,7 +678,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 
 - **Python 3.12 or newer.** Below it, every call and every hook prints a version error on stderr and exits 0, so the pause and the Bash and file guard hold nothing.
 - **Claude Code 2.1.295 or newer.** The pause guard blocks a call on its own timeout or crash only through `"onFailure": "block"`; on an older Claude Code a timed-out or crashed pause guard lets the call through.
-- **POSIX and Linux.** The CLI needs POSIX (`fcntl` locks). The panel is Linux-only (GNU `mv -fT`, `find -mmin`). On macOS only the CLI's Desktop session lookup is covered; Windows is not handled.
+- **POSIX and Linux.** The CLI needs POSIX (`fcntl` locks). Since 1.1.3 the panel's shell calls use POSIX or BSD-documented options, but only Linux has been tested. On macOS only the CLI's Desktop session lookup is covered by tests; Windows is not handled.
 - **Desktop Groups** are read only from the Linux config path or `ASKAWAY_DESKTOP_CONFIG`. The format is the Desktop's private, undocumented one, and a file over 4 MiB keeps the last Groups read.
 
 <details>
@@ -744,10 +744,11 @@ Report a vulnerability privately, not in a public issue. [SECURITY.md](SECURITY.
 
 ## 🐞 Known issues
 
-No open issue carries the `bug` label as of 2026-10-22 (`gh issue list -R KeepGlide/askaway --state open --label bug`). These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
+No open issue carries the `bug` label as of 2026-11-13 (`gh issue list -R KeepGlide/askaway --state open --label bug`). These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
 
 - **Windows is not handled.** The Claude Desktop session folder is `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (default `~/.config`) on Linux and `~/Library/Application Support/Claude/claude-code-sessions` on macOS (`desktop_sessions_root`, `scripts/askaway.py`), so on Windows it points at a folder Claude Desktop does not use. It is not tested there. Workaround: none.
 - **Desktop Groups on macOS may need the config path set.** The default config path is `~/.config/Claude/claude_desktop_config.json` on every platform (`desktopConfigPathOf`, `hooks/register.tsx`). If Desktop Groups are missing on macOS, set `ASKAWAY_DESKTOP_CONFIG` to the config file's path. Questions still group by family or project.
+- **The panel on macOS is not checked by hand.** Since 1.1.3 its state writes and stale-lock check use POSIX or BSD-documented options, and the tests fake the shell on Linux. A lock that a window left behind is removed after about one minute on macOS and two minutes on Linux, so draft saves can wait that long; picks stay pending until then. Workaround: none.
 - **Early access API.** The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows. Workaround: stay on the tested Claude Code 2.1.296, or roll back to a tagged version ([Pin and roll back](#pin-and-roll-back)).
 - **A Codex run cannot be paused.** Nothing holds a Codex run, so its script must wait for the answer itself. Workaround: [From Codex](#-from-codex).
 - **The Bash guard is a deterrent.** It denies `askaway.py answer` in an agent's own Bash call, but the panel's CLI call is not a tool call and the hook does not see it. The CLI also trusts `CLAUDE_CODE_SESSION_ID`, and a process of the same user that can write the state folder can mint a panel token ([SECURITY.md](SECURITY.md#known-limits)). Workaround: one login per state folder.
@@ -761,10 +762,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 554 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 560 |
 | CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1716 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at the 1.1.2 release commit, 2026-11-08. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at the 1.1.3 release commit, 2026-11-13. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -821,6 +822,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.0 | 2026-11-05 | A local marketplace installs the downloaded zip offline, and the plugin is renamed AskAway User (id askaway-user). |
 | 1.1.1 | 2026-11-08 | The tab title comes from the dictionary, and the header row matches KeepAway Repo's. |
 | 1.1.2 | 2026-11-08 | A hairline rule sits under the pane header, as in KeepAway Repo. |
+| 1.1.3 | 2026-11-13 | The panel's state writes no longer need GNU `mv -fT` (not yet run on macOS), and a dead window's draft lock is removed after two minutes on Linux. |
 
 ## 🤝 Contributing
 
