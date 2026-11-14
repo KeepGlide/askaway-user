@@ -152,6 +152,8 @@ type Holds = {
   // The next prompt.submit fails. A hook that throws counts as skipped, so the host's own answer stands: with none, the
   // submit rejects and the pane logs the failure. The fault then clears.
   failSubmitOnce?: boolean
+  // The next N session.id reads come back empty, a failed read the plugin logs; each read counts one down, so the read after them resolves.
+  failSessionIdReads?: number
   // The `rm` of this marker path fails, its stderr naming the path, so the marker stays after a refused submit (#39).
   failRemoveOf?: string
   // Runs when a link is made, with the target it names: a test writes another window's marker at that moment (Gauntlet 5 review R12).
@@ -222,7 +224,14 @@ function stubHost(
     return { value: { command: event.name } }
   })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('session.id', () => ({ value: SELF }))
+  on('session.id', () => {
+    if (holds.failSessionIdReads !== undefined && holds.failSessionIdReads > 0) {
+      holds.failSessionIdReads -= 1
+      // An empty value, not a throw: a throwing hook is skipped by the engine, which would hand back the host's own id.
+      return { value: undefined }
+    }
+    return { value: SELF }
+  })
   // A null theme name is an absent theme row: the list has no row at all.
   on('config.list', () => ({ value: themeName === null ? [] : [{ key: 'theme', label: 'Theme', kind: 'choice', value: themeName }] }))
   on('config.set', (_$, e) => ({ value: e.value }))
@@ -9258,4 +9267,108 @@ test('the Other label in a History row follows the card language of its question
   expect(answerNameOf('en', { key: 'other' }, portuguese)).toBe('Outra…')
   expect(answerNameOf('en', { key: 'B' }, portuguese)).toBe('Reescrever')
   expect(answerNameOf('en', { key: 'other' }, undefined)).toBe('Other…')
+})
+
+test('issue #46: a reload clears the fade its interrupted press left, so the card takes a pick again', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const holds: Holds = {}
+  const { drafts, clock } = stubHost(on, files, true, {}, holds)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  // The reply is held open, so the card is still fading when the session restarts: the reload cut the press off.
+  const write = gate()
+  holds.write = write.promise
+  const pressed = pane.press({ key: 'submit-all' })
+  await clock.settle()
+  await $.session.start(SESSION)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(JSON.parse(drafts[drafts.length - 1] ?? '{}')).toEqual({ ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'B' } } })
+  write.open()
+  await pressed
+  await pane.unmount()
+})
+
+test('issue #46: a fade older than 60 s is ignored by a press, and a fresh one still refuses it', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const holds: Holds = {}
+  const { drafts, clock } = stubHost(on, files, true, {}, holds)
+  const lastDraft = (): unknown => JSON.parse(drafts[drafts.length - 1] ?? '{}')
+  await $.session.start(SESSION)
+  let pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  const pickedA = { ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'A' } } }
+  expect(lastDraft()).toEqual(pickedA)
+  // The reply is held open, so the card keeps its fade from the Submit all press until the hold releases.
+  const write = gate()
+  holds.write = write.promise
+  const pressed = pane.press({ key: 'submit-all' })
+  await clock.settle()
+  // A fresh fade dims the card and refuses a pick of another option: the draft still says A.
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(lastDraft()).toEqual(pickedA)
+  // The 350 ms advance clears the move lock the refused press set, as the other option tests do; the fade is still fresh.
+  await clock.advance(350)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(lastDraft()).toEqual(pickedA)
+  // Over 60 s on, the fade is older than LEAVING_MAX_AGE_MS and no longer holds the card. The pane draws the card from
+  // its snapshot only when it mounts, so it is mounted again to read the card as it stands now.
+  await clock.advance(60_000)
+  await clock.advance(350)
+  await pane.unmount()
+  pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  await clock.settle()
+  expect(lastDraft()).toEqual({ ts: expect.any(Number), picks: { 'q-l1-aaaaaa': { key: 'B' } } })
+  write.open()
+  await pressed
+  await pane.unmount()
+})
+
+test('issue #46: a session id that fails to read is logged once and read again on the next polls, so the idle hand-off still runs', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 0, { session: SELF })],
+    [path('a', 'q-l1-aaaaaa'), answer('q-l1-aaaaaa', 'B', 0)],
+  ])
+  const holds: Holds = { failSessionIdReads: 2 }
+  const { submits, logs, clock } = stubHost(on, files, true, {}, holds)
+  const idLogs = (): string[] => logs.filter(line => line.includes('session id'))
+  await $.session.start(SESSION)
+  // Tick 1 and tick 2 read an empty id: the first is logged, the second is not logged again, and no hand-off runs.
+  await clock.advance(5000)
+  await clock.advance(5000)
+  expect(submits).toEqual([])
+  expect(idLogs()).toEqual(['askaway-user: the session id came back empty'])
+  // Tick 3 reads the id: the idle hand-off runs on it.
+  await clock.advance(5000)
+  expect(submits).toHaveLength(1)
+  expect(idLogs()).toHaveLength(1)
+})
+
+test('issue #46: a band press on a terminal too narrow for the pane shows one toast with the hint', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { toasts, clock } = stubHost(on, files, false, {}, {}, { LANG: '' })
+  await $.session.start(SESSION)
+  await clock.advance(5000)
+  const band = await mountBand($)
+  await band.press({ key: 'open' })
+  await clock.settle()
+  expect(toasts.filter(text => text === 'The pane needs a wider window: widen it or run /askaway.')).toHaveLength(1)
+  await band.unmount()
+})
+
+test('issue #46: a failure the pane logs carries the askaway-user prefix once, not twice', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
+  const { logs } = stubHost(on, files, true, {}, { installExit: 1 })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await pane.press({ key: 'submit-all' })
+  expect(logs.filter(line => line.includes('could not create the panel token file'))).toEqual([
+    'askaway-user: could not create the panel token file (install exit 1)',
+  ])
+  await pane.unmount()
 })

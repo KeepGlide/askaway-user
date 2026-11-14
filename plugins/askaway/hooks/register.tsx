@@ -63,6 +63,8 @@ const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES}`
 // A move (a pick, Next or Back) drops a repeat of the same action for this long: a second press of that action inside the window
 // (a double click) does nothing. A different action goes through at once.
 const MOVE_LOCK_MS = 350
+// A card's fade older than this is a press a reload cut off (its reply never ended the fade): a press ignores it (issue #46).
+const LEAVING_MAX_AGE_MS = 60_000
 // The `list --open` run that finds the ended sessions repeats at most this often while the linked open questions do not change.
 const ENDED_RECHECK_MS = 30_000
 // The timeout of each process run the pane makes (`$.process.run`'s init, ms; the engine's default is 30 s, and a run past it is
@@ -130,6 +132,9 @@ const undeliveredAtom = atom({ plugin: 'askaway-user', key: 'undelivered' } as c
 const otherRowsAtom = atom({ plugin: 'askaway-user', key: 'otherRows' } as const, {} as Record<string, number>)
 // The ts of the picks this session last wrote to draft.json or applied from it. A draft with a newer ts is applied.
 let draftTs = 0
+// This window's session id once read (ownSessionOf), and whether its failed read was logged this session start (issue #46).
+let ownSessionId: string | undefined
+let ownSessionLogged = false
 // The move that holds the lock, or undefined. Module-level only: nothing is drawn from it (moveOnce).
 let moveLock: { key: string } | undefined
 // The changes to draft.json, by question id: a pick or a kept label, undefined when it was removed.
@@ -175,7 +180,9 @@ function heldFor(surface: RenderSurface, requestId: string): HeldButtons {
 
 // A failed poll or action is logged, never thrown into the timer or a press handler.
 function logFailure($: EngineInterface, error: unknown): void {
-  $.ui.log(`askaway-user: ${error instanceof Error ? error.message : String(error)}`)
+  const message = error instanceof Error ? error.message : String(error)
+  // Some thrown messages already carry the prefix (saveDraft, the panel token file): the log shows it once.
+  $.ui.log(message.startsWith('askaway-user: ') ? message : `askaway-user: ${message}`)
 }
 
 function report($: EngineInterface, job: Promise<unknown>): void {
@@ -547,6 +554,24 @@ async function dismissQuestion($: EngineInterface, home: string, id: string, for
   await pollAfterRunning($, home)
 }
 
+// This window's session id, read until it resolves: a read that rejects or comes back empty is logged once per session start,
+// and the next interval poll reads it again, so the idle hand-off waits for the id instead of never running (issue #46).
+async function ownSessionOf($: EngineInterface): Promise<string | undefined> {
+  if (ownSessionId !== undefined) return ownSessionId
+  try {
+    const id = await $.session.id()
+    if (!id) throw new Error('the session id came back empty')
+    ownSessionId = id
+    return id
+  } catch (error) {
+    if (!ownSessionLogged) {
+      ownSessionLogged = true
+      logFailure($, error)
+    }
+    return undefined
+  }
+}
+
 // Runs a poll once the poll running now, if any, has ended (pane-conc5-3), and marks it as the one running until it ends.
 function pollAfterRunning($: EngineInterface, home: string, ownSession?: string): Promise<void> {
   const run = (polling ?? Promise.resolve()).then(() => pollInbox($, home, ownSession))
@@ -880,6 +905,11 @@ async function endFade($: EngineInterface, id: string): Promise<void> {
   await update($, leaving, prev => Object.fromEntries(Object.entries(prev).filter(([key]) => key !== id)))
 }
 
+// The fades a press reads: an entry older than LEAVING_MAX_AGE_MS no longer holds its card (issue #46).
+function liveLeaving(fading: Record<string, number>, now: number): Record<string, number> {
+  return Object.fromEntries(Object.entries(fading).filter(([, pressedAt]) => now - pressedAt <= LEAVING_MAX_AGE_MS))
+}
+
 // The ids Clear all wrote to cleared.json; none when the file is absent or malformed.
 async function sharedClearedIds($: EngineInterface, home: string): Promise<string[]> {
   return parseCleared(await readJson($, `${home}/cleared.json`))?.ids ?? []
@@ -1003,7 +1033,7 @@ type Snapshot = {
 }
 
 async function snapshot($: EngineInterface): Promise<Snapshot> {
-  const fading = await read($, leaving)
+  const fading = liveLeaving(await read($, leaving), await $.clock.now())
   const open = openQuestions(await read($, board), fading)
   const wizard = prunedWizard(await read($, wizardAtom), open)
   const groups = flow.groupsOf(open)
@@ -1420,6 +1450,13 @@ async function openPane($: EngineInterface): Promise<{ isPlaced: boolean }> {
   return $.ui.open({ id: PANE, title: t(lang, 'pane.title'), focus: true })
 }
 
+// The band's press opens the pane. A terminal too narrow to draw it leaves it undrawn, and the band has no list to fall back on,
+// so the person is told once what to do (issue #46).
+async function openFromBand($: EngineInterface): Promise<void> {
+  const opened = await openPane($)
+  if (!opened.isPlaced) $.ui.toast(t(await read($, langAtom), 'toast.paneNarrow'))
+}
+
 // Registers /askaway with the description of the language; /askaway lang calls it again (M69). Whether the engine
 // takes a changed description from a second registration is not verified; a refusal is logged once (SPEC, Lang).
 async function registerCommand($: EngineInterface, lang: Lang): Promise<void> {
@@ -1529,6 +1566,10 @@ export const register: Register = on => {
     await update($, detailsOpenAtom, () => storedDetailsOpen)
     await update($, whoAtom, () => (typeof storedWho === 'string' ? storedWho : null))
     await update($, turn, () => ({ isBusy: false }))
+    // A reload cuts off the press that started a fade, so the fades of the last session are dropped with it (issue #46).
+    await update($, leaving, () => ({}))
+    ownSessionId = undefined
+    ownSessionLogged = false
     // A start keeps the wizard it holds, so a reload keeps the card and its step; only a wizard with no prior data starts empty.
     await update($, wizardAtom, prev => (hasWizardData(prev) ? prev : flow.EMPTY_WIZARD))
     // A session starts with no draft seen: the awaited first poll below applies the picks the folder holds.
@@ -1543,9 +1584,8 @@ export const register: Register = on => {
       await pollInbox($, folder).catch((error: unknown) => logFailure($, error))
       // A hot reload keeps the board, so the first poll writes nothing: the band and the pane are drawn on request.
       $.ui.invalidate('ui.render')
-      const ownSession = await $.session.id().catch(() => undefined)
       poller = $.clock.every(POLL_MS, () => {
-        if (polling === undefined) report($, pollAfterRunning($, folder, ownSession))
+        if (polling === undefined) report($, ownSessionOf($).then(ownSession => pollAfterRunning($, folder, ownSession)))
       })
     }
     return next(e)
@@ -1583,7 +1623,8 @@ export const register: Register = on => {
     const lang = await read($, langAtom)
     const current = await read($, board)
     const now = await read($, clockTick)
-    const fading = await read($, leaving)
+    // The card draws the same fades the handlers read: an expired one no longer dims it (issue #46).
+    const fading = liveLeaving(await read($, leaving), await $.clock.now())
     const hidden = await read($, cleared)
     const open = openQuestions(current, fading)
     const wizard = prunedWizard(await read($, wizardAtom), open)
@@ -1646,7 +1687,7 @@ export const register: Register = on => {
     return renderBand(
       $.ui.resolve(e),
       { lang, questions: open.length, groups: flow.groupsOf(open).length, paused: pausedText(lang, open), surface: e.surface },
-      () => report($, openPane($)),
+      () => report($, openFromBand($)),
       heldFor(e.surface, e.requestId),
     )
   })
