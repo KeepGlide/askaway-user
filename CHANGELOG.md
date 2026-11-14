@@ -8,6 +8,11 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.13] - 2026-11-14
+
+### Changed
+- **Every question keeps all its texts**: the analogy, the plan, the gains, the losses and the context are required again at every risk, as the owner decided; the optional details of 1.1.11 are withdrawn.
+
 ## [1.1.12] - 2026-11-14
 
 ### Changed
@@ -1031,7 +1036,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.12...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.13...HEAD
+[1.1.13]: https://github.com/KeepGlide/askaway-user/compare/v1.1.12...v1.1.13
 [1.1.12]: https://github.com/KeepGlide/askaway-user/compare/v1.1.11...v1.1.12
 [1.1.11]: https://github.com/KeepGlide/askaway-user/compare/v1.1.10...v1.1.11
 [1.1.10]: https://github.com/KeepGlide/askaway-user/compare/v1.1.9...v1.1.10
