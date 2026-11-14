@@ -30,28 +30,38 @@ def _marked(path: str) -> bool:
     return stat.S_ISREG(status.st_mode) and status.st_size > 0
 
 
-def _asked_by(path: str, agent_id: str) -> bool:
-    """Does the question file name agent_id as its asker? A file that is no regular file, or does not read, names nobody.
+def _fast_home() -> str:
+    """The state folder the fast paths read: ASKAWAY_HOME, else ~/.claude/state/askaway (the same folder as DEFAULT_HOME)."""
+    default_home = os.path.join(os.path.expanduser("~"), ".claude", "state", "askaway")
+    return os.environ.get("ASKAWAY_HOME") or default_home
+
+
+def _fast_entry(path: str) -> object:
+    """The parsed JSON of a regular file that reads, else None. A file that is no regular file, or does not read, is None.
     O_NOFOLLOW and O_NONBLOCK keep a symlink or a FIFO from being followed or blocking the open, as _regular_bytes does."""
     import json  # the fast path runs before the module imports
     import stat
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
-        return False
+        return None
     with os.fdopen(descriptor, "rb") as handle:
         try:
-            entry = json.loads(handle.read()) if stat.S_ISREG(os.fstat(descriptor).st_mode) else None
+            return json.loads(handle.read()) if stat.S_ISREG(os.fstat(descriptor).st_mode) else None
         except (OSError, ValueError, RecursionError):
-            return False
+            return None
+
+
+def _asked_by(path: str, agent_id: str) -> bool:
+    """Does the question file name agent_id as its asker? A file that does not read as a question names nobody."""
+    entry = _fast_entry(path)
     return isinstance(entry, dict) and entry.get("asker") == agent_id
 
 
 def _nothing_to_deliver(agent_id: str | None = None) -> bool:
     """Is every answer already marked in d/ and, for a subagent's call (agent_id), every answer its own ask filed marked
     in s/ too? Runs before the heavy imports; it reads a q/ file only for a subagent's call, to find the asker."""
-    default_home = os.path.join(os.path.expanduser("~"), ".claude", "state", "askaway")
-    home = os.environ.get("ASKAWAY_HOME") or default_home
+    home = _fast_home()
     try:
         answered = _json_names(os.path.join(home, "a"))
     except OSError:
@@ -72,7 +82,60 @@ def _event_agent(raw: bytes) -> str | None:
     return agent_id if isinstance(agent_id, str) and agent_id else None
 
 
+# The tools the tamper check reads (bash_tamper_reason, _file_tamper_reason). They sit above the imports because the pause
+# guard's fast exit reads them, and they are plain frozensets so that no import is needed for them.
+FILE_TOOLS = frozenset({"Edit", "Write", "NotebookEdit", "MultiEdit"})
+SHELL_TOOLS = frozenset({"Bash", "Monitor"})  # Monitor runs its command under the Bash rules (tools reference)
+
+
+def _restore_stdin(raw: bytes) -> None:
+    import io
+    sys.stdin = io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8")  # the slow path reads the event again
+
+
+def _clear_question(path: str, item_id: str) -> bool:
+    """Is this q/ file a question that no pause can hold: it reads as an object named after its own id, with an integer ts
+    and a pause that is not true? Any other file (unreadable, torn, damaged) is not clear, so the slow path decides on it."""
+    entry = _fast_entry(path)
+    return (isinstance(entry, dict) and entry.get("id") == item_id and isinstance(entry.get("ts"), int)
+            and entry.get("pause") is not True)
+
+
+def _nothing_to_hold(raw: bytes) -> bool:
+    """Can the pause guard print nothing for this event? Only when the event reads as an object whose tool the tamper
+    check does not read, and every q/ file is clear (_clear_question); a missing q/ folder is clear. Any other doubt, or
+    an error, is False: the slow path decides, and it denies a call it cannot read."""
+    import json  # the fast path runs before the module imports
+    try:
+        event = json.loads(raw.decode("utf-8"))
+        if not isinstance(event, dict) or event.get("tool_name") in SHELL_TOOLS | FILE_TOOLS:
+            return False
+        folder = os.path.join(_fast_home(), "q")
+        try:
+            names = _json_names(folder)
+        except FileNotFoundError:
+            return True
+        return all(_clear_question(os.path.join(folder, name), name.removesuffix(".json")) for name in names)
+    except Exception:  # noqa: BLE001 - in doubt the slow path decides; it denies a call it cannot read
+        return False
+
+
+def _exit_if_nothing_to_hold() -> None:
+    """The pause guard's fast exit: a call no pause holds prints nothing, so it exits before the heavy imports. Otherwise
+    the event goes on to the slow path, so an error here never exits 0: the pause guard fails closed."""
+    try:
+        raw = sys.stdin.buffer.read()
+    except Exception:  # noqa: BLE001 - the slow path reads stdin again and denies what it cannot read
+        return
+    if _nothing_to_hold(raw):
+        sys.exit(0)
+    _restore_stdin(raw)
+
+
 def _exit_if_idle() -> None:
+    if sys.argv[1:3] == ["hook", "pause-guard"]:
+        _exit_if_nothing_to_hold()
+        return
     try:
         if sys.argv[1:3] != ["hook", "deliver"] or not _nothing_to_deliver():
             return
@@ -80,8 +143,7 @@ def _exit_if_idle() -> None:
         agent_id = _event_agent(raw)
         if agent_id is None or _nothing_to_deliver(agent_id):
             sys.exit(0)
-        import io
-        sys.stdin = io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8")  # the slow path reads the event again
+        _restore_stdin(raw)
     except Exception:  # noqa: BLE001 - fail open: a broken fast path still exits 0 with no output
         sys.exit(0)
 
@@ -232,6 +294,12 @@ DURATION: Final = re.compile(r"([0-9]+)([mhd])")
 DURATION_MS: Final = {"m": 60_000, "h": 3_600_000, "d": DAY_MS}
 # Read-only MCP tools (mcp__<server>__<tool>): the tool name starts with one of these prefixes, no write word.
 READ_ONLY_PREFIXES: Final = ("get_", "list_", "read_", "search_", "find_", "describe_", "show_", "query_")
+# The pause guard holds every other tool. These pass while a pause holds: read-only tools, the task-list and plan tools,
+# and Skill (the owner's decision, issue #41). WebFetch is not here, so it is held.
+READ_ONLY_TOOLS: Final = frozenset({
+    "Read", "Grep", "Glob", "ToolSearch", "WebSearch", "ListAgents", "ListMcpResourcesTool", "ReadMcpResourceTool",
+    "AskUserQuestion", "Skill", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+    "mcp__ccd_turn__update_plan"})
 WRITE_WORDS: Final = frozenset({
     "add", "apply", "create", "delete", "edit", "exec", "execute", "insert", "keep", "kill", "move",
     "patch", "post", "purge", "push", "put", "register", "remove", "reset", "run", "save", "send",
@@ -285,8 +353,6 @@ FORCE_PRUNE_DENIED: Final = ("Denied: prune --force is for the user's own termin
                              "whose session has not ended, which frees that session's pause. Do read-only work or "
                              "end the turn.")
 FORCE_FLAG: Final = "--force"  # argparse takes any unambiguous prefix of a long option, so a prefix counts too
-FILE_TOOLS: Final = frozenset({"Edit", "Write", "NotebookEdit", "MultiEdit"})
-SHELL_TOOLS: Final = frozenset({"Bash", "Monitor"})  # Monitor runs its command under the Bash rules (tools reference)
 SHELL_OPERATORS: Final = frozenset({";", "&&", "||", "|", "&", "(", ")", "\n"})
 WRITE_REDIRECTS: Final = frozenset({">", ">>", ">&", ">|", "&>", "<>"})
 SHELL_PIECE: Final = re.compile(  # one piece of a word that holds no bracket unit; the $(, ${ and (( units are read by _unit_end
@@ -2200,8 +2266,11 @@ def inbox_call(command: str) -> bool:
 
 
 def _exempt_call(tool: object, command: str) -> bool:
-    """A call the pause lets through: one simple inbox ask, status, list, wait or export, or a read-only MCP tool."""
-    return (tool == "Bash" and inbox_call(command)) or is_read_only_mcp(tool)
+    """A call the pause lets through: one simple inbox ask, status, list, wait or export, a tool of READ_ONLY_TOOLS,
+    or a read-only MCP tool. Any other tool is held."""
+    if tool == "Bash" and inbox_call(command):
+        return True
+    return (isinstance(tool, str) and tool in READ_ONLY_TOOLS) or is_read_only_mcp(tool)
 
 
 def _unquote(raw: str) -> str:

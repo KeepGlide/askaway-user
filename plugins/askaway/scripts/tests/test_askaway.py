@@ -1488,15 +1488,30 @@ def test_pause_guard_lets_read_only_mcp_tools_through(tool, capsys, monkeypatch)
     assert run_hook(capsys, monkeypatch, "pause-guard", edit_event(tool=tool)) == ""
 
 
-def test_pause_guard_matcher_covers_agent_and_mcp_tools_in_hooks_json():
+@pytest.mark.parametrize("tool", ["SomeFutureTool", "WebFetch"])
+def test_pause_guard_holds_every_tool_outside_the_read_only_list(tool, capsys, monkeypatch):
+    pending_pause(capsys, monkeypatch)
+    out = hook_json(capsys, monkeypatch, "pause-guard", edit_event(tool=tool))
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+@pytest.mark.parametrize("tool", [
+    "Read", "Grep", "Glob", "Skill", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+    "mcp__ccd_turn__update_plan",
+])
+def test_pause_guard_lets_read_only_and_plan_tools_through(tool, capsys, monkeypatch):
+    pending_pause(capsys, monkeypatch)
+    assert run_hook(capsys, monkeypatch, "pause-guard", edit_event(tool=tool)) == ""
+
+
+def test_pause_guard_matcher_covers_every_tool_in_hooks_json():
     hooks = json.loads((SCRIPTS.parent / "hooks" / "command-hooks.json").read_text(encoding="utf-8"))
     group = next(group for group in hooks["hooks"]["PreToolUse"] if "pause-guard" in group["hooks"][0]["command"])
-    # Claude Code tests a regex matcher with RegExp.test, a match anywhere in the tool name (hooks doc)
+    # Claude Code tests a regex matcher with RegExp.test, a match anywhere in the tool name (hooks doc).
+    # The matcher holds every tool; the read-only allow-list (READ_ONLY_TOOLS) is applied by the hook itself.
     for name in ("Edit", "Write", "NotebookEdit", "MultiEdit", "Bash", "PowerShell", "Monitor", "Agent",
-                 "mcp__graphify__update_node"):
+                 "mcp__graphify__update_node", "Read", "TodoWrite", "SomeFutureTool"):
         assert re.search(group["matcher"], name), name
-    for name in ("Read", "TodoWrite"):
-        assert not re.search(group["matcher"], name), name
     assert group["hooks"][0]["onFailure"] == "block"  # a timeout or a failed start blocks the call (hooks doc, v2.1.295+)
 
 
@@ -1731,6 +1746,87 @@ def test_stamp_hook_is_a_bash_post_tool_use_hook_in_hooks_json():
     hooks = json.loads((SCRIPTS.parent / "hooks" / "command-hooks.json").read_text(encoding="utf-8"))
     group = next(group for group in hooks["hooks"]["PostToolUse"] if "stamp-asker" in group["hooks"][0]["command"])
     assert group["matcher"] == "Bash"
+
+
+# ---- pause-guard fast exit ---------------------------------------------
+
+def read_event_bytes(tool: str = "Read") -> bytes:
+    return json.dumps(edit_event(tool=tool)).encode("utf-8")
+
+
+def run_pause_guard(home: Path, raw: bytes) -> subprocess.CompletedProcess:
+    """The hook as Claude Code runs it: a process, so the __main__ fast exit runs. -X importtime lists every import."""
+    env = {**os.environ, "ASKAWAY_HOME": str(home)}
+    return subprocess.run([sys.executable, "-X", "importtime", str(SCRIPT), "hook", "pause-guard"], input=raw,
+                          capture_output=True, env=env, timeout=20, check=False)
+
+
+def imported_argparse(proc: subprocess.CompletedProcess) -> bool:
+    return re.search(rb"\|\s+argparse$", proc.stderr, re.MULTILINE) is not None
+
+
+def test_pause_guard_exits_before_the_heavy_imports_when_no_pause_is_on_file(home):
+    write_raw(home, "q", "q-1-abcdef", '{"id": "q-1-abcdef", "ts": 1, "session": "other", "pause": false}')
+    write_raw(home, "a", "q-1-abcdef", '{"id": "q-1-abcdef", "ts": 1, "key": "A"}')  # another session's unread answer
+    proc = run_pause_guard(home, read_event_bytes())
+    assert proc.returncode == 0 and proc.stdout == b""
+    assert not imported_argparse(proc)
+
+
+def test_pause_guard_process_still_loads_the_module_when_a_pause_is_on_file(home):
+    write_raw(home, "q", "q-1-abcdef", json.dumps({"id": "q-1-abcdef", "ts": 1, "session": SESSION, "pause": True}))
+    proc = run_pause_guard(home, json.dumps(edit_event()).encode("utf-8"))
+    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert imported_argparse(proc)
+
+
+def test_pause_guard_process_denies_a_state_folder_write_with_no_pause_on_file(home):
+    command = f"rm -f {Path.home()}/.claude/state/askaway/a/q-1-abcdef.json"  # the default folder, as the Bash tests name it
+    proc = run_pause_guard(home, json.dumps(edit_event(tool="Bash", command=command)).encode("utf-8"))
+    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_pause_guard_process_denies_a_damaged_question_that_names_the_session(home):
+    write_raw(home, "q", "q-1-abcdef", f'{{"id": "q-1-abcdef", "ts": 1, "session": "{SESSION}", "pause": tr')
+    proc = run_pause_guard(home, json.dumps(edit_event()).encode("utf-8"))
+    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_pause_guard_process_denies_stdin_it_cannot_read(home):
+    proc = run_pause_guard(home, b"not json")
+    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_fast_exit_clears_a_question_that_is_not_a_pause(home):
+    write_raw(home, "q", "q-1-abcdef", '{"id": "q-1-abcdef", "ts": 1, "pause": false}')
+    write_raw(home, "a", "q-1-abcdef", '{"id": "q-1-abcdef", "ts": 1, "key": "A"}')
+    assert askaway._nothing_to_hold(read_event_bytes()) is True
+
+
+def test_fast_exit_clears_when_there_is_no_question_folder(home):
+    assert askaway._nothing_to_hold(read_event_bytes()) is True
+
+
+@pytest.mark.parametrize("text", [
+    '{"id": "q-1-abcdef", "ts": 1, "session": "other", "pause": true}',
+    '{"id": "q-1-abcdef", "ts": 1, "session": "sess-under-test"',
+    '{"id": "q-2-abcdef", "ts": 1, "pause": false}',
+    '{"id": "q-1-abcdef", "ts": "1", "pause": false}',
+    "[1, 2]",
+])
+def test_fast_exit_takes_the_slow_path_for_a_question_it_cannot_clear(text, home):
+    write_raw(home, "q", "q-1-abcdef", text)
+    assert askaway._nothing_to_hold(read_event_bytes()) is False
+
+
+@pytest.mark.parametrize("tool", ["Bash", "Monitor", "Edit", "Write", "NotebookEdit", "MultiEdit"])
+def test_fast_exit_never_skips_the_tamper_check(tool, home):
+    assert askaway._nothing_to_hold(json.dumps(edit_event(tool=tool)).encode("utf-8")) is False
+
+
+@pytest.mark.parametrize("raw", [b"not json", b"[]", b"\xff"])
+def test_fast_exit_takes_the_slow_path_for_an_event_it_cannot_read(raw, home):
+    assert askaway._nothing_to_hold(raw) is False
 
 
 # ---- deliver -----------------------------------------------------------
