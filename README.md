@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.5`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`1.1.6`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -765,10 +765,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 600 |
-| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1716 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 602 |
+| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1717 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit de88fb7 (the 1.1.5 paused count), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit 9817b35 (the 1.1.6 hand-off fixes), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -828,6 +828,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.3 | 2026-11-13 | The panel's state writes no longer need GNU `mv -fT` (not yet run on macOS), and a dead window's draft lock is removed after two minutes on Linux. |
 | 1.1.4 | 2026-11-13 | Typed Other text is the answer without Enter; a window's draft writes run in order on one chain; the move lock drops only a repeat of the same move; Submit all with an unanswered question names it. |
 | 1.1.5 | 2026-11-14 | The card's details fold by default behind a toggle with its count; the urgency colour comes only from `urgency_level`, with no keyword guess; the band and the counter show the paused count. |
+| 1.1.6 | 2026-11-14 | A subagent's background turn no longer marks the session busy, so the idle hand-off is not held; a refused prompt hand-off removes its markers and is retried, so each answer is handed over once. |
 
 ## 🤝 Contributing
 

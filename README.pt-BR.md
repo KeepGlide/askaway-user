@@ -50,7 +50,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.5`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`1.1.6`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -765,10 +765,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway/issues/new).
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 600 |
-| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1716 |
+| Mod (TypeScript), `plugins/askaway/tests/` | 602 |
+| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1717 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit de88fb7 (o contador de pausadas da 1.1.5), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit 9817b35 (as correções de repasse da 1.1.6), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -828,6 +828,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.3 | 2026-11-13 | As gravações de estado do painel deixam de precisar do `mv -fT` do GNU (ainda não testadas no macOS), e a trava de rascunho de uma janela morta sai depois de dois minutos no Linux. |
 | 1.1.4 | 2026-11-13 | O texto digitado em Outra é a resposta sem Enter; as gravações de rascunho de uma janela rodam em ordem numa só fila; a trava de movimento só descarta a repetição do mesmo movimento; Enviar tudo com uma pergunta sem resposta a nomeia. |
 | 1.1.5 | 2026-11-14 | Os detalhes do cartão recolhem por padrão atrás de um botão com a contagem; a cor da urgência vem só de `urgency_level`, sem palavra-chave; a faixa e o contador mostram as pausadas. |
+| 1.1.6 | 2026-11-14 | Um turno de subagente em segundo plano não marca mais a sessão como ocupada, então o repasse na ociosidade não fica retido; um repasse de pergunta recusado remove as marcas e é tentado de novo, e cada resposta é entregue uma vez. |
 
 ## 🤝 Contribuição
 
