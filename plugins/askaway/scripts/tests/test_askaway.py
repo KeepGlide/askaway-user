@@ -1488,7 +1488,7 @@ def test_pause_guard_lets_read_only_mcp_tools_through(tool, capsys, monkeypatch)
     assert run_hook(capsys, monkeypatch, "pause-guard", edit_event(tool=tool)) == ""
 
 
-@pytest.mark.parametrize("tool", ["SomeFutureTool", "WebFetch"])
+@pytest.mark.parametrize("tool", ["SomeFutureTool", "WebFetch", "WebSearch", "Skill"])
 def test_pause_guard_holds_every_tool_outside_the_read_only_list(tool, capsys, monkeypatch):
     pending_pause(capsys, monkeypatch)
     out = hook_json(capsys, monkeypatch, "pause-guard", edit_event(tool=tool))
@@ -1496,7 +1496,7 @@ def test_pause_guard_holds_every_tool_outside_the_read_only_list(tool, capsys, m
 
 
 @pytest.mark.parametrize("tool", [
-    "Read", "Grep", "Glob", "Skill", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
+    "Read", "Grep", "Glob", "TodoWrite", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
     "mcp__ccd_turn__update_plan",
 ])
 def test_pause_guard_lets_read_only_and_plan_tools_through(tool, capsys, monkeypatch):
