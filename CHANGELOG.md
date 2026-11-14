@@ -8,6 +8,15 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-11-14
+
+### Documentation
+- **Docs name the renamed repository**: every link, badge and command points at the askaway-user repository, and the install, list, pin and uninstall commands use the askaway-user plugin id, with the uninstall lines for a zip install added.
+- **Security policy names the current version**: the supported-versions table lists this release as the latest, and a test keeps it in step with the plugin version.
+- **README opens with the product logo and cover**: the same logo and cover the keepglide.com product page shows.
+- **Changelog writing rule**: the contributing guide states how release notes are written for the public changelog and the release step that publishes them.
+- **Skill names the script from the plugin root**: the question playbook names the script path from the plugin folder when used outside Claude Code.
+
 ## [1.1.8] - 2026-11-14
 
 ### Fixed
@@ -997,7 +1006,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway/compare/v1.1.8...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v1.1.9...HEAD
+[1.1.9]: https://github.com/KeepGlide/askaway-user/compare/v1.1.8...v1.1.9
 [1.1.8]: https://github.com/KeepGlide/askaway/compare/v1.1.7...v1.1.8
 [1.1.7]: https://github.com/KeepGlide/askaway/compare/v1.1.6...v1.1.7
 [1.1.6]: https://github.com/KeepGlide/askaway/compare/v1.1.5...v1.1.6

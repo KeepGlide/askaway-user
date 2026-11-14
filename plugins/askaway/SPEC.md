@@ -684,7 +684,7 @@ field, a recommended option, and on `refile` complete and file again; continue o
 
 - The catalog is not in this repository. It lives in `KeepGlide/claude-plugins` (marketplace `keepglide`), whose
   entry `askaway` is a `git-subdir` source pointing at `plugins/askaway` of this repository. Installed with
-  `claude plugin marketplace add KeepGlide/claude-plugins` and `claude plugin install askaway@keepglide`.
+  `claude plugin marketplace add KeepGlide/claude-plugins` and `claude plugin install askaway-user@keepglide`.
 - `plugins/askaway/.claude-plugin/plugin.json`: the manifest; `"hooks": "./hooks/command-hooks.json"`
   declares the command hooks (`deliver`, `ask-guard`, `pause-guard`, `stamp-asker`), which use
   `python3` and `${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py`.

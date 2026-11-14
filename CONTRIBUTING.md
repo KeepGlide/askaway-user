@@ -36,7 +36,7 @@ biome lint plugins/askaway
 | `plugins/askaway/SPEC.md` | The spec: state folder contract, CLI, hooks and panel |
 | `plugins/askaway/tests/` | TypeScript tests |
 | `plugins/askaway/scripts/tests/` | Python tests |
-| `assets/` | `askaway-icon.svg` (the icon) and the README banner `askaway-cover-1600x400.png` and screenshots `band-en.png`, `window-light-en.png` and `window-dark-en.png`. The plugin ships `plugins/askaway/assets/icon.svg`, a separate file |
+| `assets/` | `askaway-user-icon.svg` (the logo) and the README cover `askaway-user-cover-1200x630.png`, the same files keepglide.com serves under `assets/products/askaway-user/`, and screenshots `band-en.png`, `window-light-en.png` and `window-dark-en.png`. The plugin ships `plugins/askaway/assets/icon.svg`, a separate file |
 
 ## Conventions
 
