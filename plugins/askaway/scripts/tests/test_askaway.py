@@ -163,6 +163,12 @@ def stored(home: Path, folder: str, item_id: str) -> dict:
     return json.loads((home / folder / f"{item_id}.json").read_text(encoding="utf-8"))
 
 
+def lapsed_line(item: str, title: str = "Cache backend", chosen: str = 'B · "In-process"') -> str:
+    """The English line the asking session gets for its own answer that lapsed unread (SPEC, "Model-facing lines")."""
+    return (f'Expired unread: AskAway User question {item} ("{title}"). The user answered {chosen} more than 7 days ago '
+            "and this session never read it. Ask again before acting on this question.")
+
+
 def deliver_event(session=SESSION, cwd=None) -> dict:
     return {"session_id": session, "cwd": cwd or os.getcwd(), "hook_event_name": "UserPromptSubmit"}
 
@@ -1869,14 +1875,16 @@ def test_deliver_never_prints_two_consecutive_runs_the_same_reply_twice(home, ca
     assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
 
 
-def test_deliver_never_prints_a_reply_one_millisecond_past_the_ttl(home, clock, capsys, monkeypatch):
+def test_deliver_tells_the_asking_session_of_a_reply_one_millisecond_past_the_ttl(home, clock, capsys, monkeypatch):
     base = 1_000_000_000_000
     clock["ms"] = base
     item = answer_from(capsys, monkeypatch, SESSION)
     clock["ms"] = base + 7 * DAY_MS + 1
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
-    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
+    out = hook_json(capsys, monkeypatch, "deliver", deliver_event())
+    assert out["hookSpecificOutput"]["additionalContext"] == lapsed_line(item)
     assert stored(home, "d", item)["expired"] is True
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
 
 
 def test_deliver_omits_you_were_using_when_answer_is_recommended(home, capsys, monkeypatch):
@@ -2260,7 +2268,9 @@ def test_deliver_expires_old_answer_from_another_session(home, clock, capsys, mo
     cli(capsys, "answer", item, "B")
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     clock["ms"] = base + 8 * DAY_MS
-    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""  # another session's run leaves it to its owner
+    assert askaway._nothing_to_deliver() is False
+    hook_json(capsys, monkeypatch, "deliver", deliver_event(session="other-session"))
     marker = stored(home, "d", item)
     assert marker["session"] is None and marker["expired"] is True
     answered = {p.name for p in (home / "a").iterdir()}
@@ -2803,25 +2813,35 @@ def test_sweep_leaves_live_sessions_alone(home, capsys, monkeypatch):
     assert askaway._nothing_to_deliver() is False
 
 
-def test_ttl_expiry_is_marked_with_reason_ttl(home, clock, capsys, monkeypatch):
+def test_another_sessions_deliver_run_does_not_consume_a_ttl_lapse(home, clock, capsys, monkeypatch):
     base = 1_000_000_000_000
     clock["ms"] = base
     item = answer_from(capsys, monkeypatch, "other-session")
     clock["ms"] = base + 8 * DAY_MS
     assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
+    assert not (home / "d" / f"{item}.json").exists()
+    assert askaway._nothing_to_deliver() is False
+    assert cli(capsys, "status", item)["status"] == "expired"
+    out = hook_json(capsys, monkeypatch, "deliver", deliver_event(session="other-session"))
+    assert out["hookSpecificOutput"]["additionalContext"] == lapsed_line(item)
     marker = stored(home, "d", item)
     assert marker["expired"] is True and marker["reason"] == "ttl"
+    assert askaway._nothing_to_deliver() is True
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event(session="other-session")) == ""
 
 
-def test_an_unread_answer_past_the_ttl_expires_even_for_its_own_session(home, clock, capsys, monkeypatch):
+def test_an_unread_answer_past_the_ttl_tells_its_own_session_once(home, clock, capsys, monkeypatch):
     base = 1_000_000_000_000
     clock["ms"] = base
     item = answer_from(capsys, monkeypatch, SESSION)
     clock["ms"] = base + 8 * DAY_MS
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
-    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
+    out = hook_json(capsys, monkeypatch, "deliver", deliver_event())
+    assert out["hookSpecificOutput"]["additionalContext"] == lapsed_line(item)
     marker = stored(home, "d", item)
     assert marker["expired"] is True and marker["reason"] == "ttl"
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
 
 
 def test_normal_delivery_carries_no_reason(home, capsys, monkeypatch):
@@ -4241,8 +4261,7 @@ def test_a_clock_jump_holds_the_read_time_expiry_of_an_unread_reply_for_one_cycl
     stamp = time.time() - stamp_age_days * 86_400
     os.utime(marker, (stamp, stamp))
     assert cli(capsys, "list")["items"][0]["status"] == ("answered" if held else "expired")
-    out = run_hook(capsys, monkeypatch, "deliver", deliver_event())
-    assert (out != "") is held
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) != ""  # the delivery when held, else the lapse line
     assert (stored(home, "d", item).get("expired") is True) is (not held)
 
 
@@ -5430,7 +5449,10 @@ def test_an_unread_answer_expires_one_millisecond_after_seven_days(home, clock, 
     item = unread_answer_from_another_session(capsys, monkeypatch)
     clock["ms"] = base + 7 * DAY_MS + 1
     assert askaway.item_status(item)[0] == "expired"
-    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
+    assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""  # another session's run leaves it open
+    assert not (home / "d" / f"{item}.json").exists()
+    out = hook_json(capsys, monkeypatch, "deliver", deliver_event(session="other-session"))
+    assert out["hookSpecificOutput"]["additionalContext"] == lapsed_line(item)
     marker = stored(home, "d", item)
     assert marker["expired"] is True and marker["reason"] == "ttl"
 
@@ -6748,7 +6770,8 @@ def test_a_lapsed_answer_ends_a_subagent_hold_without_a_copy(home, clock, capsys
     clock["ms"] = base
     item = subagent_pause_answered(capsys, monkeypatch)
     clock["ms"] = base + 8 * DAY_MS
-    assert run_hook(capsys, monkeypatch, "deliver", status_event(item)) == ""
+    out = hook_json(capsys, monkeypatch, "deliver", status_event(item))
+    assert out["hookSpecificOutput"]["additionalContext"] == lapsed_line(item, title="Delete old data?")
     assert not subagent_held(capsys, monkeypatch)
     assert not (home / "s" / f"{item}.json").exists()
 
@@ -6762,7 +6785,8 @@ def test_a_lapse_after_the_main_copy_went_out_ends_the_subagent_hold_and_deliver
     assert subagent_held(capsys, monkeypatch)
     clock["ms"] = base + 8 * DAY_MS
     assert cli(capsys, "status", item)["status"] == "delivered"
-    assert run_hook(capsys, monkeypatch, "deliver", status_event(item)) == ""
+    out = hook_json(capsys, monkeypatch, "deliver", status_event(item))
+    assert out["hookSpecificOutput"]["additionalContext"] == lapsed_line(item, title="Delete old data?")
     assert stored(home, "s", item)["expired"] is True and stored(home, "d", item)["recipient"] == "main"
     assert not subagent_held(capsys, monkeypatch)
     assert run_hook(capsys, monkeypatch, "deliver", status_event(item)) == ""

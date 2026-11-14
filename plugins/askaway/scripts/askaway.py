@@ -3704,14 +3704,28 @@ def _other_wording(text: str) -> str:
     return f"their own answer (Other): {_literal(text)}{OTHER_FRAMING}"
 
 
+def _chosen_text(entry: Mapping[str, Any], answer: Mapping[str, Any]) -> str:
+    """The chosen part of a line: the option as `<key> · "<label>"`, or the Other text in its framing."""
+    other = other_text(answer)  # the Other text as the lines quote it: capped, as model.ts's deliveryLine does
+    return _other_wording(other) if other else _key_text(entry, answer.get("key"))
+
+
 def _delivery_line(entry: Mapping[str, Any], answer: Mapping[str, Any]) -> str:
     key, recommended = answer.get("key"), entry.get("recommended")
-    other = other_text(answer)  # the Other text as the delivery line quotes it: capped, as model.ts's deliveryLine does
-    chosen = _other_wording(other) if other else _key_text(entry, key)
+    chosen = _chosen_text(entry, answer)
     line = f"{_answer_wording(answer)}: {chosen}. AskAway User question {entry['id']} ({_literal(entry['title'])})."
     if key != recommended:
         line += f" (you were using {_key_text(entry, recommended)})"
     return _one_line(line)  # a title or label with a line break must not forge a second line
+
+
+def _lapse_line(entry: Mapping[str, Any], answer: Mapping[str, Any]) -> str:
+    """The line the asking session gets for its own answer that lapsed unread. English only, never translated."""
+    days = UNDELIVERED_TTL_MS // DAY_MS
+    line = (f"Expired unread: AskAway User question {entry['id']} ({_literal(entry['title'])}). "
+            f"The user answered {_chosen_text(entry, answer)} more than {days} days ago and this session never read it. "
+            "Ask again before acting on this question.")
+    return _one_line(line)
 
 
 def _answer_line(entry: Mapping[str, Any], answer: Mapping[str, Any]) -> str | None:
@@ -3745,9 +3759,13 @@ def _claim_copy(item_id: str, session: str | None, asker: str | None) -> bool:
 
 
 def _due_line(item_id: str, session: str | None, cwd: object,
-              released: ReleasedScan | None = None, asker: str | None = None) -> str | None:
-    """The line of an answer due to the caller, not claimed yet: the main session (asker None) takes every answer of its
-    session, a subagent only the pauses its own ask filed. A lapsed answer is closed here and has no line."""
+              released: ReleasedScan | None = None, asker: str | None = None) -> tuple[str, str | None] | None:
+    """The line of an answer due to the caller, not claimed yet, with its lapse reason (`ttl`) or None for a delivery.
+    The main session (asker None) takes every answer of its session, a subagent only the pauses its own ask filed.
+
+    A session-ended answer is closed here and has no line. An answer that lapsed unread for the session that receives it
+    is the line `_lapse_line`, claimed by that run; another session's run leaves it open, so its own run still tells it.
+    """
     if _copy_closed(item_id, asker):
         return None
     entry = read_json(item_path("q", item_id))
@@ -3756,21 +3774,26 @@ def _due_line(item_id: str, session: str | None, cwd: object,
         return None
     if asker is not None and entry.get(ASKER_KEY) != asker:
         return None  # a subagent's hook call takes only the answers its own ask filed
-    # A lapsed answer closes for every session, the asking one included: status already says so.
-    if not _receives(entry, session, cwd) or answer_lapsed(answer):
-        reason = _lapse_reason(entry, answer, released)
-        if reason:
-            _close_lapsed(item_id, reason, asker)
+    receives = _receives(entry, session, cwd)
+    if receives and not answer_lapsed(answer):
+        line = _answer_line(entry, answer)
+        return (line, None) if line else None
+    reason = _lapse_reason(entry, answer, released)
+    if reason == "session-ended":  # the session is gone: closed for every copy, the asking one included, with no line
+        _claim_lapse(item_id, reason, asker)
         return None
-    return _answer_line(entry, answer)
+    if reason == "ttl" and receives:
+        return _lapse_line(entry, answer), reason
+    return None
 
 
-def _close_lapsed(item_id: str, reason: str, asker: str | None) -> None:
-    """Record a lapse in d/, which closes every copy; when the main session's copy already holds d/, the asking
-    subagent's lapse goes to its own s/ marker, which ends its pause."""
+def _claim_lapse(item_id: str, reason: str, asker: str | None) -> bool:
+    """Record a lapse as the caller's copy: d/, which closes every copy; when the main session's copy already holds
+    d/, the asking subagent's lapse goes to its own s/ marker, which ends its pause. True when this call wrote one."""
     lapse = {"id": item_id, "session": None, "expired": True, "reason": reason, "ts": now_ms()}
-    if not create_once(item_path("d", item_id), lapse) and asker is not None:
-        create_once(item_path("s", item_id), lapse)
+    if create_once(item_path("d", item_id), lapse):
+        return True
+    return asker is not None and create_once(item_path("s", item_id), lapse)
 
 
 def _stamp_due(marker: Path, interval_s: float) -> bool:
@@ -3844,7 +3867,8 @@ def _foreign_recheck_due() -> bool:
 
 
 def _foreign(item_id: str, session: str | None, cwd: object) -> bool:
-    """An open answer that another session (or project) receives: only a re-check can close it."""
+    """An open answer that another session (or project) receives: only a re-check can close it, and only a session-ended
+    one; a ttl lapse waits for the session that receives it, whose own run tells it."""
     if read_json(item_path("d", item_id)) is not None:
         return False  # already closed: _due_line returns at once
     entry = read_json(item_path("q", item_id))
@@ -3854,22 +3878,23 @@ def _foreign(item_id: str, session: str | None, cwd: object) -> bool:
 def _deliver_lines(item_ids: Sequence[str], session: str | None, cwd: object, recheck: bool,
                    asker: str | None = None) -> list[str]:
     """The lines this run claims, in two passes: every answer is read and judged first (the slow session_ended scans
-    run there, and a lapse is closed there), then the due copies are claimed in one short loop, so the hook prints
-    right after its first claim and a timeout during the reads leaves no claimed line unprinted."""
+    run there, and a session-ended lapse is closed there), then the due copies are claimed in one short loop, so the
+    hook prints right after its first claim and a timeout during the reads leaves no claimed line unprinted. A ttl
+    lapse is claimed as its lapse marker, and its line is printed only by the run whose claim wrote it."""
     released = ReleasedScan()  # one folder-wide scan for every answer of this run, at most
-    due: list[tuple[str, str]] = []
+    due: list[tuple[str, str, str | None]] = []
     for item_id in item_ids:
         try:  # another session's unread answer is re-checked at most once a minute
-            line = None if not recheck and _foreign(item_id, session, cwd) else _due_line(
+            judged = None if not recheck and _foreign(item_id, session, cwd) else _due_line(
                 item_id, session, cwd, released, asker)
         except Exception:  # noqa: BLE001 - nothing was claimed, so the next run retries it; the other answers still go
-            line = None
-        if line:
-            due.append((item_id, line))
+            judged = None
+        if judged:
+            due.append((item_id, *judged))
     lines: list[str] = []
-    for item_id, line in due:
+    for item_id, line, reason in due:
         try:
-            claimed = _claim_copy(item_id, session, asker)
+            claimed = _claim_lapse(item_id, reason, asker) if reason else _claim_copy(item_id, session, asker)
         except Exception:  # noqa: BLE001 - a claim that did not land is retried by the next run; the claimed lines print
             claimed = False
         if claimed:

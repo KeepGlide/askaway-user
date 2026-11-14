@@ -557,7 +557,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | The CSV export puts a leading apostrophe on cells that start with `=`, `+`, `-`, `@`, a tab or a CR. | Guarding only `=`, `@` and tab | Safer to open in a spreadsheet. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18) |
 | `prune --id <id> --force` is the user's own mode for a question whose session has no end marker; the Bash guard denies it to the agent. | Removal from the Desktop only | A terminal session never writes an end marker. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20) |
 | Retention is 30 days (`ASKAWAY_PRUNE_DAYS`), counted from the closing time, never from the ask. | Counting from the ask | An undelivered item must never be pruned. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
-| Unread answers expire after 7 days; a backward clock step never extends that, a clock jump skips that cycle's cleanup, and no second time reference is kept. | A second time reference | Simple, with its residual documented. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20), [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
+| Unread answers expire after 7 days; the session that asked gets one `Expired unread` line, and another session's run never closes the lapse. A backward clock step never extends that, a clock jump skips that cycle's cleanup, and no second time reference is kept. | A second time reference | Simple, with its residual documented. | [beta.30](CHANGELOG.md#040-beta30---2026-10-20), [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
 | Each answer records `who`: `ASKAWAY_WHO`, else the OS user, else `unknown`; the panel asks for the name once; the name is declared, not verified. | A verified identity | A single-user tool, labelled honestly. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17), [beta.11](CHANGELOG.md#040-beta11---2026-10-18) |
 
 </details>
@@ -743,7 +743,7 @@ Report a vulnerability privately, not in a public issue. [SECURITY.md](SECURITY.
 - **What leaves the machine:** nothing. Questions, answers and delivery markers are plain JSON files in your state folder, and AskAway User makes no network calls of its own. The answer text is injected into the asking session's prompt, so it reaches the model that session uses.
 - **Paid calls:** none. AskAway User makes no network calls, so it makes no paid ones.
 - **Question text** is whatever the agent wrote. Keep secrets out of it.
-- **Expiry:** an answer that is still unread 7 days after you sent it is closed as expired. The check runs on demand in the hooks of any session, and it applies even if the asking session is still alive. An answer whose asking session Claude Desktop has released is closed at once, as soon as any session's hook runs.
+- **Expiry:** an answer that is still unread 7 days after you sent it is closed as expired. The check runs on demand in the hooks of any session, and it applies even if the asking session is still alive: that session gets one `Expired unread` line when its next hook runs. An answer whose asking session Claude Desktop has released is closed at once, as soon as any session's hook runs.
 - **The Bash guard is a deterrent, not a guarantee** (see [Why it exists](#-why-it-exists)).
 
 ## 🩺 Troubleshooting
