@@ -348,7 +348,7 @@ O cartão abre com o título, a Urgência (na cor do seu grau, quando `urgency_l
 6. **As opções:** cada uma é um botão de largura total, `A · Rótulo`, com `(Recomendada)` depois do rótulo da recomendada. Embaixo, uma linha `└ troca · aderência 88` (a aderência é a estimativa do agente), depois **O que acontece** (`does`), **Prós** (`pros`) e **Contras** (`cons`), que aparecem de uma vez. A opção escolhida é o botão preenchido; a recomendada fica em negrito até ser escolhida. A última é **Outra…**, com a letra depois da última opção (`C · Outra…` com duas opções).
 7. **A linha de navegação:** um separador, depois **← Voltar** (apagado na primeira pergunta), **Próxima →** (em todas, menos na última), ou na última **Enviar tudo (N)** (veja o passo 6 acima).
 
-A CLI exige `what`, `problem`, `analogy`, `context`, `why`, `how`, `gains`, `losses`, `urgency`, `undo` e `risk`, e para cada opção `tradeoff`, `does`, `pros` e `cons`, então todo cartão registrado por ela traz todos. Nomes que o agente escreveu como comandos de barra ou entre crases ficam em negrito. A cor de destaque não é usada no texto: as seções de explicação ficam sobre o fundo do próprio cartão, sem preenchimento.
+A CLI exige `what`, `problem`, `why`, `urgency`, `undo` e `risk`, e para cada opção `tradeoff`, `does`, `pros` e `cons`; uma pergunta de risco `high` exige também o bloco de detalhes (`analogy`, `context`, `how`, `gains` e `losses`), então todo cartão registrado com risco alto traz todos. Nomes que o agente escreveu como comandos de barra ou entre crases ficam em negrito. A cor de destaque não é usada no texto: as seções de explicação ficam sobre o fundo do próprio cartão, sem preenchimento.
 
 </details>
 
@@ -424,12 +424,12 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `title` | não | Até 60 caracteres. Quando falta, a pergunta é cortada em 60 caracteres e usada como título. |
 | `what` | sim | O que é a coisa, em pelo menos duas frases. Até 600 caracteres. Desenhado como o primeiro parágrafo do cartão. |
 | `problem` | sim | A consequência concreta se nada for decidido. Até 400 caracteres. Desenhado como o segundo parágrafo do cartão. |
-| `context` | sim | De onde vem a pergunta: a tarefa e o passo que parou. Até 600 caracteres. |
+| `context` | só risco alto | De onde vem a pergunta: a tarefa e o passo que parou. Até 600 caracteres. |
 | `why` | sim | Uma ou duas frases sobre por que a opção recomendada. Até 300 caracteres. |
-| `how` | sim | Uma ou duas frases sobre como a opção recomendada funciona. Até 400 caracteres. |
-| `gains` | sim | Uma ou duas frases sobre o que o usuário ganha com ela. Até 300 caracteres. |
-| `losses` | sim | Uma ou duas frases sobre o que o usuário abre mão ou arrisca com ela. Até 300 caracteres. |
-| `analogy`, `urgency`, `undo` | sim | `analogy` é uma comparação que deixa a troca clara; `urgency` é o prazo, como `Can wait` ou `Blocks in ~8 min`; `undo` é o custo de reverter a escolha, como `changing later ≈ 10 min`. Até 300 caracteres cada. |
+| `how` | só risco alto | Uma ou duas frases sobre como a opção recomendada funciona. Até 400 caracteres. |
+| `gains` | só risco alto | Uma ou duas frases sobre o que o usuário ganha com ela. Até 300 caracteres. |
+| `losses` | só risco alto | Uma ou duas frases sobre o que o usuário abre mão ou arrisca com ela. Até 300 caracteres. |
+| `analogy`, `urgency`, `undo` | `urgency` e `undo` sim; `analogy` só risco alto | `analogy` é uma comparação que deixa a troca clara; `urgency` é o prazo, como `Can wait` ou `Blocks in ~8 min`; `undo` é o custo de reverter a escolha, como `changing later ≈ 10 min`. Até 300 caracteres cada. |
 | `risk` | sim | O risco de aceitar a opção recomendada: `low` é seguro de aceitar e fácil de mudar depois; `medium` é reversível, mas mudar custa retrabalho; `high` é irreversível, ou toca arquivos reais, credenciais ou dinheiro, e pausa o agente que perguntou até a resposta ser entregue a ele (a sessão inteira quando a pergunta não tem autor). Não há padrão: um `risk` faltando faz a entrada voltar como `refile`. |
 | `pause` | não | Só é verificado quanto ao tipo; não pausa nada. Uma pergunta pausa o agente que perguntou quando `risk` é `high` (a sessão inteira quando ainda não tem autor), e nunca em outro caso. |
 | `urgency_level` | não | `low`, `medium` ou `high` (qualquer caixa): o grau pelo qual o painel colore a urgência. Sem ele, o texto da urgência não tem grau: é desenhado na cor padrão. Qualquer outro valor volta como `refile`. |
@@ -442,7 +442,7 @@ A CLI também tem `answer <id> <key> [--by <origem>] [--text <texto>]`, que regi
 
 O painel responde só por este comando, com `answer <id> <key> --by panel --strict`, então a CLI é o único escritor de `a/`. A primeira resposta gravada num item vale, entre processos: uma posterior não é gravada.
 
-Depois de registrar, o agente segue com a `recommended`, a menos que a saída traga `"action": "pause"`, que a CLI imprime só para uma pergunta com `risk` alto. Uma entrada inválida imprime `"action": "refile"` com um `error` que cita os campos que faltam, por exemplo `missing fields: analogy; option A: fit` (mensagem da CLI, em inglês). O agente completa esses campos e registra a pergunta de novo; ele nunca segue sem registrar. Só uma falha interna imprime `"action": "continue"` com `"error": "internal error"`, e então nada foi registrado.
+Depois de registrar, o agente segue com a `recommended`, a menos que a saída traga `"action": "pause"`, que a CLI imprime só para uma pergunta com `risk` alto. Uma entrada inválida imprime `"action": "refile"` com um `error` que cita os campos que faltam, por exemplo `missing fields: undo; option A: fit` (mensagem da CLI, em inglês). O agente completa esses campos e registra a pergunta de novo; ele nunca segue sem registrar. Só uma falha interna imprime `"action": "continue"` com `"error": "internal error"`, e então nada foi registrado.
 
 ### Comandos da CLI
 
@@ -664,7 +664,7 @@ Cada linha nomeia o valor que o AskAway User escolheu e o que ele abriu mão.
 - **Simplicidade em vez de isolamento.** Uma pasta de estado por login, um `CLAUDE_CODE_SESSION_ID` confiável e um `who` declarado: um login compartilhado compartilha a caixa de entrada, e qualquer um assina qualquer nome.
 - **Nunca duas vezes em vez de nunca perdida.** Uma cópia é reivindicada antes de a linha ser impressa: uma interrupção entre as duas perde uma linha, e o Histórico ainda mostra a resposta.
 - **Uma cópia por destinatário em vez de uma marca compartilhada.** A sessão principal e o subagente que perguntou recebem a resposta uma vez cada, e `status` lê `delivered` pela cópia principal enquanto a retenção do subagente pode continuar.
-- **Uma pergunta avaliável em vez de uma barata.** Todo campo de explicação é obrigatório, então os agentes escrevem uma explicação completa e você decide com os mesmos fatos.
+- **Uma pergunta avaliável em vez de uma barata.** `what`, `problem`, `why`, `urgency` e `undo` são obrigatórios em qualquer risco, e o bloco de detalhes também no risco `high`, então os agentes escrevem uma explicação completa onde a decisão é arriscada e você decide com os mesmos fatos.
 - **Recusar em vez de cortar.** Texto longo é recusado com `too long (n/limit)`, nunca cortado pelas suas costas; o agente registra de novo.
 - **Um arquivo por item em vez de um arquivo compartilhado.** Sem corrida de acréscimo e sem limite de tamanho, ao custo de listar a pasta a cada consulta.
 - **Um gravador em vez de dois.** As respostas do painel passam pela CLI, então o painel precisa de `python3`, e uma execução que falha vira um aviso de erro.

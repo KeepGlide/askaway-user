@@ -94,6 +94,8 @@ def base_entry(**over) -> dict:
 
 
 REQUIRED_TEXT = ("what", "problem", "context", "why", "how", "gains", "losses", "analogy", "urgency", "undo")
+DETAILS_TEXT = ("analogy", "how", "gains", "losses", "context")  # required at risk high only
+LOW_REQUIRED_TEXT = tuple(name for name in REQUIRED_TEXT if name not in DETAILS_TEXT)  # required at every risk
 REQUIRED_OPTION_TEXT = ("does", "pros", "cons")
 
 
@@ -335,6 +337,25 @@ def test_a_null_or_blank_translated_title_counts_as_absent_and_takes_the_clipped
     assert stored(home, "q", out["id"])["translations"]["pt-BR"]["title"] == title_text
 
 
+@pytest.mark.parametrize("field", DETAILS_TEXT)
+def test_a_translation_lacking_a_details_text_the_main_entry_sets_is_refiled(field, capsys):
+    translation = complete_translation()
+    del translation[field]
+    out = cli(capsys, "ask", "--json", json.dumps(base_entry(risk="low", translations={"pt-BR": translation})))
+    assert out["action"] == "refile" and f"translations.pt-BR: missing {field}" in out["error"]
+
+
+@pytest.mark.parametrize("field", DETAILS_TEXT)
+def test_a_translation_may_leave_out_a_details_text_the_main_entry_leaves_out(field, home, capsys):
+    translation = complete_translation()
+    del translation[field]
+    entry = base_entry(risk="low", translations={"pt-BR": translation})
+    del entry[field]
+    out = cli(capsys, "ask", "--json", json.dumps(entry))
+    assert out["action"] == "continue"
+    assert stored(home, "q", out["id"])["translations"] == {"pt-BR": translation}
+
+
 def test_null_translations_file_the_question_without_translations(home, capsys):
     out = cli(capsys, "ask", "--json", json.dumps(base_entry(translations=None)))
     assert "id" in out
@@ -528,8 +549,8 @@ def test_entries_on_disk_with_other_keys_still_list_and_report_status(home, caps
     assert cli(capsys, "status", out["id"]) == {"id": out["id"], "status": "open", "key": None}
 
 
-@pytest.mark.parametrize("field", REQUIRED_TEXT)
-def test_ask_requires_every_text_field(field, home, capsys):
+@pytest.mark.parametrize("field", LOW_REQUIRED_TEXT)
+def test_ask_requires_every_text_field_at_low_risk(field, home, capsys):
     entry = base_entry()
     del entry[field]
     out = cli(capsys, "ask", "--json", json.dumps(entry))
@@ -538,11 +559,88 @@ def test_ask_requires_every_text_field(field, home, capsys):
 
 
 @pytest.mark.parametrize("field", REQUIRED_TEXT)
+def test_ask_requires_every_text_field_at_high_risk(field, home, capsys):
+    entry = base_entry(risk="high")
+    del entry[field]
+    out = cli(capsys, "ask", "--json", json.dumps(entry))
+    assert out == refile_reply(f"missing fields: {field}", missing=[field])
+    assert not (home / "q").exists() or list((home / "q").glob("*.json")) == []
+
+
+@pytest.mark.parametrize("field", LOW_REQUIRED_TEXT)
 def test_ask_rejects_a_blank_or_non_string_text_field(field, capsys):
     out = cli(capsys, "ask", "--json", json.dumps(base_entry(**{field: "   "})))
     assert out["action"] == "refile" and out["error"] == f"missing fields: {field}"
     out = cli(capsys, "ask", "--json", json.dumps(base_entry(**{field: 5})))
     assert out["error"] == f"missing fields: {field}"
+
+
+@pytest.mark.parametrize("field", DETAILS_TEXT)
+def test_a_low_or_medium_question_without_a_details_field_is_accepted(field, home, capsys):
+    for risk in ("low", "medium"):
+        entry = base_entry(risk=risk)
+        del entry[field]
+        out = cli(capsys, "ask", "--json", json.dumps(entry))
+        assert out["action"] == "continue"
+        assert field not in stored(home, "q", out["id"])
+
+
+@pytest.mark.parametrize("blank", [None, "", "   "])
+def test_a_blank_details_field_at_low_risk_is_left_out_of_the_stored_question(blank, home, capsys):
+    out = cli(capsys, "ask", "--json", json.dumps(base_entry(risk="low", analogy=blank, how=blank)))
+    assert out["action"] == "continue"
+    stored_entry = stored(home, "q", out["id"])
+    assert "analogy" not in stored_entry and "how" not in stored_entry
+
+
+def test_a_low_risk_question_without_the_five_details_fields_is_accepted(home, capsys):
+    entry = base_entry(risk="low")
+    for field in DETAILS_TEXT:
+        del entry[field]
+    out = cli(capsys, "ask", "--json", json.dumps(entry))
+    assert out["action"] == "continue"
+    assert not set(DETAILS_TEXT) & set(stored(home, "q", out["id"]))
+
+
+@pytest.mark.parametrize("field", DETAILS_TEXT)
+def test_a_high_risk_question_without_a_details_field_is_refiled(field, home, capsys):
+    entry = base_entry(risk="high")
+    del entry[field]
+    out = cli(capsys, "ask", "--json", json.dumps(entry))
+    assert out == refile_reply(f"missing fields: {field}", missing=[field])
+    assert not (home / "q").exists() or list((home / "q").glob("*.json")) == []
+
+
+@pytest.mark.parametrize("field", DETAILS_TEXT)
+def test_a_high_risk_details_field_left_blank_is_refiled_as_missing(field, capsys):
+    out = cli(capsys, "ask", "--json", json.dumps(base_entry(risk="high", **{field: "   "})))
+    assert out["action"] == "refile" and out["error"] == f"missing fields: {field}"
+
+
+@pytest.mark.parametrize("risk", [None, "urgent", 5])
+def test_a_missing_or_invalid_risk_checks_every_gap_as_high_in_one_refile(risk, home, capsys):
+    entry = base_entry()
+    for field in DETAILS_TEXT:
+        del entry[field]
+    if risk is None:
+        del entry["risk"]
+    else:
+        entry["risk"] = risk
+    out = cli(capsys, "ask", "--json", json.dumps(entry))
+    assert out["action"] == "refile"
+    assert set(DETAILS_TEXT) <= set(out["missing"])
+    if risk is None:
+        assert "risk" in out["missing"]
+    else:
+        assert "risk: must be one of" in out["error"]
+    assert not (home / "q").exists() or list((home / "q").glob("*.json")) == []
+
+
+def test_a_missing_risk_with_every_field_present_is_refiled_for_risk_alone(capsys):
+    entry = base_entry()
+    del entry["risk"]
+    out = cli(capsys, "ask", "--json", json.dumps(entry))
+    assert out == refile_reply("missing fields: risk", recommended="A", missing=["risk"])
 
 
 def test_ask_with_one_option_names_its_key_and_the_option_fields_in_one_refile(home, capsys):
@@ -562,7 +660,7 @@ def test_ask_without_options_lists_options_as_missing(home, capsys):
 
 
 def test_ask_names_an_oversized_unknown_key_with_the_other_gaps_in_one_refile(home, capsys):
-    entry = base_entry()
+    entry = base_entry(risk="high")
     del entry["analogy"]
     entry["extra"] = "x" * 5000
     out = cli(capsys, "ask", "--json", json.dumps(entry))
@@ -571,7 +669,7 @@ def test_ask_names_an_oversized_unknown_key_with_the_other_gaps_in_one_refile(ho
 
 
 def test_ask_error_names_every_missing_field_and_option_gap_in_one_line(home, capsys):
-    entry = base_entry()
+    entry = base_entry(risk="high")
     del entry["analogy"]
     del entry["undo"]
     entry["options"][1]["fit"] = 101
@@ -1220,7 +1318,7 @@ def test_ask_guard_command_runs_its_json_as_one_argument_under_sh(home, capsys, 
     line = next(text for text in reason.splitlines() if '"title":"Cache"' in text)
     command = line.split(". ", 1)[1]
     command = command.replace('"lang":""', '"lang":"en"')
-    for name in (*REQUIRED_TEXT, *REQUIRED_OPTION_TEXT):
+    for name in (*LOW_REQUIRED_TEXT, *REQUIRED_OPTION_TEXT):
         command = command.replace(f'"{name}":""', f'"{name}":"Filled in. Done."')
     command = command.replace('"fit":null', '"fit":80')
     env = {**os.environ, "ASKAWAY_HOME": str(home)}
@@ -1240,7 +1338,10 @@ def test_ask_guard_denial_carries_one_fillable_command_per_question(home, capsys
     assert decision["permissionDecision"] == "deny"
     reason = decision["permissionDecisionReason"]
     assert "NOT in the AskAway User inbox yet" in reason
-    assert "fill every empty field" in reason and "Before you continue" in reason
+    assert "fill every empty field" not in reason and "Before you continue" in reason
+    assert ("fill each empty required field of each skeleton (what, problem, why, urgency, undo, lang, "
+            "and each option's does, pros, cons)") in reason
+    assert "Its risk is low, so context, how, gains, losses, analogy may stay empty." in reason
     assert "unless the reply says pause" in reason
     assert set(skeletons(reason)) == {"Cache", "Logs"}
     assert reason.count(" ask --json '") == 2
@@ -4404,7 +4505,7 @@ def test_usage_errors_exit_1_with_one_json_line_and_no_stderr(home):
 
 
 def test_refile_names_every_gap_at_once_grouped_by_field_then_option(home, capsys):
-    entry = base_entry()
+    entry = base_entry(risk="high")
     del entry["analogy"]
     del entry["undo"]
     entry["options"][1]["fit"] = 101
@@ -4417,7 +4518,7 @@ def test_refile_names_every_gap_at_once_grouped_by_field_then_option(home, capsy
 
 
 def test_refile_lists_missing_fields_before_placeholders(home, capsys):
-    entry = base_entry(why="TBD")
+    entry = base_entry(why="TBD", risk="high")
     del entry["analogy"]
     out = cli(capsys, "ask", "--json", json.dumps(entry))
     assert out == refile_reply("missing fields: analogy; why: placeholder", missing=["why", "analogy"])
@@ -4960,7 +5061,7 @@ def test_ask_refiles_a_what_whose_only_full_stop_follows_an_abbreviation(what, c
 
 
 def test_ask_names_a_non_object_option_together_with_every_other_gap(home, capsys):
-    entry = base_entry()
+    entry = base_entry(risk="high")
     entry["options"][1] = "B"
     del entry["analogy"]
     out = cli(capsys, "ask", "--json", json.dumps(entry))
@@ -5235,7 +5336,7 @@ def test_ask_on_a_read_only_folder_keeps_the_internal_error_text(home, capsys):
     lambda option: option.update(key=5),
 ])
 def test_ask_names_an_option_without_a_usable_key_with_every_other_gap(change, home, capsys):
-    entry = base_entry()
+    entry = base_entry(risk="high")
     change(entry["options"][1])
     del entry["analogy"]
     out = cli(capsys, "ask", "--json", json.dumps(entry))
@@ -5371,6 +5472,30 @@ def test_a_high_repeat_raises_the_twin_risk_to_high_with_its_pause(home, capsys,
     cli(capsys, "ask", "--json", json.dumps(base_entry(risk="high")))
     twin = stored(home, "q", first["id"])
     assert twin["risk"] == "high" and twin["pause"] is True
+
+
+def test_a_high_repeat_writes_its_validated_fields_onto_the_twin(home, capsys, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    first = cli(capsys, "ask", "--json", json.dumps(base_entry(risk="low", urgency_level="high")))
+    repeat = cli(capsys, "ask", "--json", json.dumps(base_entry(
+        risk="high", analogy="A shared drawer for all workers.", recommended="B")))
+    assert repeat == {"id": first["id"], "recommended": "B", "title": "Cache backend", "action": "pause", "duplicate": True}
+    twin = stored(home, "q", first["id"])
+    assert twin["analogy"] == "A shared drawer for all workers." and twin["recommended"] == "B"
+    assert twin["risk"] == "high" and twin["pause"] is True
+    assert "urgency_level" not in twin  # the repeat sets none, so the twin keeps none
+    assert twin["id"] == first["id"] and twin["session"] == SESSION
+
+
+def test_a_high_repeat_that_fails_validation_leaves_the_twin_as_it_was(home, capsys, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    first = cli(capsys, "ask", "--json", json.dumps(base_entry(risk="low")))
+    before = stored(home, "q", first["id"])
+    incomplete = base_entry(risk="high")
+    del incomplete["analogy"]
+    out = cli(capsys, "ask", "--json", json.dumps(incomplete))
+    assert out["action"] == "refile" and "analogy" in out["missing"]
+    assert stored(home, "q", first["id"]) == before
 
 
 # ---- gauntlet 5 (A4): deliver order, marker claims, boundary pins ----

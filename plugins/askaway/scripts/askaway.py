@@ -217,7 +217,10 @@ PROBLEM_MAX: Final = 400
 TEXT_MAX: Final = 300
 TEXT_CAPS: Final = {"context": CONTEXT_MAX, "how": HOW_MAX, "what": WHAT_MAX, "problem": PROBLEM_MAX}
 REQUIRED_TEXT: Final = ("what", "problem", "context", "why", "how", "gains", "losses", "analogy",
-                        "urgency", "undo")
+                        "urgency", "undo")  # every text a high-risk question holds
+DETAILS_TEXT: Final = frozenset({"analogy", "how", "gains", "losses", "context"})  # the details block: optional at low and medium
+OPTIONAL_DETAILS_RISKS: Final = frozenset({"low", "medium"})  # any other risk, missing or invalid included, checks all texts
+SKELETON_RISK: Final = "low"  # the risk every ask-guard skeleton is filed at
 REQUIRED_OPTION_TEXT: Final = ("does", "pros", "cons")
 MIN_SENTENCES: Final = 2
 # A terminator is one or more of . ! ? before a space or the end, but not the full stop of a known abbreviation.
@@ -751,7 +754,6 @@ TOP_TEXT_LIMITS: Final = {"question": QUESTION_MAX, **{name: TEXT_CAPS.get(name,
 TRANSLATION_LANGUAGES: Final = frozenset({"en", "pt-BR"})  # the pane's two languages (SPEC: translations)
 TRANSLATION_TOP_LIMITS: Final = {**TOP_TEXT_LIMITS, "title": TITLE_MAX}
 TRANSLATION_OPTION_LIMITS: Final = dict(OPTION_TEXT)
-TRANSLATED_REQUIRED: Final = ("question", *REQUIRED_TEXT)  # a translation holds all of these, or it is refiled (SPEC: translations)
 TRANSLATED_OPTION_REQUIRED: Final = tuple(name for name, _limit in OPTION_TEXT)  # and each option holds all of these
 
 
@@ -861,11 +863,30 @@ class EntryError(ValueError):
         self.gaps = gaps
 
 
-def _top_texts(raw: Mapping[str, Any], gaps: Gaps) -> dict[str, str | None]:
+def _optional_texts(risk: str | None) -> frozenset[str]:
+    """The texts a question at this risk may leave out. A missing or invalid risk leaves none out: it is checked as high."""
+    return DETAILS_TEXT if risk in OPTIONAL_DETAILS_RISKS else frozenset()
+
+
+def _left_out(name: str, raw: object) -> bool:
+    """A text the entry leaves out: null, or a string with no text in it. A non-string is a value sent, so it is checked."""
+    return raw is None or (isinstance(raw, str) and not _clean_text(name, raw))
+
+
+def _top_texts(raw: Mapping[str, Any], gaps: Gaps, risk: str | None) -> dict[str, str | None]:
+    optional = _optional_texts(risk)
     texts: dict[str, str | None] = {}
     for name, limit in TOP_TEXT_LIMITS.items():
-        texts[name] = _checked(gaps.top, name, raw.get(name), limit)
+        if name in optional and _left_out(name, raw.get(name)):
+            texts[name] = None
+        else:
+            texts[name] = _checked(gaps.top, name, raw.get(name), limit)
     return texts
+
+
+def _set_texts(texts: Mapping[str, str | None]) -> dict[str, str]:
+    """The top-level texts the entry holds; a text left out (None) is not stored."""
+    return {name: text for name, text in texts.items() if text is not None}
 
 
 def _title(raw: Mapping[str, Any], question: str | None, gaps: Gaps) -> str:
@@ -1033,7 +1054,8 @@ def _missing_option_names(raw: Mapping[str, Any], option_keys: list[str]) -> lis
     return names
 
 
-def _translated_language(path: str, raw: object, option_keys: list[str], gaps: Gaps) -> dict[str, Any]:
+def _translated_language(path: str, raw: object, option_keys: list[str], main_names: tuple[str, ...],
+                         gaps: Gaps) -> dict[str, Any]:
     """One language of a translation: each refusal is a note, and one note names every field it lacks."""
     if not isinstance(raw, dict) or not raw:
         gaps.notes.append(f"{path}: must be a non-empty object")
@@ -1044,14 +1066,16 @@ def _translated_language(path: str, raw: object, option_keys: list[str], gaps: G
         language["title"] = _clip(language["question"], TITLE_MAX)
     if "options" in raw:
         language["options"] = _translated_options(f"{path}.options", raw["options"], option_keys, gaps)
-    missing = [*_missing_names(raw, TRANSLATED_REQUIRED), *_missing_option_names(raw, option_keys)]
+    missing = [*_missing_names(raw, main_names), *_missing_option_names(raw, option_keys)]
     if missing:
         gaps.notes.append(f"{path}: missing {', '.join(missing)}")
     return language
 
 
-def _translations(raw: object, option_keys: list[str], lang: str | None, gaps: Gaps) -> dict[str, Any]:
-    """The optional translations object (SPEC: translations), each language checked; {} when the entry has none."""
+def _translations(raw: object, option_keys: list[str], lang: str | None, main_names: tuple[str, ...],
+                  gaps: Gaps) -> dict[str, Any]:
+    """The optional translations object (SPEC: translations), each language checked; {} when the entry has none.
+    A language holds every text the main entry sets (main_names), and every main option."""
     if raw is None:
         return {}
     if not isinstance(raw, dict) or not raw:
@@ -1064,12 +1088,14 @@ def _translations(raw: object, option_keys: list[str], lang: str | None, gaps: G
         elif language == lang:
             gaps.notes.append(f"translations.{language}: the entry is already in {lang}; translate into the other language")
         else:
-            cleaned[language] = _translated_language(f"translations.{language}", fields, option_keys, gaps)
+            cleaned[language] = _translated_language(f"translations.{language}", fields, option_keys, main_names, gaps)
     return cleaned
 
 
 ENTRY_FIELDS: Final = frozenset({"question", "title", "lang", "risk", "urgency_level", "run_kind", "pause", "options",
                                  "recommended", "translations", *REQUIRED_TEXT})
+# what a high-risk repeat writes onto its open twin: the entry's fields, but not its risk, pause (set there) or run_kind
+REPEAT_FIELDS: Final = ENTRY_FIELDS - {"risk", "pause", "run_kind"}
 
 
 UNKNOWN_KEYS_MAX_BYTES: Final = 4096  # the unknown keys as JSON: a little over the largest text field (600 code points)
@@ -1091,10 +1117,12 @@ def build_entry(raw: Mapping[str, Any], origin: Origin) -> dict[str, Any]:
     urgency = _urgency_level(raw, gaps)
     run_kind = _run_kind(raw, origin, gaps)
     _pause_gap(raw, gaps)
-    texts = _top_texts(raw, gaps)
+    texts = _top_texts(raw, gaps, risk)
     title = _title(raw, texts["question"], gaps)
     options = _options(raw.get("options"), gaps)
-    translations = _translations(raw.get("translations"), [option["key"] for option in options], lang, gaps)
+    set_texts = _set_texts(texts)
+    translations = _translations(raw.get("translations"), [option["key"] for option in options], lang,
+                                 tuple(set_texts), gaps)
     recommended = raw.get("recommended")
     if recommended is None:
         gaps.top["recommended"] = MISSING
@@ -1116,7 +1144,7 @@ def build_entry(raw: Mapping[str, Any], origin: Origin) -> dict[str, Any]:
         "desktop_session": _local_id(_nonempty(desktop.get("sessionId"))) if desktop else None,
         **_family_fields(desktop),
         "title": title, "lang": lang, "options": options, "recommended": recommended,
-        **texts,
+        **set_texts,
         "risk": risk, "pause": risk == "high", **urgency,
         "source": origin.source,
         **({"translations": translations} if translations else {}),
@@ -1500,15 +1528,23 @@ def _ask_lock() -> Generator[None]:
         os.close(fd)  # closing the descriptor releases the lock
 
 
+def _twin_with_repeat(twin: Mapping[str, Any], entry: Mapping[str, Any]) -> dict[str, Any]:
+    """The open twin once a high-risk repeat escalates it: the repeat's validated fields replace the twin's, so a field the
+    repeat does not set is dropped. The twin keeps its identity (id, time, session, asker) and is paused as high risk."""
+    kept = {key: value for key, value in twin.items() if key not in REPEAT_FIELDS}
+    repeated = {key: value for key, value in entry.items() if key in REPEAT_FIELDS}
+    return {**kept, **repeated, "pause": True, "risk": "high"}  # pause == (risk == "high"), as build_entry keeps it
+
+
 def _file_or_hold_twin(entry: Mapping[str, Any]) -> tuple[dict[str, Any] | None, OSError | None]:
-    """The open twin the entry repeats, else the entry filed, under the ask lock. A high-risk repeat also pauses the twin
-    (one atomic write), so the pause lookup holds the session for it."""
+    """The open twin the entry repeats, else the entry filed, under the ask lock. A high-risk repeat also writes its fields
+    onto the twin and pauses it (one atomic write), so the pause lookup holds the session for it."""
     with _ask_lock():
         twin = open_twin(entry)
         if twin is None:
             return None, file_question(entry)
         if entry["pause"] is True:
-            twin = {**twin, "pause": True, "risk": "high"}  # pause == (risk == "high"), as build_entry keeps it
+            twin = _twin_with_repeat(twin, entry)
             write_atomic(item_path("q", twin["id"]), twin)
         return twin, None
 
@@ -2202,7 +2238,7 @@ def askuser_skeleton(question: Mapping[str, Any]) -> dict[str, Any]:
             "context": question.get("context") or _option_context(keyed),
             "options": keyed, "recommended": _recommended_key(keyed, labels),
             "lang": "", "what": "", "problem": "", "why": "", "how": "", "gains": "", "losses": "",
-            "analogy": "", "urgency": "", "undo": "", "risk": "low"}
+            "analogy": "", "urgency": "", "undo": "", "risk": SKELETON_RISK}
 
 
 MULTI_SELECT_NOTE: Final = ("the original question was multi-select, but the pane takes one pick per question: "
@@ -2216,11 +2252,16 @@ def askuser_reason(skeletons: Sequence[Mapping[str, Any]], multi_selects: Sequen
             lines.append(f"Question {number}: {MULTI_SELECT_NOTE}")
         lines.append(f"{number}. python3 \"{SCRIPT_PATH}\" ask --json "
                      + shlex.quote(json.dumps(skeleton, ensure_ascii=False, separators=(',', ':'))))
+    details = _optional_texts(SKELETON_RISK)
+    optional = [name for name in REQUIRED_TEXT if name in details]
+    required = [name for name in REQUIRED_TEXT if name not in details]
     return ("The user is away, so these AskUserQuestion calls are NOT in the AskAway User inbox yet. "
-            "Before you continue, fill every empty field (\"\" or null) of each skeleton, then file "
+            "Before you continue, fill each empty required field of each skeleton "
+            f"({', '.join(required)}, lang, and each option's {', '.join(REQUIRED_OPTION_TEXT)}), then file "
             "it with its command: one command per question, keeping the single quotes (write a ' "
-            "inside a value as '\\''). Continue on the recommended option unless the reply says "
-            "pause.\n" + "\n".join(lines))
+            "inside a value as '\\''). "
+            f"Its risk is {SKELETON_RISK}, so {', '.join(optional)} may stay empty. "
+            "Continue on the recommended option unless the reply says pause.\n" + "\n".join(lines))
 
 
 def hook_ask_guard(event: Mapping[str, Any]) -> HookOutput:
