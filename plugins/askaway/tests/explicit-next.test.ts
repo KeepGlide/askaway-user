@@ -435,11 +435,11 @@ test('Keep with the same Other text as a failed Submit all keeps the not-deliver
   const notDelivered = async () => (await textsOf(pane)).filter(text => text.startsWith('Not delivered yet'))
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'Use a fork' })
   await pane.press({ key: 'submit-all' })
-  expect(await notDelivered()).toEqual(['Not delivered yet: press Submit all again.'])
+  expect(await notDelivered()).toEqual(['Not delivered yet: submit it again.'])
   // The field is the next round after a Keep. The same text keeps the same pick, so the line stays.
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa-1', text: 'Use a fork' })
   expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ Use a fork')
-  expect(await notDelivered()).toEqual(['Not delivered yet: press Submit all again.'])
+  expect(await notDelivered()).toEqual(['Not delivered yet: submit it again.'])
   // A different text is a changed pick: the line goes.
   await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa-2', text: 'Another fork' })
   expect(await notDelivered()).toEqual([])

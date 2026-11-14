@@ -1849,6 +1849,7 @@ test('only the recommended option says "(Recomendada)", and the card has no JEV 
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   expect(await pane.findAll({ type: 'Text', text: /\(Recomendada\)$/ })).toHaveLength(1)
   expect(await pane.findAll({ type: 'Text', text: '🎯' })).toHaveLength(0)
   const texts = await textsOf(pane)
@@ -1868,6 +1869,7 @@ test('each explanation section shows only when its field is set, in the box of i
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   const texts = await textsOf(pane)
   // A section is one Text, "heading: text": its whole line, and the bold heading as a Text of its own before the body.
   expect(texts.filter(text => text.startsWith('🧭'))).toEqual(['🧭 Contexto e origem: Why now.', '🧭 Contexto e origem: '])
@@ -1891,6 +1893,7 @@ test('the card draws the details right after the explanation before the question
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l3-cccccc' })
   const texts = await textsOf(pane)
   const questionLine = texts.indexOf('Which way for q-l3-cccccc?')
   const urgencyLine = texts.indexOf('⏱️ Urgência: Blocks in ~8 min')
@@ -1956,6 +1959,7 @@ test('a losses-only question draws the losses section alone, and a gains-only on
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   const losses = await textsOf(pane)
   expect(losses).toContain('⚖️ O que perdemos: Extra file.')
   expect(losses.some(text => text.startsWith('🎁'))).toBe(false)
@@ -1984,6 +1988,7 @@ test('a legacy question with tradeoff and no how, gains, losses or session title
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   const texts = await textsOf(pane)
   expect(texts).toContain('💡 Por que A: It is smaller.')
   expect(texts).toContain('└ Cheap · aderência 80')
@@ -2001,6 +2006,8 @@ test('a name in an explanation is drawn bold, a slash command bare and a backtic
   await $.session.start(SESSION)
   for (const surface of SURFACES) {
     const pane = await mountPane($, surface)
+    // The sticky flag is shared by both surfaces: a press opens the block only while it reads folded.
+    if (String(await labelOf(pane, 'details-toggle-q-l1-aaaaaa')).startsWith('▸')) await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
     expect(await textsOf(pane)).toContain('🛠️ Como: Run /reload-plugins, then open frontend-code-engineer.')
     const nodes = nodesOf(await pane.drawn())
     const nameChildren = nodes
@@ -2339,7 +2346,7 @@ test('the footer drops an answer from the last-24-hours count once the window pa
   await pane.unmount()
 })
 
-test('the card has no details toggle and no e hotkey: every section is drawn at once, under the AskAway User Details title', async ($, on) => {
+test('the card has no e hotkey: once the details toggle opens them, every section is drawn under the AskAway User Details title', async ($, on) => {
   const long = {
     what: 'What W', problem: 'Problem P', analogy: 'Analogy N', why: 'Reason R', undo: 'Undo U', how: 'How H',
     gains: 'Gain G', losses: 'Loss L', context: 'Context C', urgency: 'Blocks soon',
@@ -2355,15 +2362,18 @@ test('the card has no details toggle and no e hotkey: every section is drawn at 
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  // The toggle is a Button with its own key, not the details Box; it carries no hotkey, and it reads folded with the count (7 sections).
+  const toggle = await pane.find({ type: 'Button', key: 'details-toggle-q-f1-aaaaaa' })
+  expect(toggle).toBeDefined()
+  expect(toggle?.props.hotkey).toBeUndefined()
+  expect(toggle?.props.label).toBe('▸ Mostrar detalhes (7)')
+  await pane.press({ key: 'details-toggle-q-f1-aaaaaa' })
   let texts = await textsOf(pane)
   for (const name of ['What W', 'Problem P', 'Analogy N', 'Reason R', 'Undo U', 'How H', 'Gain G', 'Loss L', 'Context C', 'Blocks soon', 'Keeps the queue', 'Fast path', 'Stale data']) {
     expect(texts.some(text => text.includes(name))).toBe(true)
   }
   expect(texts.some(text => text.startsWith('└ Cheap'))).toBe(true)
-  // No toggle: no details Button, no "Detalhes" or "Ocultar detalhes" link, and no button carries the hotkey e.
-  expect(await pane.find({ type: 'Button', key: 'details-q-f1-aaaaaa' })).toBeUndefined()
-  expect(texts).not.toContain('Detalhes')
-  expect(texts).not.toContain('Ocultar detalhes')
+  expect(await labelOf(pane, 'details-toggle-q-f1-aaaaaa')).toBe('▾ Ocultar detalhes')
   for (const button of await pane.findAll({ type: 'Button' })) expect(button.props.hotkey).not.toBe('e')
   // The title line sits after the first block (What, then The problem) and before the details; the question and Urgency come after them.
   const at = (name: string): number => texts.findIndex(text => text.includes(name))
@@ -2386,6 +2396,177 @@ test('the card has no details toggle and no e hotkey: every section is drawn at 
 })
 
 
+
+// Issue #35: the details block folds behind one toggle row, and the open or closed choice is one sticky flag in the store.
+const FOLD_OPTIONS = [
+  { key: 'A', label: 'Keep', tradeoff: 'cheap', fit: 80, does: 'Keeps the queue', pros: 'Fast path', cons: 'Stale data' },
+  { key: 'B', label: 'Rewrite', tradeoff: 'slow', fit: 40 },
+]
+const FOLD_FIELDS = {
+  what: 'What W', problem: 'Problem P', analogy: 'Analogy N', why: 'Reason R', undo: 'Undo U', how: 'How H',
+  gains: 'Gain G', losses: 'Loss L', context: 'Context C', urgency: 'Blocks soon',
+}
+const FOLD_SECTION_BODIES = ['Analogy N', 'Reason R', 'Undo U', 'How H', 'Gain G', 'Loss L', 'Context C']
+const foldToggleKey = (id: string): string => `details-toggle-${id}`
+const drawsAnySection = (texts: string[]): boolean => FOLD_SECTION_BODIES.some(body => texts.some(text => text.includes(body)))
+
+test('the details fold by default: one toggle row counts the sections set, and no section body is drawn (issue #35)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-f1-aaaaaa'), question('q-f1-aaaaaa', 1000, { ...FOLD_FIELDS, options: FOLD_OPTIONS })],
+    [path('q', 'q-f2-bbbbbb'), question('q-f2-bbbbbb', 2000, { what: 'What W', analogy: 'Analogy N', context: 'Context C', why: undefined, options: FOLD_OPTIONS })],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const texts = await textsOf(pane)
+  expect(await labelOf(pane, foldToggleKey('q-f1-aaaaaa'))).toBe('▸ Mostrar detalhes (7)')
+  expect(texts).not.toContain('Detalhes do AskAway User:')
+  expect(drawsAnySection(texts)).toBe(false)
+  // What it is, The problem, Urgency and What happens stay on the card.
+  for (const name of ['What W', 'Problem P', 'Blocks soon', 'Keeps the queue']) expect(texts.some(text => text.includes(name))).toBe(true)
+  await pane.press({ key: 'nav-next' })
+  expect(await labelOf(pane, foldToggleKey('q-f2-bbbbbb'))).toBe('▸ Mostrar detalhes (2)')
+  await pane.unmount()
+})
+
+test('the toggle opens the sections under it in the order they already have, with the label changed, and a second press folds them again (issue #35)', async ($, on) => {
+  const files = new Map([[path('q', 'q-f1-aaaaaa'), question('q-f1-aaaaaa', 1000, { ...FOLD_FIELDS, options: FOLD_OPTIONS })]])
+  stubHost(on, files, true, {})
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const key = foldToggleKey('q-f1-aaaaaa')
+  await pane.press({ key })
+  let texts = await textsOf(pane)
+  expect(await labelOf(pane, key)).toBe('▾ Ocultar detalhes')
+  expect((await pane.find({ type: 'Button', key }))?.props.hotkey).toBeUndefined()
+  const at = (name: string): number => texts.findIndex(text => text.includes(name))
+  expect(at('What W')).toBeLessThan(at('Detalhes do AskAway User:'))
+  expect(at('Detalhes do AskAway User:')).toBeLessThan(at('Analogy N'))
+  expect(at('Analogy N')).toBeLessThan(at('Reason R'))
+  expect(at('Reason R')).toBeLessThan(at('Context C'))
+  expect(at('Context C')).toBeLessThan(at('Which way for q-f1-aaaaaa?'))
+  await pane.press({ key })
+  texts = await textsOf(pane)
+  expect(await labelOf(pane, key)).toBe('▸ Mostrar detalhes (7)')
+  expect(drawsAnySection(texts)).toBe(false)
+  await pane.unmount()
+})
+
+test('two quick presses of the details toggle net to folded (issue #35)', async ($, on) => {
+  const files = new Map([[path('q', 'q-f1-aaaaaa'), question('q-f1-aaaaaa', 1000, { ...FOLD_FIELDS, options: FOLD_OPTIONS })]])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const key = foldToggleKey('q-f1-aaaaaa')
+  // Both presses are issued before either finishes: the second flip must read the first one's result, not the stored flag.
+  await Promise.all([pane.press({ key }), pane.press({ key })])
+  await clock.settle()
+  expect(await labelOf(pane, key)).toBe('▸ Mostrar detalhes (7)')
+  expect(drawsAnySection(await textsOf(pane))).toBe(false)
+  await pane.unmount()
+})
+
+test('the details toggle commits the Other text typed and not confirmed before it flips, as the own Buttons do (issue #35)', async ($, on) => {
+  const files = new Map([[path('q', 'q-f1-aaaaaa'), question('q-f1-aaaaaa', 1000, { ...FOLD_FIELDS, options: FOLD_OPTIONS })]])
+  const { drafts } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await pane.press({ key: 'other-q-f1-aaaaaa' })
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-f1-aaaaaa', text: 'Use a fork', kind: 'change' })
+  await pane.press({ key: foldToggleKey('q-f1-aaaaaa') })
+  expect(drafts.join('')).toContain('Use a fork')
+  expect(JSON.stringify(await pane.find({ type: 'Button', key: 'other-q-f1-aaaaaa' }))).toContain('Use a fork')
+  await pane.unmount()
+})
+
+test('an open details block stays open after Next, a new question and a restart, and a fold persists the same way (issue #35)', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-f1-aaaaaa'), question('q-f1-aaaaaa', 1000, { ...FOLD_FIELDS, options: FOLD_OPTIONS })],
+    [path('q', 'q-f2-bbbbbb'), question('q-f2-bbbbbb', 2000, { ...FOLD_FIELDS, options: FOLD_OPTIONS })],
+  ])
+  const stored: Record<string, unknown> = {}
+  const { clock } = stubHost(on, files, true, stored)
+  await $.session.start(SESSION)
+  let pane = await mountPane($)
+  await pane.press({ key: foldToggleKey('q-f1-aaaaaa') })
+  await clock.settle()
+  expect(await labelOf(pane, foldToggleKey('q-f1-aaaaaa'))).toBe('▾ Ocultar detalhes')
+  await pane.press({ key: 'nav-next' })
+  files.set(path('q', 'q-f3-cccccc'), question('q-f3-cccccc', 3000, { ...FOLD_FIELDS, options: FOLD_OPTIONS }))
+  await pane.unmount()
+  await $.session.start(SESSION)
+  pane = await mountPane($)
+  const toggles = (await pane.findAll({ type: 'Button' })).filter(button => String(button.key).startsWith('details-toggle-'))
+  expect(toggles.length).toBeGreaterThan(0)
+  for (const toggle of toggles) expect(toggle.props.label).toBe('▾ Ocultar detalhes')
+  expect(drawsAnySection(await textsOf(pane))).toBe(true)
+  await pane.press({ key: toggles[0]?.key as string })
+  await clock.settle()
+  expect(await labelOf(pane, String(toggles[0]?.key))).toMatch(/^▸ Mostrar detalhes/)
+  await pane.unmount()
+  await $.session.start(SESSION)
+  pane = await mountPane($)
+  // The card stays on the question it moved to; every toggle drawn after the restart reads folded.
+  const folded = (await pane.findAll({ type: 'Button' })).filter(button => String(button.key).startsWith('details-toggle-'))
+  expect(folded.length).toBeGreaterThan(0)
+  for (const toggle of folded) expect(toggle.props.label).toBe('▸ Mostrar detalhes (7)')
+  expect(drawsAnySection(await textsOf(pane))).toBe(false)
+  await pane.unmount()
+})
+
+test('a high-risk card follows the same flag, and its Paused line is drawn as before (issue #35)', async ($, on) => {
+  const files = new Map([[path('q', 'q-h1-aaaaaa'), question('q-h1-aaaaaa', 1000, { ...FOLD_FIELDS, risk: 'high', options: FOLD_OPTIONS })]])
+  stubHost(on, files, true, {})
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const key = foldToggleKey('q-h1-aaaaaa')
+  expect(await labelOf(pane, key)).toBe('▸ Mostrar detalhes (7)')
+  expect((await textsOf(pane)).some(text => text.startsWith('Pausado desde '))).toBe(true)
+  await pane.press({ key })
+  const texts = await textsOf(pane)
+  expect(texts.some(text => text.startsWith('Pausado desde '))).toBe(true)
+  expect(drawsAnySection(texts)).toBe(true)
+  await pane.unmount()
+})
+
+test('a card with none of the seven details fields draws no toggle row and no block (issue #35)', async ($, on) => {
+  const files = new Map([[path('q', 'q-n1-aaaaaa'), question('q-n1-aaaaaa', 1000, { what: 'What W', urgency: 'Blocks soon', why: undefined, options: FOLD_OPTIONS })]])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const texts = await textsOf(pane)
+  expect(texts).toContain('What W')
+  expect(texts.some(text => text.includes('Blocks soon'))).toBe(true)
+  expect(await pane.find({ type: 'Button', key: foldToggleKey('q-n1-aaaaaa') })).toBeUndefined()
+  expect(texts).not.toContain('Detalhes do AskAway User:')
+  expect(texts.some(text => text.startsWith('▸ ') || text.startsWith('▾ '))).toBe(false)
+  await pane.unmount()
+})
+
+test('a fading card dims the details toggle and ignores its press (issue #35)', async ($, on) => {
+  const files = new Map([[path('q', 'q-f1-aaaaaa'), question('q-f1-aaaaaa', 1000, { ...FOLD_FIELDS, options: FOLD_OPTIONS })]])
+  const stored: Record<string, unknown> = {}
+  // The card fades only while its reply is being written, so the write is held open until the press is made.
+  const holds: Holds = {}
+  const { clock } = stubHost(on, files, true, stored, holds)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const key = foldToggleKey('q-f1-aaaaaa')
+  await pane.press({ key: 'opt-q-f1-aaaaaa-A' })
+  const write = gate()
+  holds.write = write.promise
+  const pressed = pane.press({ key: 'submit-all' })
+  await clock.settle()
+  expect((await pane.find({ type: 'Button', key }))?.props.dimColor).toBe(true)
+  await pane.press({ key })
+  await clock.settle()
+  // The press was ignored: the toggle still reads folded (the stub's seed object does not mirror writes; they go to the engine store, which the restart test reads back).
+  expect(await labelOf(pane, key)).toBe('▸ Mostrar detalhes (7)')
+  write.open()
+  await pressed
+  await clock.settle()
+  await pane.unmount()
+})
 
 const detailsFillOf = async (pane: Awaited<ReturnType<typeof mountPane>>): Promise<unknown> =>
   (await pane.find({ type: 'Box', key: 'details-q-l1-aaaaaa' }))?.props.backgroundColor
@@ -2812,6 +2993,7 @@ test('/askaway lang en draws the open card in English on the very next draw, wit
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($, 'desktop')
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   await run($, 'lang en')
   const drawn = JSON.stringify(await pane.drawn())
   expect(drawn).toContain('On A since')
@@ -2855,6 +3037,7 @@ test('/askaway lang en draws a translated card in English on the very next draw,
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($, 'desktop')
+  await pane.press({ key: 'details-toggle-q-t-000010' })
   expect(JSON.stringify(await pane.drawn())).toContain('Onde guardar o cache?')
   await run($, 'lang en')
   const english = JSON.stringify(await pane.drawn())
@@ -3323,7 +3506,7 @@ test('model: a focus move onto an own Button is recognised by its key; an Other 
   expect(isOwnButtonKey('other-input-q-l1-aaaaaa')).toBe(false)
   expect(isOwnButtonKey('who-input')).toBe(false)
   expect(isOwnButtonKey(undefined)).toBe(false)
-  for (const key of ['dismiss-ended', 'dismiss-damaged-x', 'who-skip', 'history-clear', 'review-back', 'tree-jump-x', 'tree-submit-x']) {
+  for (const key of ['dismiss-ended', 'dismiss-damaged-x', 'who-skip', 'history-clear', 'review-back', 'tree-jump-x', 'tree-submit-x', 'details-toggle-q-l1-aaaaaa']) {
     expect(isOwnButtonKey(key)).toBe(true)
   }
   expect(isOwnButtonKey('nav-other')).toBe(false)
@@ -4076,9 +4259,9 @@ test('a kept Other label with no pick names the Other letter; a question with no
   await pane.unmount()
 })
 
-test('the pt lines that name a key tell the person to press it; the review hint keeps its click', () => {
+test('the pt lines that name a key tell the person to press it; the review hint tells the person to select a question', () => {
   expect(t('pt', 'card.unansweredKept', { key: 'C' })).toBe('Ainda não respondida: aperte C para escolher o seu texto.')
-  expect(t('pt', 'review.hint')).toBe('Clique numa pergunta para mudar a resposta.')
+  expect(t('pt', 'review.hint')).toBe('Selecione uma pergunta para mudar a resposta.')
 })
 
 test('a Submit all whose reply fails keeps the pick and says it is not delivered, until a later submit delivers it', async ($, on) => {
@@ -4092,7 +4275,7 @@ test('a Submit all whose reply fails keeps the pick and says it is not delivered
   await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
   expect(await notDelivered()).toEqual([])
   await pane.press({ key: 'submit-all' })
-  expect(await notDelivered()).toEqual(['Ainda não entregue: aperte Enviar tudo de novo.'])
+  expect(await notDelivered()).toEqual(['Ainda não entregue: envie de novo.'])
   expect(await variantOf('opt-q-l1-aaaaaa-B')).toBe('primary')
   holds.answerExit = undefined
   await pane.press({ key: 'submit-all' })
@@ -5789,6 +5972,7 @@ test('the card draws the first block as two plain paragraphs, then the details b
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   expectInOrder(await textsOf(pane), [
     '⏱️ Urgência: Soon',
     'W',
@@ -5822,15 +6006,19 @@ test('the section titles are bold and their bodies regular; the details block ha
     Array.isArray(node.children) ? node.children.filter((child): child is string => typeof child === 'string') : []
   for (const surface of SURFACES) {
     const pane = await mountPane($, surface)
+    // The sticky flag is shared by both surfaces: a press opens the block only while it reads folded.
+    if (String(await labelOf(pane, 'details-toggle-q-l1-aaaaaa')).startsWith('▸')) await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
     const nodes = nodesOf(await pane.drawn())
     const block = nodes.find(node => keyOfNode(node) === 'details-q-l1-aaaaaa')
     const inBlock = nodesOf(block)
     expect(block?.props).not.toHaveProperty('borderStyle')
     expect(block?.props).toMatchObject({ backgroundColor: 'userMessageBackground' })
     expect(inBlock.some(node => isBoldText(node) && childrenOf(node).includes('Detalhes do AskAway User:'))).toBe(true)
-    // The title row is the block's first child; its mark is the AskAway User SVG on the desktop and the glyph on the terminal.
-    const firstChild = Array.isArray(block?.children) ? block.children[0] : undefined
-    expect(keyOfNode(firstChild as Record<string, unknown>)).toBe('details-title')
+    // The toggle row is the block's first child (issue #35) and the title row the second; the title's mark is the AskAway
+    // User SVG on the desktop and the glyph on the terminal.
+    const rows = Array.isArray(block?.children) ? block.children : []
+    expect(keyOfNode(rows[0] as Record<string, unknown>)).toBe('details-toggle-q-l1-aaaaaa')
+    expect(keyOfNode(rows[1] as Record<string, unknown>)).toBe('details-title')
     expect(inBlock.some(node => node.type === 'Svg' && (node.props as Record<string, unknown>).alt === 'AskAway User')).toBe(surface === 'desktop')
     expect(inBlock.some(node => node.type === 'Text' && childrenOf(node).includes('?'))).toBe(surface === 'terminal')
     // Each section title is a bold run; its body, drawn in the same line, is not bold.
@@ -5849,6 +6037,7 @@ test('the card draws the same order in English: the details block with its title
   stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   expectInOrder(await textsOf(pane), [
     '⏱️ Urgency: Soon',
     'W',
@@ -5877,6 +6066,7 @@ test('a question filed before the new fields still draws its card and option lin
   stubHost(on, files)
   await $.session.start(SESSION)
   const pane = await mountPane($)
+  await pane.press({ key: 'details-toggle-q-l1-aaaaaa' })
   const texts = await textsOf(pane)
   expect(texts).toContain('Which way for q-l1-aaaaaa?')
   expect(texts).toContain('└ Cheap · aderência 80')

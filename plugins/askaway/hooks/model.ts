@@ -903,11 +903,11 @@ export const otherButtonKey = (questionId: string): string => `other-${questionI
 // The key of the Submit all button.
 export const SUBMIT_ALL_KEY = 'submit-all'
 
-// The keys of the pane's own Buttons (options, Other, navigation, Submit all, dismiss, the who skip, history clear, and the
-// tree links). A focus move onto one of them does not commit the Other text: its press does. An Input is not a Button (the
-// who field and the Other fields are left out), so a move onto one of them commits.
+// The keys of the pane's own Buttons (options, Other, navigation, Submit all, dismiss, the who skip, history clear, the details
+// toggle, and the tree links). A focus move onto one of them does not commit the Other text: its press does. An Input is not a
+// Button (the who field and the Other fields are left out), so a move onto one of them commits.
 const OWN_BUTTON_KEY = new RegExp(
-  `^(opt-|(?!${OTHER_INPUT_PREFIX})other-|nav-(back|next)$|review-back$|submit-all$|dismiss-|who-skip$|history-clear$|tree-jump-|tree-submit-)`,
+  `^(opt-|(?!${OTHER_INPUT_PREFIX})other-|nav-(back|next)$|review-back$|submit-all$|dismiss-|who-skip$|history-clear$|details-toggle-|tree-jump-|tree-submit-)`,
 )
 
 export const isOwnButtonKey = (key: string | undefined): boolean => key !== undefined && OWN_BUTTON_KEY.test(key)

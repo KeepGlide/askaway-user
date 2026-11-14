@@ -113,3 +113,20 @@ test('gauntlet 4, B2 M33: the three keys M33 removed are absent from both dictio
   }
   expect('langName' in i18nModule).toBe(false)
 })
+
+// Issue #35: the details toggle reads its words in the card's language; the copy fixes of the same change.
+test('the details toggle says show with the count, or hide, in both languages (issue #35)', () => {
+  expect(t('en', 'details.show', { n: 7 })).toBe('▸ Show details (7)')
+  expect(t('pt', 'details.show', { n: 7 })).toBe('▸ Mostrar detalhes (7)')
+  expect(t('en', 'details.hide')).toBe('▾ Hide details')
+  expect(t('pt', 'details.hide')).toBe('▾ Ocultar detalhes')
+})
+
+test('an undelivered card asks for a new submit without naming Submit all, which a one-question card does not draw (issue #35)', () => {
+  expect(t('en', 'card.undelivered')).toBe('Not delivered yet: submit it again.')
+  expect(t('pt', 'card.undelivered')).toBe('Ainda não entregue: envie de novo.')
+})
+
+test('the pt-BR review hint says to select a question, as the English hint says to press one (issue #35)', () => {
+  expect(t('pt', 'review.hint')).toBe('Selecione uma pergunta para mudar a resposta.')
+})

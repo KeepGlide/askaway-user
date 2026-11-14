@@ -150,6 +150,9 @@ declare module 'claude-code' {
       quiet: boolean
       // The language in use: the stored choice, else the environment's. Set at session start and by /askaway lang.
       lang: 'en' | 'pt'
+      // Whether the details block is open (store key "details-open", the details toggle): one flag per user, folded when absent,
+      // read at session start and kept across sessions and restarts.
+      detailsOpen: boolean
       // The question wizard (hooks/wizard.ts `Wizard`): the group on screen, the step, the question on screen and the picks
       // by question id. An Other pick carries its free text in `text`.
       wizard: {

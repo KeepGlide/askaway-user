@@ -410,7 +410,7 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
   - the first block, drawn as two plain paragraphs with no heading, one blank line apart, on the card's own background:
     the `what` text, then the `problem` text, each only when its field is set (`firstBlockOf`, `renderFirstBlock`, key
     `explanation-before-question`); names the agent wrote between backticks, or slash commands, drawn in bold;
-  - the details block, drawn when one of its sections is set (`renderDetailsBlock`, key `details-<id>`), with no rule above it: the Urgency line and the first block come before it. It is always open: there is no toggle and no `e` hotkey. Nothing in the card folds: the per-option What happens, Pros and Cons and the details block are always visible. Its first line is the
+  - the details block, drawn when one of its sections is set (`renderDetailsBlock`, key `details-<id>`), with no rule above it: the Urgency line and the first block come before it. It folds by default. Its first row is the toggle, a Button with no hotkey (no `e` hotkey) and no teaser line, worded with the count of sections set: "▸ Show details (7)" (pt "▸ Mostrar detalhes (7)"), or "▾ Hide details" (pt "▾ Ocultar detalhes") while open, so the words carry the state. The toggle's press flips one sticky flag per user: the store key `details-open` (absent is folded), read at `session.start` into `detailsOpenAtom` and kept across sessions and restarts, not per question. A fading card dims the toggle and ignores its press; a card with none of the seven fields draws no toggle row and no block. Only this block folds: the per-option What happens, Pros and Cons stay always visible. While open, the title line comes after the toggle; it is the
     title: the AskAway User mark (`renderLogo`: the SVG on the desktop, the glyph on the terminal), then "AskAway User Details:" (pt
     "Detalhes do AskAway User:"), in bold. Its sections, each drawn only when its field is set, in this order: "🔁 Analogy"
     (`analogy`; pt "🔁 Analogia"), "💡 Why <rec>" (`why`; pt "💡 Por que A", the letter is the recommended key), "↩️ Undo"
@@ -445,7 +445,7 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
     - the focus ring leaves the field for a stop that is not one of the pane's own Buttons: the `ui.focus` hook passes the
       move on first (`await next(e)`), then commits (`commitsOnFocus`, `isOwnButtonKey`, `hooks/register.tsx`, `hooks/model.ts`);
     - a press of one of the pane's own Buttons, before the press acts (`afterPendingOther`): an option, the Other link, Next,
-      Back, Submit all, a tree row's Submit, a tree jump and the review's Back. Submit all then sends the committed text as the reply.
+      Back, the details toggle, Submit all, a tree row's Submit, a tree jump and the review's Back. Submit all then sends the committed text as the reply.
       The Other link decides after that commit, from the wizard then: an Other pick already there stays, a kept label is picked
       (under the move lock), and no label focuses the field (`pressOther`);
     - closing the pane (`ui.close`), which commits the pending texts.
@@ -485,8 +485,8 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
   - while the question has no pick and no kept Other label, the row is blank (a non-breaking space that keeps the card's height); with a kept Other label but no pick (a draft that lost its pick), a line in the `warning` colour: "Not answered yet: press
     <L> to choose your text." (pt "Ainda não respondida: aperte <L> para escolher o seu texto."), <L> the Other letter
     (`renderUnanswered`, `card.unansweredKept`); the same line while the question's pick is picked but a
-    submit did not deliver it (its pick stays a draft): "Not delivered yet: press Submit all again." (pt "Ainda não entregue:
-    aperte Enviar tudo de novo.", `card.undelivered`, `undeliveredAtom`); blank (its row kept) on an ended or fading card, and once the question is picked and delivered;
+    submit did not deliver it (its pick stays a draft): "Not delivered yet: submit it again." (pt "Ainda não entregue:
+    envie de novo.", `card.undelivered`, `undeliveredAtom`); blank (its row kept) on an ended or fading card, and once the question is picked and delivered;
   - a separator: a 1px rule on the desktop, a row of "─" on the terminal (`renderDivider`);
   - the nav row: [← Back] (Portuguese: "← Voltar") on every question, dim on the first; in a group of two or more questions,
     [Next →] (Portuguese: "Próxima →") on every question, the last one included, where it opens the review (see Choosing);
@@ -516,7 +516,7 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
   (the option label, or an Other text in typographic quotes, `answerNameOf`; "No answer", pt "Sem resposta", for a question
   with no pick, as "→ No answer"), whose press jumps to that question's card; under the rows, inside the border, come
   then the title "Review your answers" (pt "Revise as suas respostas") and the hint "Press a question to change its
-  answer." (pt "Clique numa pergunta para mudar a resposta."), then a separator, then [← Back] (its answer state first: "Answer: D · ← Back",
+  answer." (pt "Selecione uma pergunta para mudar a resposta."), then a separator, then [← Back] (its answer state first: "Answer: D · ← Back",
   or "No answer · ← Back" for the last question) and the plain [Submit all (n)] (pt "Enviar tudo (n)"), dim until every question of
   the group has a pick. Back on the review shows the last question's card again, with its nav row (`leaveReview`). A jump leaves
   the review too (`jumpToQuestion`), any move does (`moveWizard`), and the group's Submit all clears it (`submitGroup`); a change to the group's questions (one leaves or arrives) closes it on the next poll (`closeChangedReview`), and only Next on the last question opens it again. A pick

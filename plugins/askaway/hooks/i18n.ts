@@ -76,7 +76,7 @@ const EN = {
   'card.lead.agent': 'On {key} since {time}. Pick another option to switch; no answer keeps {key}.',
   'card.lead.paused': 'Paused since {time}, waiting for your answer.',
   'card.unansweredKept': 'Not answered yet: press {key} to choose your text.',
-  'card.undelivered': 'Not delivered yet: press Submit all again.',
+  'card.undelivered': 'Not delivered yet: submit it again.',
   'review.submit': 'Submit all ({n})',
   'review.title': 'Review your answers',
   'review.hint': 'Press a question to change its answer.',
@@ -110,6 +110,9 @@ const EN = {
   'footer.expired.one': '{n} expired',
   'footer.expired.many': '{n} expired',
   'details.title': 'AskAway User Details:',
+  // issue #35: the details toggle, {n} the sections set
+  'details.show': '▸ Show details ({n})',
+  'details.hide': '▾ Hide details',
   // gauntlet 4, B1
   'toast.dismissFailed': 'Could not dismiss the question; it is still listed.',
   'command.verbsHelp': 'Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name> or /askaway away.',
@@ -188,10 +191,10 @@ const PT: Record<MessageKey, string> = {
   'card.lead.agent': 'Na opção {key} desde {time}. Escolha outra opção para trocar; sem resposta, fica a opção {key}.',
   'card.lead.paused': 'Pausado desde {time}, esperando a sua resposta.',
   'card.unansweredKept': 'Ainda não respondida: aperte {key} para escolher o seu texto.',
-  'card.undelivered': 'Ainda não entregue: aperte Enviar tudo de novo.',
+  'card.undelivered': 'Ainda não entregue: envie de novo.',
   'review.submit': 'Enviar tudo ({n})',
   'review.title': 'Revise as suas respostas',
-  'review.hint': 'Clique numa pergunta para mudar a resposta.',
+  'review.hint': 'Selecione uma pergunta para mudar a resposta.',
   'tree.submit': 'Enviar resposta',
   'band.open': 'Responder',
   'band.text': '{questions} aguardando · {groups}',
@@ -222,6 +225,9 @@ const PT: Record<MessageKey, string> = {
   'footer.expired.one': '{n} expirada',
   'footer.expired.many': '{n} expiradas',
   'details.title': 'Detalhes do AskAway User:',
+  // issue #35: the details toggle, {n} the sections set
+  'details.show': '▸ Mostrar detalhes ({n})',
+  'details.hide': '▾ Ocultar detalhes',
   // gauntlet 4, B1
   'toast.dismissFailed': 'Não foi possível dispensar a pergunta; ela continua na lista.',
   'command.verbsHelp': 'Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome> ou /askaway away.',

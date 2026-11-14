@@ -76,10 +76,14 @@ export type PaneView = {
   away?: boolean
   // True until the person gave a name or skipped: the pane then asks for it above the card, once.
   askWho: boolean
+  // The details block is open (the sticky per-user flag, register.tsx detailsOpenAtom); folded by default.
+  detailsOpen: boolean
 }
 
 export type PaneActions = {
   clearHistory: () => void
+  // The details toggle's press: flips the sticky flag (the card's Button, renderDetailsToggle).
+  toggleDetails: () => void
   // Dismiss of an ended card: the prune is forced. Dismiss of a damaged pause: the prune is not (the CLI refuses a question it reads).
   dismissEndedForced: (id: string) => void
   dismissDamagedUnforced: (id: string) => void
@@ -106,6 +110,8 @@ type CardContext = {
   isLeaving: boolean
   // The pick of this question was not delivered by the last submit (PaneView.undelivered).
   isUndelivered: boolean
+  // The details block is open (PaneView.detailsOpen): the toggle words it and the sections are drawn under it.
+  detailsOpen: boolean
   held: HeldButtons
   surface: RenderSurface
 }
@@ -494,8 +500,8 @@ const answerLabelOf = (lang: Lang, card: CardContext, label: string): string => 
 }
 
 // One question on screen: the title row (renderTitleRow), the Urgency box under it (when set), the first
-// block (What it is and The problem, plain paragraphs), then the details block: the "AskAway User Details:" title and Analogy,
-// Why to Context. Then the question, the dim lead line under it, the options with their tradeoff, fit, what happens,
+// block (What it is and The problem, plain paragraphs), then the details block: its toggle, and, when open, the "AskAway User
+// Details:" title and Analogy to Context. Then the question, the dim lead line under it, the options with their tradeoff, fit, what happens,
 // pros and cons, and "Other…". Then a separator, and the Back / Next or Submit all row. One blank line sits under it.
 function renderQuestion(
   ui: Ui,
@@ -515,6 +521,7 @@ function renderQuestion(
     isLeaving: view.leaving[question.id] !== undefined,
     isUndelivered: view.undelivered.includes(question.id),
     otherRows: view.otherRows[question.id] ?? OTHER_MIN_ROWS,
+    detailsOpen: view.detailsOpen,
     held,
     surface: view.surface,
   }
@@ -527,7 +534,7 @@ function renderQuestion(
       {renderTitleRow(ui, lang, question, isLeaving, view.now, view.surface)}
       {renderUrgency(ui, lang, question, isLeaving)}
       {renderFirstBlock(ui, question, isLeaving)}
-      {details.length > 0 && renderDetailsBlock(ui, lang, card, details)}
+      {details.length > 0 && renderDetailsBlock(ui, lang, actions, card, details)}
       <Box flexDirection="column">
         <Text bold dimColor={isLeaving}>{question.question}</Text>
         {!isEnded && <Text dimColor>{leadOf(lang, question, view.now)}</Text>}
@@ -548,21 +555,40 @@ function renderQuestion(
   )
 }
 
-// The details block: the "AskAway User Details:" title line (the mark, then the text in bold), then the sections (Analogy,
-// Why to Context). It has no border: its fill is the engine's user-message background (DETAILS_FILL), and its padding keeps
-// the text off the fill's edge. The title is the block's first child.
-function renderDetailsBlock(ui: Ui, lang: Lang, card: CardContext, sections: Section[]): RenderElement {
+// The details block (issue #35): the toggle row first, then, only while open, the "AskAway User Details:" title line (the
+// mark, then the text in bold) and the sections (Analogy, Why to Context). Folded, the block is the toggle row alone. It has no
+// border: its fill is the engine's user-message background (DETAILS_FILL), and its padding keeps the text off the fill's edge.
+function renderDetailsBlock(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, sections: Section[]): RenderElement {
   const { Box, Text } = ui
-  const { question, isLeaving, surface } = card
+  const { question, isLeaving, surface, detailsOpen } = card
   return (
     <Box key={`details-${question.id}`} flexDirection="column" gap={1} backgroundColor={DETAILS_FILL} paddingX={1} paddingY={1}>
-      <Box key="details-title" flexDirection="row" alignItems="center" gap={1}>
-        {renderLogo(ui, surface)}
-        <Text bold dimColor={isLeaving}>{t(lang, 'details.title')}</Text>
-      </Box>
-      {sections.map(section => renderSection(ui, section, isLeaving))}
+      {renderDetailsToggle(ui, lang, actions, card, sections.length)}
+      {detailsOpen && (
+        <Box key="details-title" flexDirection="row" alignItems="center" gap={1}>
+          {renderLogo(ui, surface)}
+          <Text bold dimColor={isLeaving}>{t(lang, 'details.title')}</Text>
+        </Box>
+      )}
+      {detailsOpen && sections.map(section => renderSection(ui, section, isLeaving))}
     </Box>
   )
+}
+
+// The details toggle (issue #35): a Button worded with the count of sections set while folded ("▸ Show details (7)"), and
+// "▾ Hide details" while open. It has no hotkey. A fading card dims it and ignores its press.
+function renderDetailsToggle(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext, count: number): RenderElement {
+  const { Button } = ui
+  const { question, isLeaving, detailsOpen, held } = card
+  const label = detailsOpen ? t(lang, 'details.hide') : t(lang, 'details.show', { n: count })
+  const key = `details-toggle-${question.id}`
+  const onPress = () => {
+    if (isLeaving) return
+    actions.toggleDetails()
+  }
+  return held.hold(key, [label, isLeaving], onPress, press => (
+    <Button key={key} label={label} variant="secondary" dimColor={isLeaving} onPress={press} />
+  ))
 }
 
 // The rule under the header (owner, 2026-11-08), as KeepAway Repo draws it: a 1px line across the pane on the desktop, a row of '─'
@@ -782,7 +808,7 @@ function renderOther(ui: Ui, lang: Lang, actions: PaneActions, card: CardContext
 const STATUS_BLANK = '\u00a0'
 
 // The warning line above the nav while the question's pick was not delivered by the last submit (the pick stays a draft:
-// press Submit all again), or while it has no pick but a kept Other label (a draft that lost its pick), which names the
+// submit it again), or while it has no pick but a kept Other label (a draft that lost its pick), which names the
 // Other letter to press. A question with no pick and no kept label draws a blank row. The row is always drawn: blank when
 // shown is false (an ended or fading card), or when the question is picked and that pick was delivered.
 function renderUnanswered(ui: Ui, lang: Lang, card: CardContext, shown: boolean): RenderElement {
@@ -892,6 +918,7 @@ function renderReview(tree: TreeContext, group: Group, screen: Screen): RenderEl
     wizard: view.wizard,
     isLeaving: view.leaving[lastQuestion.id] !== undefined,
     isUndelivered: view.undelivered.includes(lastQuestion.id),
+    detailsOpen: view.detailsOpen,
     held,
     surface: view.surface,
   }
