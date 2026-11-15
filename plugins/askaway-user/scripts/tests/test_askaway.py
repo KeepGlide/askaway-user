@@ -1787,7 +1787,7 @@ def test_pause_guard_process_still_loads_the_module_when_a_pause_is_on_file(home
 
 
 def test_pause_guard_process_denies_a_state_folder_write_with_no_pause_on_file(home):
-    command = f"rm -f {Path.home()}/.claude/state/askaway/a/q-1-abcdef.json"  # the default folder, as the Bash tests name it
+    command = f"rm -f {Path.home()}/.claude/state/askaway-user/a/q-1-abcdef.json"  # the default folder, as the Bash tests name it
     proc = run_pause_guard(home, json.dumps(edit_event(tool="Bash", command=command)).encode("utf-8"))
     assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
@@ -3296,6 +3296,131 @@ def test_a_command_naming_the_state_folder_in_pieces_is_denied_even_when_unreada
     assert bash_denial(capsys, monkeypatch, command) == askaway.STATE_DENIED
 
 
+CURRENT_STATE_FOLDER = "~/.claude/state/askaway-user"  # the default folder; STATE_FOLDER is the legacy name, still guarded
+LAYOUTS = ["legacy-real", "legacy-link", "legacy-missing"]
+
+
+@pytest.mark.parametrize("folder", [STATE_FOLDER, CURRENT_STATE_FOLDER], ids=["legacy", "default"])
+@pytest.mark.parametrize("template", [
+    "echo x > {folder}/a/q-1-abcdef.json",
+    "rm -f {folder}/q/q-1-abcdef.json",
+    "mv /tmp/x.json {folder}/a/q-1-abcdef.json",
+    "ln -s /tmp/x {folder}/link",
+    "cd {folder} && cp /tmp/x.json a/",
+    "ASKAWAY_HOME={folder} python3 -c pass",
+])
+def test_both_state_folder_names_are_denied_for_a_write_a_move_a_link_a_cd_and_a_home_override(
+        template, folder, capsys, monkeypatch):
+    assert bash_denial(capsys, monkeypatch, template.format(folder=folder)) == askaway.STATE_DENIED
+
+
+def real_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str) -> dict[str, str]:
+    """The two folder names on disk as a layout puts them, with the module's constants pointed at them."""
+    state = tmp_path / "home" / ".claude" / "state"
+    current, legacy = state / "askaway-user", state / "askaway"
+    current.mkdir(parents=True)
+    if layout == "legacy-real":
+        legacy.mkdir()
+    elif layout == "legacy-link":
+        legacy.symlink_to(current)
+    monkeypatch.setattr(askaway, "DEFAULT_HOME", current)
+    monkeypatch.setattr(askaway, "LEGACY_HOME", legacy)
+    return {"legacy": str(legacy), "default": str(current)}
+
+
+@pytest.mark.parametrize("layout", LAYOUTS)
+@pytest.mark.parametrize("name", ["legacy", "default"])
+@pytest.mark.parametrize("template", [
+    "echo x > {path}/q/a.json",
+    "rm -f {path}/q/a.json",
+    "mv /tmp/x.json {path}/a/x.json",
+    "ln -sfn /tmp/evil {path}",
+    "cd {path} && echo x > a.json",
+    "ASKAWAY_HOME={path} python3 -c pass",
+])
+def test_the_folder_behind_either_name_is_denied_in_every_on_disk_layout(
+        template, name, layout, tmp_path, monkeypatch, capsys):
+    path = real_layout(tmp_path, monkeypatch, layout)[name]
+    assert bash_denial(capsys, monkeypatch, template.format(path=path)) == askaway.STATE_DENIED
+
+
+@pytest.mark.parametrize("layout", LAYOUTS)
+@pytest.mark.parametrize("name", ["legacy", "default"])
+def test_a_file_tool_write_through_either_name_is_denied_in_every_on_disk_layout(
+        name, layout, tmp_path, monkeypatch, capsys):
+    path = real_layout(tmp_path, monkeypatch, layout)[name]
+    event = {**edit_event(tool="Write"), "tool_input": {"file_path": f"{path}/q/a.json"}}
+    assert hook_json(capsys, monkeypatch, "pause-guard", event)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def parent_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str) -> str:
+    """The folder above the state folders, with none of them, the default one only, or the default one and the legacy link."""
+    state = tmp_path / "home" / ".claude" / "state"
+    current, legacy = state / "askaway-user", state / "askaway"
+    state.mkdir(parents=True)
+    if layout != "none":
+        current.mkdir()
+    if layout == "default-and-link":
+        legacy.symlink_to(current)
+    monkeypatch.setattr(askaway, "DEFAULT_HOME", current)
+    monkeypatch.setattr(askaway, "LEGACY_HOME", legacy)
+    return str(state)
+
+
+INTO_PARENT = [
+    "ln -sf /tmp/forged/{name} {parent}/",
+    "ln -sf -t {parent} /tmp/forged/{name}",
+    "cd {parent} && ln -s /tmp/forged/{name}",
+    "mv /tmp/forged/{name} {parent}/",
+    "mv -t {parent} /tmp/forged/{name}",
+    "cp -r /tmp/forged/{name} {parent}/",
+    "cp -r /tmp/forged/{name}/ {parent}",
+    "cp -r --target-directory={parent} /tmp/forged/{name}",
+    "rsync -a /tmp/forged/{name} {parent}/",
+    "install -D /tmp/forged/{name} {parent}/",
+    "cp -r /tmp/forged/* {parent}/",
+    'cp -r "$SRC" {parent}/',
+    "install -m 755 /tmp/forged/{name} {parent}/",
+    "cp -r -- /tmp/forged/{name} {parent}/",
+    "cd {parent}/.. && cp -r /tmp/forged/{name} state/",
+    "cd {parent} && cp -r /tmp/forged/{name} .",
+    "sudo cp -r /tmp/forged/{name} {parent}/",
+    "sh -c 'cp -r /tmp/forged/{name} {parent}/'",
+    "echo /tmp/forged/{name} | xargs -I% cp -r % {parent}/",
+    "echo /tmp/forged/{name} | xargs -I % cp -r % {parent}/",
+    "echo /tmp/forged/{name} | xargs --replace=@@ mv @@ {parent}/",
+]
+
+
+@pytest.mark.parametrize("layout", ["none", "default-only", "default-and-link"])
+@pytest.mark.parametrize("name", ["askaway", "askaway-user"])
+@pytest.mark.parametrize("template", INTO_PARENT)
+def test_a_source_put_into_the_folder_above_cannot_create_or_replace_a_state_folder(
+        template, name, layout, tmp_path, monkeypatch, capsys):
+    parent = parent_layout(tmp_path, monkeypatch, layout)
+    assert bash_denial(capsys, monkeypatch, template.format(name=name, parent=parent)) == askaway.STATE_DENIED
+
+
+@pytest.mark.parametrize("layout", ["none", "default-only", "default-and-link"])
+@pytest.mark.parametrize("template", [
+    "cp /tmp/forged/usage.jsonl {parent}/",
+    "mv /tmp/forged/usage.jsonl {parent}/",
+    "rsync -a /tmp/forged/other-tool {parent}/",
+    "ln -s /tmp/forged/other-tool {parent}/",
+])
+def test_another_name_put_into_the_folder_above_the_state_folders_still_passes(
+        template, layout, tmp_path, monkeypatch, capsys):
+    parent = parent_layout(tmp_path, monkeypatch, layout)
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(template.format(parent=parent))) == ""
+
+
+def test_an_rsync_of_a_folder_s_contents_lands_in_the_destination_itself(tmp_path, monkeypatch, capsys):
+    parent = parent_layout(tmp_path, monkeypatch, "default-and-link")
+    # The trailing slash copies what the folder holds, so the folder's own name is not created above the state folders.
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(f"rsync -a /tmp/forged/askaway/ {parent}/")) == ""
+    assert bash_denial(capsys, monkeypatch, f"rsync -a /tmp/forged/q/ {parent}/askaway/q/") == askaway.STATE_DENIED
+
+
 def test_an_unreadable_command_unrelated_to_the_state_folder_still_passes(capsys, monkeypatch):
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event('echo "it\'s')) == ""
 
@@ -3482,10 +3607,16 @@ LINK_SANDBOX_ANSWER = f"ASKAWAY_HOME=/tmp/state/askaway python3 {SCRIPT} answer 
     f"ln -s --target-directory=/tmp ~/.claude/state && {LINK_SANDBOX_ANSWER}",
     f"ln -st/tmp ~/.claude/state && {LINK_SANDBOX_ANSWER}",
     f"cd /tmp && ln -S .x -s ~/.claude/state && {LINK_SANDBOX_ANSWER}",
-    f"cd $X && ln -s /etc/hosts && {LINK_SANDBOX_ANSWER}",
 ])
 def test_a_link_ln_places_in_a_target_folder_or_the_cwd_is_not_a_sandbox_home(command, capsys, monkeypatch):
     assert bash_denial(capsys, monkeypatch, command) == askaway.ANSWER_DENIED
+
+
+def test_a_link_ln_places_in_an_unknown_cwd_is_denied_as_a_write_that_cannot_be_placed(capsys, monkeypatch):
+    # The link takes its source's name in a cwd the guard cannot place (cd $X), in a command that names the state folder:
+    # the place it lands is checked like any relative write there, before the reply is reached.
+    command = f"cd $X && ln -s /etc/hosts && {LINK_SANDBOX_ANSWER}"
+    assert bash_denial(capsys, monkeypatch, command) == askaway.STATE_DENIED
 
 
 def test_an_unreadable_commit_naming_a_state_file_without_askaway_passes(capsys, monkeypatch):

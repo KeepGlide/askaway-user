@@ -2,7 +2,8 @@
 """AskAway User inbox: the CLI agents call and the hook modes that guard and deliver questions.
 
 State lives in one JSON file per item under ASKAWAY_HOME (default
-~/.claude/state/askaway): q/ questions, a/ answers (first writer wins),
+~/.claude/state/askaway-user; the legacy ~/.claude/state/askaway is moved there once):
+q/ questions, a/ answers (first writer wins),
 d/ delivery markers (the main session's copy), s/ the asking subagent's own delivery markers and away.json.
 Contract: SPEC.md next to this plugin.
 Hook modes fail open: any error exits 0 with no output, except the pause guard, which denies the call.
@@ -30,9 +31,46 @@ def _marked(path: str) -> bool:
     return stat.S_ISREG(status.st_mode) and status.st_size > 0
 
 
+# The state folder before the rename to askaway-user. After the one-time move it is a symlink to the new folder, so an
+# older plugin version keeps reading and writing the same folder (SPEC.md, State folder migration).
+_legacy_checked = False
+
+
+def _move_legacy_folder(legacy: str, current: str) -> None:
+    """Move a real legacy folder to the current name and leave a symlink in its place. The rename is the whole test of
+    the current name: it goes through only onto a name that is absent or an empty folder (the pane may have made one),
+    and fails onto a folder with files, a file or a symlink, so nothing is ever merged or replaced. Nothing to move, or
+    any OSError (another process moved it first, a read-only disk), leaves both paths as they are."""
+    import stat  # the fast path runs before the module imports
+    try:
+        if not stat.S_ISDIR(os.lstat(legacy).st_mode):
+            return
+        os.rename(legacy, current)
+        os.symlink(current, legacy)
+    except OSError:
+        return
+
+
+def _migrate_legacy_home() -> None:
+    """The one-time move of the legacy state folder, run before a state folder is first used and once per process. An
+    ASKAWAY_HOME that names another folder never migrates; one that names the default folder (the pane's calls) does."""
+    global _legacy_checked
+    if _legacy_checked:
+        return
+    _legacy_checked = True
+    state = os.path.join(os.path.expanduser("~"), ".claude", "state")
+    current = os.path.join(state, "askaway-user")
+    override = os.environ.get("ASKAWAY_HOME")
+    if override and override != current and os.path.realpath(override) != os.path.realpath(current):
+        return
+    _move_legacy_folder(os.path.join(state, "askaway"), current)
+
+
 def _fast_home() -> str:
-    """The state folder the fast paths read: ASKAWAY_HOME, else ~/.claude/state/askaway (the same folder as DEFAULT_HOME)."""
-    default_home = os.path.join(os.path.expanduser("~"), ".claude", "state", "askaway")
+    """The state folder the fast paths read: ASKAWAY_HOME, else ~/.claude/state/askaway-user (the same folder as
+    DEFAULT_HOME), after the one-time move of the legacy folder."""
+    _migrate_legacy_home()
+    default_home = os.path.join(os.path.expanduser("~"), ".claude", "state", "askaway-user")
     return os.environ.get("ASKAWAY_HOME") or default_home
 
 
@@ -177,7 +215,8 @@ from typing import Any, Final, NamedTuple, NoReturn
 
 HookOutput = dict[str, Any] | None
 
-DEFAULT_HOME: Final = Path.home() / ".claude" / "state" / "askaway"
+DEFAULT_HOME: Final = Path.home() / ".claude" / "state" / "askaway-user"
+LEGACY_HOME: Final = Path.home() / ".claude" / "state" / "askaway"  # the pre-rename folder; guarded like DEFAULT_HOME
 SCRIPT_PATH: Final = Path(__file__).resolve()
 MIRROR_SCRIPT: Final = Path.home() / ".claude" / "mods" / "plugins" / "askaway-user" / "scripts" / "askaway.py"
 ID_PATTERN: Final = re.compile(r"q-[0-9a-z]+-[0-9a-f]{6}")
@@ -375,6 +414,7 @@ WRITE_COMMANDS: Final = frozenset({"cp", "mv", "tee", "touch", "ln", "install", 
                                  "mkfifo", "mknod", "mkdir", "chmod", "chown", "chgrp", "setfacl", "chattr"})
 DELETE_COMMANDS: Final = frozenset({"rm", "unlink", "shred", "rmdir"})
 TARGET_FOLDER_COMMANDS: Final = frozenset({"cp", "ln", "install"})  # each also writes into the folder -t names
+LANDING_COMMANDS: Final = frozenset({"cp", "mv", "ln", "rsync", "install"})  # each puts a source into a folder by its name
 PYTHON_NAME: Final = re.compile(r"python(?:3(?:\.\d+)?)?")
 CODE_RUNNERS: Final = frozenset({"perl", "ruby", "node", "bun", "deno", "php"})
 SHELL_NAMES: Final = frozenset({
@@ -481,6 +521,7 @@ class Origin(NamedTuple):
 # ---- state folder ------------------------------------------------------
 
 def state_home() -> Path:
+    _migrate_legacy_home()
     override = os.environ.get("ASKAWAY_HOME")
     return Path(override) if override else DEFAULT_HOME
 
@@ -2667,10 +2708,29 @@ def _strip_prefix(words: list[str]) -> tuple[dict[str, str], list[str]]:
         elif head in PREFIX_WORDS or words[0].isdigit():  # a digit word is the fd of a redirection the tokens split off
             words = words[1:]  # (2>/dev/null bash): no command is named by digits alone, so it is read as that fd
         elif os.path.basename(head) in WRAPPER_NAMES:  # /usr/bin/env too
+            placeholder = _xargs_placeholder(words[1:]) if os.path.basename(head) == "xargs" else None
             words = _drop_wrapper_args(os.path.basename(head), words[1:])
+            if placeholder:  # what xargs puts there is not known, so the word may be any name
+                words = [word.replace(placeholder, "*") for word in words]
         else:
             break
     return env, words
+
+
+def _xargs_placeholder(args: Sequence[str]) -> str | None:
+    """The replace string of an xargs (-I STR, -ISTR, -i[STR], --replace[=STR]; {} when none is given), or None."""
+    for index, raw in enumerate(args):
+        arg = _unquote(raw)
+        if not arg.startswith("-"):
+            return None  # the command starts here
+        if arg == "-I":
+            return _unquote(args[index + 1]) if index + 1 < len(args) else None
+        for option in ("--replace=", "-I", "-i"):
+            if arg.startswith(option) and len(arg) > len(option):
+                return arg[len(option):]
+        if arg in ("-i", "--replace"):
+            return "{}"
+    return None
 
 
 def _assignments(words: Sequence[str]) -> dict[str, str]:
@@ -2989,13 +3049,37 @@ def _command_targets(name: str, args: Sequence[str], raw: Sequence[str]) -> list
     if name == "dd":
         return [(arg[3:], False) for arg in args if arg.startswith("of=")]
     if name == "mv":
-        return _move_targets(args)
+        return _move_targets(args) + _landing_targets(name, args)
     if _edits_in_place(name, args):
         return [(arg, False) for arg in _sed_files(args, raw)]
     operands = _write_operands(name, args)
     if name in WRITE_COMMANDS or name in DELETE_COMMANDS:
-        return [(arg, name in DELETE_COMMANDS) for arg in operands]
+        return [(arg, name in DELETE_COMMANDS) for arg in operands] + _landing_targets(name, args)
     return []
+
+
+def _landing_targets(name: str, args: Sequence[str]) -> list[tuple[str, bool]]:
+    """Where each source of a cp, mv, ln, rsync or install lands when its destination is a folder: the destination
+    joined with the source's own name, so a copy, a move or a link put into the folder above a state folder cannot
+    create or replace it (cp -r DIR/askaway ~/.claude/state/). The destination is the folder -t names, else the last
+    operand, or the working directory for an ln with one operand. A source name that may expand stands for any name
+    (*). An rsync source that ends in a slash copies its contents, so it lands in the destination itself."""
+    if name not in LANDING_COMMANDS:
+        return []
+    operands, folder = _operands_and_folder(args)
+    if folder is None and name == "ln" and len(operands) == 1:
+        folder = os.curdir
+    sources, destination = (operands, folder) if folder is not None else (operands[:-1], "".join(operands[-1:]))
+    if not destination:
+        return []
+    landed: list[tuple[str, bool]] = []
+    for source in sources:
+        if name == "rsync" and source.endswith(os.sep):
+            continue
+        base = os.path.basename(source.rstrip(os.sep))
+        if base:
+            landed.append((os.path.join(destination, "*" if EXPANSION.search(base) else base), False))
+    return landed
 
 
 def _write_targets(argv: Sequence[str], writes: Sequence[str]) -> list[tuple[str, bool]]:
@@ -3006,8 +3090,10 @@ def _write_targets(argv: Sequence[str], writes: Sequence[str]) -> list[tuple[str
 
 
 def _state_roots() -> tuple[str, ...]:
-    """The real state folders the guard protects: the default one always, and ASKAWAY_HOME unless it lies under /tmp."""
-    roots = {os.path.realpath(DEFAULT_HOME)}
+    """The real state folders the guard protects: the default one and the legacy one, by real path (a legacy symlink
+    resolves into the default folder; a missing legacy path is its own real path), and ASKAWAY_HOME unless it lies
+    under /tmp. Both names are also matched as text by STATE_MENTION and STATE_PIECES."""
+    roots = {os.path.realpath(DEFAULT_HOME), os.path.realpath(LEGACY_HOME)}
     custom = os.path.realpath(state_home())
     if not custom.startswith(TMP_ROOT + os.sep):
         roots.add(custom)

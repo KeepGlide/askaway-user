@@ -299,10 +299,10 @@ claude plugin uninstall askaway-user@keepglide-local
 claude plugin marketplace remove keepglide-local
 ```
 
-**Remova os seus dados.** Desinstalar não remove a pasta de estado, `~/.claude/state/askaway` (ou a pasta `ASKAWAY_HOME` que você definiu), porque ela fica fora da pasta do plugin. Remover é uma escolha sua:
+**Remova os seus dados.** Desinstalar não remove a pasta de estado, `~/.claude/state/askaway-user` (ou a pasta `ASKAWAY_HOME` que você definiu), porque ela fica fora da pasta do plugin. Remover é uma escolha sua:
 
 ```bash
-rm -r ~/.claude/state/askaway
+rm -r ~/.claude/state/askaway-user
 ```
 
 > [!CAUTION]
@@ -386,7 +386,7 @@ No desktop, a marca da KeepGlide fica ao lado do contador e ao lado de **Enviar 
 
 | Ajuste | Padrão | Como mudar |
 |---|---|---|
-| Pasta de estado | `~/.claude/state/askaway` | Variável de ambiente `ASKAWAY_HOME` |
+| Pasta de estado | `~/.claude/state/askaway-user` | Variável de ambiente `ASKAWAY_HOME` |
 | Grupos do Desktop | `~/.config/Claude/claude_desktop_config.json` | Variável de ambiente `ASKAWAY_DESKTOP_CONFIG`; o painel relê o arquivo quando a data de modificação muda, e mantém os últimos grupos lidos quando uma leitura falha |
 | Idioma | `auto`: o locale. Decide a primeira variável definida entre `LC_ALL`, `LC_MESSAGES`, `LANG`, `LANGUAGE`; um valor que começa com `pt` é português, qualquer outro é inglês | `/askaway lang pt-BR`, `/askaway lang en` ou `/askaway lang auto` |
 | Modo ausente | Desligado | `/askaway away` (guardado em `away.json` na pasta de estado) |
@@ -480,7 +480,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ## 🗂️ Pasta de estado
 
 ```text
-~/.claude/state/askaway/
+~/.claude/state/askaway-user/
 ├── q/<id>.json   a pergunta, gravada por ask; o hook stamp-asker acrescenta `asker` uma vez
 ├── a/<id>.json   a resposta, vale a primeira gravação
 ├── d/<id>.json   a marca de entrega da cópia da sessão principal
@@ -494,7 +494,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 
 As gravações passam antes por um arquivo oculto `.<nome>.<hex>.tmp` e depois são renomeadas no lugar. Uma resposta é publicada com um link exclusivo, então só a primeira gravada fica. A limpeza remove os arquivos `.tmp` antigos.
 
-`ASKAWAY_HOME` substitui `~/.claude/state/askaway`. O contrato completo está em [plugins/askaway-user/SPEC.md](plugins/askaway-user/SPEC.md).
+`ASKAWAY_HOME` substitui `~/.claude/state/askaway-user`. O contrato completo está em [plugins/askaway-user/SPEC.md](plugins/askaway-user/SPEC.md).
 
 ### Uma máquina, um login
 

@@ -42,7 +42,7 @@ import { ACCENT_COLOR, LINK_MARK, TEXT_CONTRAST, URGENCY_COLOR } from '../hooks/
 import type { Answer, Board } from '../types'
 
 const HOME = '/test-home'
-const STATE = `${HOME}/.claude/state/askaway`
+const STATE = `${HOME}/.claude/state/askaway-user`
 const SESSION = { cwd: '/work/app', surface: 'terminal', isInteractive: true } as const
 const PANE_PROPS = {
   title: 'AskAway User',

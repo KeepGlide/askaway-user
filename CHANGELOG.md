@@ -11,6 +11,7 @@ Commit hashes name the change in `git log`.
 ### Changed
 - **The plugin folder is now `plugins/askaway-user`**: the installed mirror path becomes `~/.claude/mods/plugins/askaway-user/scripts/askaway.py`. Anyone who calls the CLI by the old path `~/.claude/mods/plugins/askaway/scripts/askaway.py` must update it: the pause guard no longer lets a call through the old path while a question holds the session.
 - **The last answer of a round brings the Submit buttons into view**: the pick that gives a round its last missing answer scrolls the pane back to its top, where the tree and its Submit buttons are. Changing an answer afterwards scrolls nothing, and the focus never moves to a Submit button.
+- **The default state folder is now `~/.claude/state/askaway-user`**: the first CLI or hook call of this version moves `~/.claude/state/askaway` there once and leaves a symlink at the old path, so older versions keep working on the same folder. `ASKAWAY_HOME` is unchanged (SPEC.md, State folder migration).
 
 ## [1.1.13] - 2026-11-14
 

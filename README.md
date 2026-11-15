@@ -299,10 +299,10 @@ claude plugin uninstall askaway-user@keepglide-local
 claude plugin marketplace remove keepglide-local
 ```
 
-**Remove your data.** Uninstalling does not remove the state folder, `~/.claude/state/askaway` (or the `ASKAWAY_HOME` folder you set), because it lies outside the plugin folder. Removing it is your choice:
+**Remove your data.** Uninstalling does not remove the state folder, `~/.claude/state/askaway-user` (or the `ASKAWAY_HOME` folder you set), because it lies outside the plugin folder. Removing it is your choice:
 
 ```bash
-rm -r ~/.claude/state/askaway
+rm -r ~/.claude/state/askaway-user
 ```
 
 > [!CAUTION]
@@ -386,7 +386,7 @@ On the desktop, the KeepGlide mark sits beside the counter and beside **Submit a
 
 | Setting | Default | How to change it |
 |---|---|---|
-| State folder | `~/.claude/state/askaway` | Environment variable `ASKAWAY_HOME` |
+| State folder | `~/.claude/state/askaway-user` | Environment variable `ASKAWAY_HOME` |
 | Desktop Groups | `~/.config/Claude/claude_desktop_config.json` | Environment variable `ASKAWAY_DESKTOP_CONFIG`; the pane re-reads the file when its modification time changes, and keeps the last Groups it read when a read fails |
 | Language | `auto`: the locale. The first set of `LC_ALL`, `LC_MESSAGES`, `LANG`, `LANGUAGE` decides; a value that starts with `pt` is Portuguese, anything else English | `/askaway lang pt-BR`, `/askaway lang en` or `/askaway lang auto` |
 | Away mode | Off | `/askaway away` (stored in `away.json` in the state folder) |
@@ -480,7 +480,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ## 🗂️ State folder
 
 ```text
-~/.claude/state/askaway/
+~/.claude/state/askaway-user/
 ├── q/<id>.json   the question, written by ask; the stamp-asker hook adds `asker` once
 ├── a/<id>.json   the answer, first writer wins
 ├── d/<id>.json   the delivery marker of the main session's copy
@@ -494,7 +494,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 
 Writes go to a hidden `.<name>.<hex>.tmp` file first and are then renamed into place. An answer is published with an exclusive link, so only the first one written stays. Prune removes the stale `.tmp` files.
 
-`ASKAWAY_HOME` replaces `~/.claude/state/askaway`. The full contract is in [plugins/askaway-user/SPEC.md](plugins/askaway-user/SPEC.md).
+`ASKAWAY_HOME` replaces `~/.claude/state/askaway-user`. The full contract is in [plugins/askaway-user/SPEC.md](plugins/askaway-user/SPEC.md).
 
 ### One machine, one login
 

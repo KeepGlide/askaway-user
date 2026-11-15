@@ -1015,7 +1015,7 @@ async function folderOf($: EngineInterface): Promise<string | undefined> {
   const custom = await $.env.get('ASKAWAY_HOME')
   if (custom) return custom
   const home = await $.env.get('HOME')
-  return home ? `${home}/.claude/state/askaway` : undefined
+  return home ? `${home}/.claude/state/askaway-user` : undefined
 }
 
 async function withFolder<T>($: EngineInterface, job: (folder: string) => Promise<T>): Promise<T | undefined> {
