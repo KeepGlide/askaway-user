@@ -171,8 +171,10 @@ CLI or hook call of the new version, before the default folder is first used:
 - A `cp`, `mv`, `ln`, `rsync` or `install` that puts a source into a folder is also checked at the place the source
   lands, the destination joined with the source's name (`_landing_targets`), so a folder named `askaway` or
   `askaway-user` cannot be copied, moved or linked into `~/.claude/state/` to create or replace a state folder. A
-  source name that may expand (`*`, `$VAR`) counts as any name, and so does the replace string of an `xargs -I`. A
-  `find -exec` is not modelled, as elsewhere in the guard.
+  source name that may expand (`*`, `$VAR`) counts as any name, and so do a source that copies what a folder holds
+  (`SRC/.`, rsync's `SRC/`) and the replace string of an `xargs -I` in the last part of a path. Any operand after the
+  first may be the destination, and with `--parents` or `rsync -R` the source also lands under its whole path. Not
+  modelled, as elsewhere in the guard: `find -exec`, an alias, and a write through a link made earlier in the same line.
 
 Known limit: if a process of an older version recreates the legacy folder in the instant between the move and the link,
 or if both folders already hold files, the two folders stay separate. Nothing is merged automatically. The remedy is to

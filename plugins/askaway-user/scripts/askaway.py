@@ -415,6 +415,7 @@ WRITE_COMMANDS: Final = frozenset({"cp", "mv", "tee", "touch", "ln", "install", 
 DELETE_COMMANDS: Final = frozenset({"rm", "unlink", "shred", "rmdir"})
 TARGET_FOLDER_COMMANDS: Final = frozenset({"cp", "ln", "install"})  # each also writes into the folder -t names
 LANDING_COMMANDS: Final = frozenset({"cp", "mv", "ln", "rsync", "install"})  # each puts a source into a folder by its name
+RSYNC_RELATIVE: Final = re.compile(r"--relative|-[A-Za-z]*R[A-Za-z]*")  # rsync -R keeps the source's whole path
 PYTHON_NAME: Final = re.compile(r"python(?:3(?:\.\d+)?)?")
 CODE_RUNNERS: Final = frozenset({"perl", "ruby", "node", "bun", "deno", "php"})
 SHELL_NAMES: Final = frozenset({
@@ -2710,26 +2711,39 @@ def _strip_prefix(words: list[str]) -> tuple[dict[str, str], list[str]]:
         elif os.path.basename(head) in WRAPPER_NAMES:  # /usr/bin/env too
             placeholder = _xargs_placeholder(words[1:]) if os.path.basename(head) == "xargs" else None
             words = _drop_wrapper_args(os.path.basename(head), words[1:])
-            if placeholder:  # what xargs puts there is not known, so the word may be any name
-                words = [word.replace(placeholder, "*") for word in words]
+            if placeholder and os.sep not in placeholder:
+                words = [_xargs_filled(word, placeholder) for word in words]
         else:
             break
     return env, words
 
 
+def _xargs_filled(word: str, placeholder: str) -> str:
+    """A command word of an xargs -I with its replace string read as any name (*), in the last part of the path only:
+    what xargs puts there is not known. The folders before that part stay as written, so a word that named a place
+    keeps naming it; a replace string with a slash in it changes no word."""
+    cut = word.rfind(os.sep) + 1
+    return word[:cut] + word[cut:].replace(placeholder, "*")
+
+
 def _xargs_placeholder(args: Sequence[str]) -> str | None:
-    """The replace string of an xargs (-I STR, -ISTR, -i[STR], --replace[=STR]; {} when none is given), or None."""
-    for index, raw in enumerate(args):
+    """The replace string of an xargs (-I STR, -ISTR, -i[STR], --replace[=STR]; {} when none is given), or None. The
+    value word of another option (-n 1, -a FILE) is no command word."""
+    values = WRAPPER_VALUE_OPTIONS["xargs"] - {"-I"}
+    words = iter(args)
+    for raw in words:
         arg = _unquote(raw)
         if not arg.startswith("-"):
             return None  # the command starts here
         if arg == "-I":
-            return _unquote(args[index + 1]) if index + 1 < len(args) else None
+            return _unquote(next(words, "")) or None
         for option in ("--replace=", "-I", "-i"):
             if arg.startswith(option) and len(arg) > len(option):
                 return arg[len(option):]
         if arg in ("-i", "--replace"):
             return "{}"
+        if _takes_next_word(arg, values):
+            next(words, "")
     return None
 
 
@@ -3061,25 +3075,33 @@ def _command_targets(name: str, args: Sequence[str], raw: Sequence[str]) -> list
 def _landing_targets(name: str, args: Sequence[str]) -> list[tuple[str, bool]]:
     """Where each source of a cp, mv, ln, rsync or install lands when its destination is a folder: the destination
     joined with the source's own name, so a copy, a move or a link put into the folder above a state folder cannot
-    create or replace it (cp -r DIR/askaway ~/.claude/state/). The destination is the folder -t names, else the last
-    operand, or the working directory for an ln with one operand. A source name that may expand stands for any name
-    (*). An rsync source that ends in a slash copies its contents, so it lands in the destination itself."""
+    create or replace it (cp -r DIR/askaway ~/.claude/state/). The destination is the folder -t names, or the working
+    directory for an ln with one operand; else any operand after the first may be it, since the value of an option
+    after the operands reads as one more operand (cp -r SRC DIR --no-preserve mode). A source name that may expand stands for any name
+    (*), and so does a source that copies what a folder holds (SRC/. and rsync's SRC/). With --parents, or rsync -R,
+    the source also lands under its whole path."""
     if name not in LANDING_COMMANDS:
         return []
     operands, folder = _operands_and_folder(args)
     if folder is None and name == "ln" and len(operands) == 1:
         folder = os.curdir
-    sources, destination = (operands, folder) if folder is not None else (operands[:-1], "".join(operands[-1:]))
-    if not destination:
-        return []
-    landed: list[tuple[str, bool]] = []
-    for source in sources:
-        if name == "rsync" and source.endswith(os.sep):
-            continue
-        base = os.path.basename(source.rstrip(os.sep))
-        if base:
-            landed.append((os.path.join(destination, "*" if EXPANSION.search(base) else base), False))
-    return landed
+    keeps_path = "--parents" in args or (name == "rsync" and any(RSYNC_RELATIVE.fullmatch(arg) for arg in args))
+    # Without -t, each operand after the first may be the destination of the operands before it.
+    pairs = ([(folder, operands)] if folder is not None
+             else [(operand, operands[:index]) for index, operand in enumerate(operands) if index])
+    return [(os.path.join(destination, place), False) for destination, sources in pairs
+            for source in sources for place in _landing_places(name, source, keeps_path)]
+
+
+def _landing_places(name: str, source: str, keeps_path: bool) -> list[str]:
+    """The names a source takes inside the folder it is put into: its own name, any name (*) when that name may expand
+    or the source stands for what a folder holds, and its whole path when the command keeps it."""
+    base = os.path.basename(source.rstrip(os.sep))
+    holds = base in (os.curdir, os.pardir, "") or (name == "rsync" and source.endswith(os.sep))
+    places = ["*" if holds or EXPANSION.search(base) else base]
+    if keeps_path and source.strip(os.sep):
+        places.append(source.strip(os.sep))
+    return places
 
 
 def _write_targets(argv: Sequence[str], writes: Sequence[str]) -> list[tuple[str, bool]]:

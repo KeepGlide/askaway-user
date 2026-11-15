@@ -3389,6 +3389,14 @@ INTO_PARENT = [
     "echo /tmp/forged/{name} | xargs -I% cp -r % {parent}/",
     "echo /tmp/forged/{name} | xargs -I % cp -r % {parent}/",
     "echo /tmp/forged/{name} | xargs --replace=@@ mv @@ {parent}/",
+    "echo {name} | xargs -n 1 -I % cp -r /tmp/forged/% {parent}/",
+    "xargs -a /tmp/list -I% cp -r % {parent}/",
+    "cp -r /tmp/forged/{name} {parent}/ --no-preserve mode",
+    "cp -r /tmp/forged/. {parent}/",
+    "rsync -a /tmp/forged/ {parent}/",
+    "rsync -a --files-from=/tmp/list /tmp/forged/ {parent}/",
+    "cd /tmp/forged && cp -r --parents {name}/q {parent}/",
+    "cd /tmp/forged && rsync -aR {name}/q {parent}/",
 ]
 
 
@@ -3414,11 +3422,30 @@ def test_another_name_put_into_the_folder_above_the_state_folders_still_passes(
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(template.format(parent=parent))) == ""
 
 
-def test_an_rsync_of_a_folder_s_contents_lands_in_the_destination_itself(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("template", [
+    "echo / | xargs -I/ rm -rf {parent}/askaway",
+    "echo '~' | xargs -I'~' rm -rf {parent}/askaway-user",
+    "echo x | xargs -Ik touch {parent}/askaway/a/q-1-abcdef.json",
+])
+def test_an_xargs_replace_string_never_hides_a_path_the_command_names(template, tmp_path, monkeypatch, capsys):
     parent = parent_layout(tmp_path, monkeypatch, "default-and-link")
-    # The trailing slash copies what the folder holds, so the folder's own name is not created above the state folders.
-    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(f"rsync -a /tmp/forged/askaway/ {parent}/")) == ""
-    assert bash_denial(capsys, monkeypatch, f"rsync -a /tmp/forged/q/ {parent}/askaway/q/") == askaway.STATE_DENIED
+    assert bash_denial(capsys, monkeypatch, template.format(parent=parent)) == askaway.STATE_DENIED
+
+
+@pytest.mark.parametrize("command", [
+    "cp a b",
+    "cp -r src dst/",
+    "mv notes.md docs/",
+    "rsync -a src/ dst/",
+    "cd /tmp && ln -s /etc/hosts",
+    "install -m 644 a.txt /tmp/out/",
+    "find . -name '*.md' | xargs -I{} cp {} /tmp/out/",
+    'cp -r ~/.claude "$BACKUP"',
+    "rsync -a ~/.claude/ /tmp/backup/",
+])
+def test_a_copy_a_move_or_a_link_away_from_the_state_folders_still_passes(command, capsys, monkeypatch):
+    # The state folders stay where the module puts them (under the home), so the working directory is not above them.
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
 
 
 def test_an_unreadable_command_unrelated_to_the_state_folder_still_passes(capsys, monkeypatch):
