@@ -3,10 +3,22 @@
 All notable changes to AskAway User are recorded here, newest first. Entries before the rename name the plugin
 Askaway, its old id and its old skill name. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The version in
-`plugins/askaway/.claude-plugin/plugin.json` is set by each release commit.
+`plugins/askaway-user/.claude-plugin/plugin.json` is set by each release commit.
 Commit hashes name the change in `git log`.
 
 ## [Unreleased]
+
+## [2.0.0] - 2026-11-15
+
+Breaking: the plugin folder and the default state folder have new names. The CLI file name `askaway.py`, the `/askaway` command and the `ASKAWAY_*` variables are unchanged.
+
+### Changed
+- **The plugin folder is now `plugins/askaway-user`**: the installed mirror path becomes `~/.claude/mods/plugins/askaway-user/scripts/askaway.py`. Anyone who calls the CLI by the old path `~/.claude/mods/plugins/askaway/scripts/askaway.py` must update it: the pause guard no longer lets a call through the old path while a question holds the session.
+- **The last answer of a round brings the Submit buttons into view**: the pick that gives a round its last missing answer scrolls the pane back to its top, where the tree and its Submit buttons are. Changing an answer afterwards scrolls nothing, and the focus never moves to a Submit button.
+- **The default state folder is now `~/.claude/state/askaway-user`**: the first CLI or hook call of this version moves `~/.claude/state/askaway` there once and leaves a symlink at the old path, so older versions keep working on the same folder. `ASKAWAY_HOME` is unchanged (SPEC.md, State folder migration).
+
+### Security
+- **A write that would land on a state folder name is refused**: while the pause guard is on, a copy, move, link, rsync or install whose destination is the folder above the state folders is checked for the name it would create there, so the symlink left at the old path cannot be replaced that way (SPEC.md, State folder migration).
 
 ## [1.1.13] - 2026-11-14
 

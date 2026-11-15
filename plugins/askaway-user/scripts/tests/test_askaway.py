@@ -1368,7 +1368,7 @@ def test_pause_guard_denies_bash_that_is_not_inbox(capsys, monkeypatch):
     "python3 {script} wait {item} --timeout 0",
     "python3 {script} export --format csv",
     "python3 {script} list --open --since '1h;`x`'",
-    "python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py status {item}",
+    "python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py status {item}",
 ])
 def test_pause_guard_lets_a_bash_command_run_inbox(command, capsys, monkeypatch):
     item = pending_pause(capsys, monkeypatch)
@@ -1787,7 +1787,7 @@ def test_pause_guard_process_still_loads_the_module_when_a_pause_is_on_file(home
 
 
 def test_pause_guard_process_denies_a_state_folder_write_with_no_pause_on_file(home):
-    command = f"rm -f {Path.home()}/.claude/state/askaway/a/q-1-abcdef.json"  # the default folder, as the Bash tests name it
+    command = f"rm -f {Path.home()}/.claude/state/askaway-user/a/q-1-abcdef.json"  # the default folder, as the Bash tests name it
     proc = run_pause_guard(home, json.dumps(edit_event(tool="Bash", command=command)).encode("utf-8"))
     assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
@@ -2857,11 +2857,11 @@ def test_normal_delivery_carries_no_reason(home, capsys, monkeypatch):
         (f"python3 {askaway.SCRIPT_PATH} status q-1-abcdef", True),
         (f'python3 "{askaway.SCRIPT_PATH}" status q-1-abcdef', True),
         (f"python3 {askaway.MIRROR_SCRIPT} list --open", True),
-        ("python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py status q-1-abcdef", True),
-        ("python3 $HOME/.claude/mods/plugins/askaway/scripts/askaway.py list --open", True),
-        ("python3 ${HOME}/.claude/mods/plugins/askaway/scripts/askaway.py wait q-1-abcdef", True),
+        ("python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py status q-1-abcdef", True),
+        ("python3 $HOME/.claude/mods/plugins/askaway-user/scripts/askaway.py list --open", True),
+        ("python3 ${HOME}/.claude/mods/plugins/askaway-user/scripts/askaway.py wait q-1-abcdef", True),
         ("python3 ~/evil/askaway.py status q-1-abcdef", False),
-        ("python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py answer q-1-abcdef A", False),
+        ("python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py answer q-1-abcdef A", False),
         ('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json \'{}\'', True),
         ("python3 /a/askaway.py status q-1-abcdef", False),
         ('python3 "/a b/askaway.py" status q-1-abcdef', False),
@@ -3296,6 +3296,158 @@ def test_a_command_naming_the_state_folder_in_pieces_is_denied_even_when_unreada
     assert bash_denial(capsys, monkeypatch, command) == askaway.STATE_DENIED
 
 
+CURRENT_STATE_FOLDER = "~/.claude/state/askaway-user"  # the default folder; STATE_FOLDER is the legacy name, still guarded
+LAYOUTS = ["legacy-real", "legacy-link", "legacy-missing"]
+
+
+@pytest.mark.parametrize("folder", [STATE_FOLDER, CURRENT_STATE_FOLDER], ids=["legacy", "default"])
+@pytest.mark.parametrize("template", [
+    "echo x > {folder}/a/q-1-abcdef.json",
+    "rm -f {folder}/q/q-1-abcdef.json",
+    "mv /tmp/x.json {folder}/a/q-1-abcdef.json",
+    "ln -s /tmp/x {folder}/link",
+    "cd {folder} && cp /tmp/x.json a/",
+    "ASKAWAY_HOME={folder} python3 -c pass",
+])
+def test_both_state_folder_names_are_denied_for_a_write_a_move_a_link_a_cd_and_a_home_override(
+        template, folder, capsys, monkeypatch):
+    assert bash_denial(capsys, monkeypatch, template.format(folder=folder)) == askaway.STATE_DENIED
+
+
+def real_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str) -> dict[str, str]:
+    """The two folder names on disk as a layout puts them, with the module's constants pointed at them."""
+    state = tmp_path / "home" / ".claude" / "state"
+    current, legacy = state / "askaway-user", state / "askaway"
+    current.mkdir(parents=True)
+    if layout == "legacy-real":
+        legacy.mkdir()
+    elif layout == "legacy-link":
+        legacy.symlink_to(current)
+    monkeypatch.setattr(askaway, "DEFAULT_HOME", current)
+    monkeypatch.setattr(askaway, "LEGACY_HOME", legacy)
+    return {"legacy": str(legacy), "default": str(current)}
+
+
+@pytest.mark.parametrize("layout", LAYOUTS)
+@pytest.mark.parametrize("name", ["legacy", "default"])
+@pytest.mark.parametrize("template", [
+    "echo x > {path}/q/a.json",
+    "rm -f {path}/q/a.json",
+    "mv /tmp/x.json {path}/a/x.json",
+    "ln -sfn /tmp/evil {path}",
+    "cd {path} && echo x > a.json",
+    "ASKAWAY_HOME={path} python3 -c pass",
+])
+def test_the_folder_behind_either_name_is_denied_in_every_on_disk_layout(
+        template, name, layout, tmp_path, monkeypatch, capsys):
+    path = real_layout(tmp_path, monkeypatch, layout)[name]
+    assert bash_denial(capsys, monkeypatch, template.format(path=path)) == askaway.STATE_DENIED
+
+
+@pytest.mark.parametrize("layout", LAYOUTS)
+@pytest.mark.parametrize("name", ["legacy", "default"])
+def test_a_file_tool_write_through_either_name_is_denied_in_every_on_disk_layout(
+        name, layout, tmp_path, monkeypatch, capsys):
+    path = real_layout(tmp_path, monkeypatch, layout)[name]
+    event = {**edit_event(tool="Write"), "tool_input": {"file_path": f"{path}/q/a.json"}}
+    assert hook_json(capsys, monkeypatch, "pause-guard", event)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def parent_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str) -> str:
+    """The folder above the state folders, with none of them, the default one only, or the default one and the legacy link."""
+    state = tmp_path / "home" / ".claude" / "state"
+    current, legacy = state / "askaway-user", state / "askaway"
+    state.mkdir(parents=True)
+    if layout != "none":
+        current.mkdir()
+    if layout == "default-and-link":
+        legacy.symlink_to(current)
+    monkeypatch.setattr(askaway, "DEFAULT_HOME", current)
+    monkeypatch.setattr(askaway, "LEGACY_HOME", legacy)
+    return str(state)
+
+
+INTO_PARENT = [
+    "ln -sf /tmp/forged/{name} {parent}/",
+    "ln -sf -t {parent} /tmp/forged/{name}",
+    "cd {parent} && ln -s /tmp/forged/{name}",
+    "mv /tmp/forged/{name} {parent}/",
+    "mv -t {parent} /tmp/forged/{name}",
+    "cp -r /tmp/forged/{name} {parent}/",
+    "cp -r /tmp/forged/{name}/ {parent}",
+    "cp -r --target-directory={parent} /tmp/forged/{name}",
+    "rsync -a /tmp/forged/{name} {parent}/",
+    "install -D /tmp/forged/{name} {parent}/",
+    "cp -r /tmp/forged/* {parent}/",
+    'cp -r "$SRC" {parent}/',
+    "install -m 755 /tmp/forged/{name} {parent}/",
+    "cp -r -- /tmp/forged/{name} {parent}/",
+    "cd {parent}/.. && cp -r /tmp/forged/{name} state/",
+    "cd {parent} && cp -r /tmp/forged/{name} .",
+    "sudo cp -r /tmp/forged/{name} {parent}/",
+    "sh -c 'cp -r /tmp/forged/{name} {parent}/'",
+    "echo /tmp/forged/{name} | xargs -I% cp -r % {parent}/",
+    "echo /tmp/forged/{name} | xargs -I % cp -r % {parent}/",
+    "echo /tmp/forged/{name} | xargs --replace=@@ mv @@ {parent}/",
+    "echo {name} | xargs -n 1 -I % cp -r /tmp/forged/% {parent}/",
+    "xargs -a /tmp/list -I% cp -r % {parent}/",
+    "cp -r /tmp/forged/{name} {parent}/ --no-preserve mode",
+    "cp -r /tmp/forged/. {parent}/",
+    "rsync -a /tmp/forged/ {parent}/",
+    "rsync -a --files-from=/tmp/list /tmp/forged/ {parent}/",
+    "cd /tmp/forged && cp -r --parents {name}/q {parent}/",
+    "cd /tmp/forged && rsync -aR {name}/q {parent}/",
+]
+
+
+@pytest.mark.parametrize("layout", ["none", "default-only", "default-and-link"])
+@pytest.mark.parametrize("name", ["askaway", "askaway-user"])
+@pytest.mark.parametrize("template", INTO_PARENT)
+def test_a_source_put_into_the_folder_above_cannot_create_or_replace_a_state_folder(
+        template, name, layout, tmp_path, monkeypatch, capsys):
+    parent = parent_layout(tmp_path, monkeypatch, layout)
+    assert bash_denial(capsys, monkeypatch, template.format(name=name, parent=parent)) == askaway.STATE_DENIED
+
+
+@pytest.mark.parametrize("layout", ["none", "default-only", "default-and-link"])
+@pytest.mark.parametrize("template", [
+    "cp /tmp/forged/usage.jsonl {parent}/",
+    "mv /tmp/forged/usage.jsonl {parent}/",
+    "rsync -a /tmp/forged/other-tool {parent}/",
+    "ln -s /tmp/forged/other-tool {parent}/",
+])
+def test_another_name_put_into_the_folder_above_the_state_folders_still_passes(
+        template, layout, tmp_path, monkeypatch, capsys):
+    parent = parent_layout(tmp_path, monkeypatch, layout)
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(template.format(parent=parent))) == ""
+
+
+@pytest.mark.parametrize("template", [
+    "echo / | xargs -I/ rm -rf {parent}/askaway",
+    "echo '~' | xargs -I'~' rm -rf {parent}/askaway-user",
+    "echo x | xargs -Ik touch {parent}/askaway/a/q-1-abcdef.json",
+])
+def test_an_xargs_replace_string_never_hides_a_path_the_command_names(template, tmp_path, monkeypatch, capsys):
+    parent = parent_layout(tmp_path, monkeypatch, "default-and-link")
+    assert bash_denial(capsys, monkeypatch, template.format(parent=parent)) == askaway.STATE_DENIED
+
+
+@pytest.mark.parametrize("command", [
+    "cp a b",
+    "cp -r src dst/",
+    "mv notes.md docs/",
+    "rsync -a src/ dst/",
+    "cd /tmp && ln -s /etc/hosts",
+    "install -m 644 a.txt /tmp/out/",
+    "find . -name '*.md' | xargs -I{} cp {} /tmp/out/",
+    'cp -r ~/.claude "$BACKUP"',
+    "rsync -a ~/.claude/ /tmp/backup/",
+])
+def test_a_copy_a_move_or_a_link_away_from_the_state_folders_still_passes(command, capsys, monkeypatch):
+    # The state folders stay where the module puts them (under the home), so the working directory is not above them.
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+
+
 def test_an_unreadable_command_unrelated_to_the_state_folder_still_passes(capsys, monkeypatch):
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event('echo "it\'s')) == ""
 
@@ -3482,10 +3634,16 @@ LINK_SANDBOX_ANSWER = f"ASKAWAY_HOME=/tmp/state/askaway python3 {SCRIPT} answer 
     f"ln -s --target-directory=/tmp ~/.claude/state && {LINK_SANDBOX_ANSWER}",
     f"ln -st/tmp ~/.claude/state && {LINK_SANDBOX_ANSWER}",
     f"cd /tmp && ln -S .x -s ~/.claude/state && {LINK_SANDBOX_ANSWER}",
-    f"cd $X && ln -s /etc/hosts && {LINK_SANDBOX_ANSWER}",
 ])
 def test_a_link_ln_places_in_a_target_folder_or_the_cwd_is_not_a_sandbox_home(command, capsys, monkeypatch):
     assert bash_denial(capsys, monkeypatch, command) == askaway.ANSWER_DENIED
+
+
+def test_a_link_ln_places_in_an_unknown_cwd_is_denied_as_a_write_that_cannot_be_placed(capsys, monkeypatch):
+    # The link takes its source's name in a cwd the guard cannot place (cd $X), in a command that names the state folder:
+    # the place it lands is checked like any relative write there, before the reply is reached.
+    command = f"cd $X && ln -s /etc/hosts && {LINK_SANDBOX_ANSWER}"
+    assert bash_denial(capsys, monkeypatch, command) == askaway.STATE_DENIED
 
 
 def test_an_unreadable_commit_naming_a_state_file_without_askaway_passes(capsys, monkeypatch):
@@ -3745,8 +3903,8 @@ def test_bash_text_that_only_mentions_an_answer_or_a_copy_is_allowed(command, ca
     f"python3 {SCRIPT} prune --id q-1-abcdef '--force'",
     f"python3 {SCRIPT} prune --id q-1-abcdef --fo",
     f"python3 {SCRIPT} prune --id q-1-abcdef --f",
-    "python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py prune --id q-1-abcdef --force",
-    "python3 $HOME/.claude/mods/plugins/askaway/scripts/askaway.py prune --id q-1-abcdef --force",
+    "python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py prune --id q-1-abcdef --force",
+    "python3 $HOME/.claude/mods/plugins/askaway-user/scripts/askaway.py prune --id q-1-abcdef --force",
     f"cd /tmp && python3 {SCRIPT} prune --id q-1-abcdef --force",
     f"sh -c 'python3 {SCRIPT} prune --id q-1-abcdef --force'",
 ])
@@ -4571,7 +4729,7 @@ def test_a_placeholder_word_tradeoff_or_title_is_refused(capsys):
 
 
 @pytest.mark.parametrize("command", [
-    ("python3 - <<'EOF'\nfrom pathlib import Path\np = Path('plugins/askaway/SPEC.md')\ns = p.read_text()\n"
+    ("python3 - <<'EOF'\nfrom pathlib import Path\np = Path('plugins/askaway-user/SPEC.md')\ns = p.read_text()\n"
      "s = s.replace('the answer record', 'the \"answer\" record under ~/.claude/state/askaway')\np.write_text(s)\nEOF"),
     "python3 -c \"print('askaway answer(' )\"",
 ])
@@ -5855,10 +6013,10 @@ def test_the_scanner_still_refuses_a_copy_after_a_cd_to_a_variable_in_a_command_
 
 
 @pytest.mark.parametrize("command", [
-    "cp /tmp/scratch/askaway.py ~/src/askaway/plugins/askaway/scripts/askaway.py",
-    "cd ~/src/askaway && cp /tmp/scratch/askaway.py plugins/askaway/scripts/",
-    "R=~/src/askaway; cp /tmp/scratch/test_askaway.py $R/plugins/askaway/scripts/tests/",
-    "cd ~/src/askaway && cp -t plugins/askaway/scripts/ /tmp/scratch/askaway.py",
+    "cp /tmp/scratch/askaway.py ~/src/askaway/plugins/askaway-user/scripts/askaway.py",
+    "cd ~/src/askaway && cp /tmp/scratch/askaway.py plugins/askaway-user/scripts/",
+    "R=~/src/askaway; cp /tmp/scratch/test_askaway.py $R/plugins/askaway-user/scripts/tests/",
+    "cd ~/src/askaway && cp -t plugins/askaway-user/scripts/ /tmp/scratch/askaway.py",
 ], ids=["absolute", "relative", "variable", "target-folder"])
 def test_a_copy_into_the_plugin_folder_passes(command, capsys, monkeypatch):
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
@@ -5885,7 +6043,7 @@ FORMER_COPY_OVER_DENIES = {
     # issue #5: an odd quote leaves the command unreadable, and _unreadable_reason then judges its words alone
     "issue-5-odd-quotes-md": "cat > askaway-notes.md <<'EOF'\nthe answer sits in the window's frame\nEOF",
     "issue-5-odd-quotes-ts": "cat > src/askaway.ts <<'EOF'\nconst answer = 'window\\'s';\nEOF",
-    "test-file-heredoc": ("cd ~/src/askaway && cat >> plugins/askaway/tests/askaway.test.ts <<'EOF'\n"
+    "test-file-heredoc": ("cd ~/src/askaway && cat >> plugins/askaway-user/tests/askaway.test.ts <<'EOF'\n"
                           "test('a written answer keeps the window\\'s name', () => {\n"
                           "  expect(line).toBe('Answered via panel by Ana; askaway list --open shows it')\n})\nEOF"),
     "commit-message-substitution-apostrophe": "git commit -m \"$(cat <<'EOF'\nfix(askaway): a subagent's answer\nEOF\n)\"",
@@ -5894,7 +6052,7 @@ FORMER_COPY_OVER_DENIES = {
     "issue-6-sed-glob-home": "cd ~ && sed -i '1s|.*|x|' notes.md",
     "issue-6-sed-glob-dotclaude": "cd ~/.claude && sed -i '1s|.*|x|' notes.md",
     "sed-script-glob": ("cd ~/.claude && sed -i '204s|.*|Release: 1.2.3, tag `v1.2.3`, pushed.|' notes/report.md"
-                        " && git status --short -- plugins/askaway notes/report.md"),
+                        " && git status --short -- plugins/askaway-user notes/report.md"),
     "sed-script-glob-home": "cd ~ && sed -i '1s|.*|# Notes|' notes.md",
     "sed-double-quoted-script": 'cd ~/.claude && sed -i "1s|.*|x|" notes.md',
     "sed-follow-symlinks": "cd ~/.claude && sed -i --follow-symlinks '1s|.*|x|' notes.md",

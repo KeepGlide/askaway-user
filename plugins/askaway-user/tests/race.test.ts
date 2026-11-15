@@ -7,7 +7,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test, type Engine } from 'claude-code/testing'
 
 const HOME = '/test-home'
-const STATE = `${HOME}/.claude/state/askaway`
+const STATE = `${HOME}/.claude/state/askaway-user`
 const DRAFT = `${STATE}/draft.json`
 const DRAFT_LOCK = `${STATE}/draft.lock`
 const SESSION = { cwd: '/work/app', surface: 'terminal', isInteractive: true } as const

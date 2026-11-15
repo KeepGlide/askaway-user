@@ -7,7 +7,7 @@ import { resetDesktopConfigCache } from '../hooks/register'
 // question). The harness is copied from askaway.test.ts (its helpers are not exported); it keeps only what these tests use.
 
 const HOME = '/test-home'
-const STATE = `${HOME}/.claude/state/askaway`
+const STATE = `${HOME}/.claude/state/askaway-user`
 const SESSION = { cwd: '/work/app', surface: 'terminal', isInteractive: true } as const
 const PANE_PROPS = {
   title: 'AskAway User',

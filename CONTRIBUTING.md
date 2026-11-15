@@ -10,33 +10,33 @@ AskAway User has two suites.
 Mod (TypeScript), from the repository root:
 
 ```bash
-claude plugin test plugins/askaway
+claude plugin test plugins/askaway-user
 ```
 
 CLI and hooks (Python 3.12 or newer is the floor; the script prints an error and exits on an older Python; needs `pytest`: `python3 -m pip install pytest`):
 
 ```bash
-cd plugins/askaway/scripts && python3 -m pytest tests -q
+cd plugins/askaway-user/scripts && python3 -m pytest tests -q
 ```
 
 Lint is the Biome 2.x gate, run from the repository root with the real Biome binary. The repository has no formatter config, so `lint` is the only Biome gate. `npx biome` resolves to a different npm package (an unrelated `biome` 0.3.3), so do not use it here:
 
 ```bash
-biome lint plugins/askaway
+biome lint plugins/askaway-user
 ```
 
 ## Where things live
 
 | Path | What it holds |
 |---|---|
-| `plugins/askaway/.claude-plugin/plugin.json` | The plugin manifest; it points to the command hooks |
-| `plugins/askaway/hooks/` | The mod: `register.tsx` (wiring, polling, commands), `model.ts`, `wizard.ts`, `i18n.ts`, `pane.tsx`, `band.tsx`, `held.ts`, `look.ts`, `logo.ts` (the logo's SVG paths and `LOGO_GLYPH`), `logo-element.tsx` (the logo as one element for the band and the pane heading), `divider.ts` (the 1px rule above the nav row), `keepglide.ts` (the KeepGlide mark in the pane); `hooks.json` loads the mod, `command-hooks.json` holds the command hooks |
-| `plugins/askaway/scripts/askaway.py` | The CLI (`ask`, `answer`, `status`, `list`, `wait`, `export`, `away`, `prune`) and the hook modes (`hook ask-guard`, `hook pause-guard`, `hook deliver`, `hook stamp-asker`) |
-| `plugins/askaway/skills/askaway-user-question-playbook/SKILL.md` | The skill (`askaway-user:askaway-user-question-playbook`) that tells an agent how to file a question |
-| `plugins/askaway/SPEC.md` | The spec: state folder contract, CLI, hooks and panel |
-| `plugins/askaway/tests/` | TypeScript tests |
-| `plugins/askaway/scripts/tests/` | Python tests |
-| `assets/` | `askaway-user-icon.svg` (the logo) and the README cover `askaway-user-cover-1200x630.png`, the same files keepglide.com serves under `assets/products/askaway-user/`, and screenshots `band-en.png`, `window-light-en.png` and `window-dark-en.png`. The plugin ships `plugins/askaway/assets/icon.svg`, a separate file |
+| `plugins/askaway-user/.claude-plugin/plugin.json` | The plugin manifest; it points to the command hooks |
+| `plugins/askaway-user/hooks/` | The mod: `register.tsx` (wiring, polling, commands), `model.ts`, `wizard.ts`, `i18n.ts`, `pane.tsx`, `band.tsx`, `held.ts`, `look.ts`, `logo.ts` (the logo's SVG paths and `LOGO_GLYPH`), `logo-element.tsx` (the logo as one element for the band and the pane heading), `divider.ts` (the 1px rule above the nav row), `keepglide.ts` (the KeepGlide mark in the pane); `hooks.json` loads the mod, `command-hooks.json` holds the command hooks |
+| `plugins/askaway-user/scripts/askaway.py` | The CLI (`ask`, `answer`, `status`, `list`, `wait`, `export`, `away`, `prune`) and the hook modes (`hook ask-guard`, `hook pause-guard`, `hook deliver`, `hook stamp-asker`) |
+| `plugins/askaway-user/skills/askaway-user-question-playbook/SKILL.md` | The skill (`askaway-user:askaway-user-question-playbook`) that tells an agent how to file a question |
+| `plugins/askaway-user/SPEC.md` | The spec: state folder contract, CLI, hooks and panel |
+| `plugins/askaway-user/tests/` | TypeScript tests |
+| `plugins/askaway-user/scripts/tests/` | Python tests |
+| `assets/` | `askaway-user-icon.svg` (the logo) and the README cover `askaway-user-cover-1200x630.png`, the same files keepglide.com serves under `assets/products/askaway-user/`, and screenshots `band-en.png`, `window-light-en.png` and `window-dark-en.png`. The plugin ships `plugins/askaway-user/assets/icon.svg`, a separate file |
 
 ## Conventions
 

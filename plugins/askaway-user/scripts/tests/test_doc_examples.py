@@ -18,7 +18,7 @@ from test_askaway import (  # noqa: F401  (home is the autouse state folder fixt
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DOCS = {
-    "skill": REPO_ROOT / "plugins/askaway/skills/askaway-user-question-playbook/SKILL.md",
+    "skill": REPO_ROOT / "plugins/askaway-user/skills/askaway-user-question-playbook/SKILL.md",
     "readme": REPO_ROOT / "README.md",
 }
 ASK_JSON_ARG = re.compile(r"ask --json '(\{[^']*)'")  # an object literal; `<JSON>` placeholders are not examples
