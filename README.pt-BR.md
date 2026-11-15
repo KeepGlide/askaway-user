@@ -848,6 +848,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.11 | 2026-11-14 | Chamadas de Skill e WebSearch ficam retidas durante uma pausa; Enviar tudo não tem mais atalho de letra; a sessão que perguntou fica sabendo quando a resposta expirou sem leitura; perguntas de risco baixo e médio podem omitir os textos de detalhes. |
 | 1.1.12 | 2026-11-14 | O guard de Bash é só o scanner: a cópia congelada do guard antigo foi retirada depois de uma revisão limpa, e os excessos de negação dela acabaram; um make que lê o makefile da entrada padrão é lido como shell. |
 | 1.1.13 | 2026-11-14 | Toda pergunta volta a exigir todos os textos, qualquer que seja o risco, como a dona decidiu. |
+| 2.0.0 | 2026-11-15 | A pasta do plugin é `plugins/askaway-user` e a pasta de estado padrão é `~/.claude/state/askaway-user`, movida uma vez com um link simbólico no caminho antigo; a última resposta de uma rodada rola o painel até os botões Enviar. |
 
 ## 🤝 Contribuição
 

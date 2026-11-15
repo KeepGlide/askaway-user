@@ -848,6 +848,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.11 | 2026-11-14 | Skill and WebSearch calls are held while a pause holds; Submit all has no letter hotkey; the asking session hears when its answer expired unread; low and medium risk questions may leave out the details texts. |
 | 1.1.12 | 2026-11-14 | The Bash guard is the scanner alone: the frozen copy of the earlier guard is retired after a clean review, so its over-denies end; a make that reads its makefile from stdin is read as a shell. |
 | 1.1.13 | 2026-11-14 | Every question needs all of its texts again, whatever its risk, as the owner decided. |
+| 2.0.0 | 2026-11-15 | The plugin folder is `plugins/askaway-user` and the default state folder is `~/.claude/state/askaway-user`, moved once with a symlink left at the old path; the last answer of a round scrolls the pane to its Submit buttons. |
 
 ## 🤝 Contributing
 
