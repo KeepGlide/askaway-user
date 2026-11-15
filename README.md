@@ -777,10 +777,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway-user/tests/` | 611 |
-| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 1590 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 612 |
+| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 1798 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at commit b3ff63a (details texts required again), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at commit f28cc3e (state folder moved to askaway-user), 2026-11-15. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
