@@ -608,6 +608,14 @@ How (`hooks/held.ts`, `heldButtons()`):
   through `hold`: each option, Other…, each tree link (`treeLink`), Back, Next, Submit all, the band's Answer and the Clear history button.
 - The Other field is an Input. The engine matches an Input by its key, so the field is not held.
 - Two limits are the engine's and are recorded, not fixed (owner decisions in the third gauntlet round, `CHANGELOG.md`). Q14: the Other field has no accessible name; the plugin sets none (`hooks/pane.tsx` passes no accessible-name prop to that Input). Q26: the plugin gets no event when the window is hidden, so text typed in the Other field is committed only when the ring leaves the field or a pane button is pressed, never on a window switch.
+- Desktop repro of issue #31 (1.1.13, 2026-11-15, by hand on Claude Desktop for Linux, observed visually, no debug log):
+  (1) a press on a rebuilt Button is kept: with `abc` typed in the Other field and no Enter, one click on Next moved to
+  card 2 and the answer was `abc`; (2) a redraw while the person types keeps the Input's text and caret: `abc`, a line
+  break and `def` stayed in place with the caret after `def`; (3) a click outside the pane, in the prompt box, commits
+  nothing: the field stayed open with its text and Other… was not ticked, so no `ui.focus` reaches the pane on that
+  blur and only an idle timer (#55, B2) or a later pane press can commit the text. The text was not lost: Submit all
+  later delivered `abc defxyz`. Also seen: after Back, a committed Other shows as the ticked option `✓ abc` and its field
+  reopens empty, so editing the answer means typing it again.
 
 Verification: `tests/askaway.test.ts` tests the table on its own (`heldButtons`), and the engine tests
 `held (terminal)` and `held (desktop)` check that a redraw keeps every Button's handle, and that a press renews only the
