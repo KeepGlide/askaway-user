@@ -397,7 +397,7 @@ O modo ausente é uma das três formas de o agente saber que você está ausente
 
 ## 🧠 Como os agentes registram perguntas
 
-Cada agente lê a skill `askaway-user:askaway-user-question-playbook` (`plugins/askaway/skills/askaway-user-question-playbook/SKILL.md`) e registra a pergunta com a CLI, em vez de perguntar e esperar. Um agente registra uma pergunta quando qualquer uma destas condições vale:
+Cada agente lê a skill `askaway-user:askaway-user-question-playbook` (`plugins/askaway-user/skills/askaway-user-question-playbook/SKILL.md`) e registra a pergunta com a CLI, em vez de perguntar e esperar. Um agente registra uma pergunta quando qualquer uma destas condições vale:
 
 - o modo de permissão é `bypassPermissions`;
 - o modo ausente está ligado (`away.json` tem `"on": true`);
@@ -474,7 +474,7 @@ Uma execução do Codex não tem id de sessão do Claude Code, então nenhum gan
 python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ```
 
-   `<askaway>` é a pasta `plugins/askaway` instalada, e `<id>` é o `id` que a saída de `ask` trouxe. `--timeout` define os segundos de espera (padrão 110, abaixo do limite de 120 s da ferramenta Bash, que encerra uma chamada mais longa; uma espera maior exige um timeout maior no Bash).
+   `<askaway>` é a pasta `plugins/askaway-user` instalada, e `<id>` é o `id` que a saída de `ask` trouxe. `--timeout` define os segundos de espera (padrão 110, abaixo do limite de 120 s da ferramenta Bash, que encerra uma chamada mais longa; uma espera maior exige um timeout maior no Bash).
 3. Leia o código de saída: `0` respondida ou entregue (a saída traz a `key`, e o `text` para a chave `other`); `2` sem resposta até o timeout; `1` erro, ou uma resposta expirada ou danificada.
 
 ## 🗂️ Pasta de estado
@@ -494,7 +494,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 
 As gravações passam antes por um arquivo oculto `.<nome>.<hex>.tmp` e depois são renomeadas no lugar. Uma resposta é publicada com um link exclusivo, então só a primeira gravada fica. A limpeza remove os arquivos `.tmp` antigos.
 
-`ASKAWAY_HOME` substitui `~/.claude/state/askaway`. O contrato completo está em [plugins/askaway/SPEC.md](plugins/askaway/SPEC.md).
+`ASKAWAY_HOME` substitui `~/.claude/state/askaway`. O contrato completo está em [plugins/askaway-user/SPEC.md](plugins/askaway-user/SPEC.md).
 
 ### Uma máquina, um login
 
@@ -502,7 +502,7 @@ A pasta de estado pertence a um usuário, e todas as sessões do Claude Code que
 
 ### O que o AskAway User lê e grava
 
-- **Ganchos** (`plugins/askaway/hooks/command-hooks.json`) leem a entrada do hook pela entrada padrão: id da sessão, modo de permissão, diretório de trabalho, nome e entrada da ferramenta.
+- **Ganchos** (`plugins/askaway-user/hooks/command-hooks.json`) leem a entrada do hook pela entrada padrão: id da sessão, modo de permissão, diretório de trabalho, nome e entrada da ferramenta.
   - `SessionStart` (em `startup`, `resume`, `clear` ou `compact`), `UserPromptSubmit` e `PostToolUse` rodam `hook deliver`: ele lê `q/`, `a/`, `d/` e `s/`, grava uma marca de entrega para cada resposta que entrega (em `d/` para a sessão principal, em `s/` para o subagente cujo próprio `ask` registrou a pergunta), e coloca o texto da resposta no contexto daquela sessão.
   - `PreToolUse` em `AskUserQuestion` roda `hook ask-guard`: lê o estado ausente e não grava nada.
   - `PreToolUse` em `.*` (toda ferramenta) roda `hook pause-guard`: sai logo quando não há pausa em arquivo; senão lê `q/`, `a/`, `d/` e `s/`; a única gravação dele é a marca `clock_mark` na pasta de estado, quando uma pausa tem uma resposta ainda sem marca.
@@ -516,7 +516,7 @@ A pasta de estado pertence a um usuário, e todas as sessões do Claude Code que
 
 ## 🧾 Decisões
 
-As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cada linha diz o que foi decidido, a alternativa que perdeu e o porquê, e **Desde** aponta para a entrada da versão no [CHANGELOG.md](CHANGELOG.md) (as versões anteriores à 0.4.0-beta.6 são de antes do CHANGELOG; uma data indica que a decisão manteve o comportamento como estava). A maioria foi decidida pela dona do projeto nas rodadas de revisão das betas. As regras completas estão no [SPEC.md](plugins/askaway/SPEC.md).
+As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cada linha diz o que foi decidido, a alternativa que perdeu e o porquê, e **Desde** aponta para a entrada da versão no [CHANGELOG.md](CHANGELOG.md) (as versões anteriores à 0.4.0-beta.6 são de antes do CHANGELOG; uma data indica que a decisão manteve o comportamento como estava). A maioria foi decidida pela dona do projeto nas rodadas de revisão das betas. As regras completas estão no [SPEC.md](plugins/askaway-user/SPEC.md).
 
 <details>
 <summary>Contrato da pergunta (17)</summary>
@@ -738,7 +738,7 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 
 ## 🔒 Segurança e privacidade
 
-Relate uma vulnerabilidade em privado, não numa issue pública. [SECURITY.md](SECURITY.md) tem o canal de relato, as versões suportadas e o prazo de resposta. Os limites conhecidos da pasta de estado de um só usuário estão nas seções [Security](plugins/askaway/SPEC.md#security) e [Panel credential](plugins/askaway/SPEC.md#panel-credential) da spec.
+Relate uma vulnerabilidade em privado, não numa issue pública. [SECURITY.md](SECURITY.md) tem o canal de relato, as versões suportadas e o prazo de resposta. Os limites conhecidos da pasta de estado de um só usuário estão nas seções [Security](plugins/askaway-user/SPEC.md#security) e [Panel credential](plugins/askaway-user/SPEC.md#panel-credential) da spec.
 
 - **O que sai da máquina:** nada. Perguntas, respostas e marcas de entrega são arquivos JSON simples na sua pasta de estado, e o AskAway User não faz chamadas de rede próprias. O texto da resposta é injetado no prompt da sessão que perguntou, então chega ao modelo que essa sessão usa.
 - **Chamadas pagas:** nenhuma. O AskAway User não faz chamadas de rede, então não faz chamadas pagas.
@@ -777,29 +777,29 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 611 |
-| CLI e ganchos (Python), `plugins/askaway/scripts/tests/` | 1590 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 611 |
+| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 1590 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway/scripts`, no commit b3ff63a (textos de detalhes obrigatórios de novo), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit b3ff63a (textos de detalhes obrigatórios de novo), em 2026-11-14. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
 Os testes e a organização do repositório estão em [CONTRIBUTING.md](CONTRIBUTING.md). Rode os testes do mod a partir da raiz do repositório:
 
 ```bash
-claude plugin test plugins/askaway
+claude plugin test plugins/askaway-user
 ```
 
 Rode os testes da CLI e dos ganchos (precisam de `pytest`: `python3 -m pip install pytest`):
 
 ```bash
-cd plugins/askaway/scripts && python3 -m pytest tests -q
+cd plugins/askaway-user/scripts && python3 -m pytest tests -q
 ```
 
 A verificação de lint é o gate do Biome 2.x, a partir da raiz do repositório:
 
 ```bash
-biome lint plugins/askaway
+biome lint plugins/askaway-user
 ```
 
 ## 📝 Changelog

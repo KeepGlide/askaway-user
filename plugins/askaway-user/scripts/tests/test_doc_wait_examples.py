@@ -13,8 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 DOCS = {
     "readme": REPO_ROOT / "README.md",
     "readme-pt-br": REPO_ROOT / "README.pt-BR.md",
-    "spec": REPO_ROOT / "plugins/askaway/SPEC.md",
-    "skill": REPO_ROOT / "plugins/askaway/skills/askaway-user-question-playbook/SKILL.md",
+    "spec": REPO_ROOT / "plugins/askaway-user/SPEC.md",
+    "skill": REPO_ROOT / "plugins/askaway-user/skills/askaway-user-question-playbook/SKILL.md",
 }
 WAIT_EXAMPLE = re.compile(r"wait <id>[^`\n]*")
 TIMEOUT_SECONDS = re.compile(r"--timeout (\d+)")

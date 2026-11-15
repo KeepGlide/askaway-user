@@ -397,7 +397,7 @@ Away mode is one of three ways an agent learns you are away; the others are the 
 
 ## 🧠 How agents file questions
 
-Each agent reads the skill `askaway-user:askaway-user-question-playbook` (`plugins/askaway/skills/askaway-user-question-playbook/SKILL.md`) and files a question with the CLI instead of asking and waiting. An agent files a question when any of these is true:
+Each agent reads the skill `askaway-user:askaway-user-question-playbook` (`plugins/askaway-user/skills/askaway-user-question-playbook/SKILL.md`) and files a question with the CLI instead of asking and waiting. An agent files a question when any of these is true:
 
 - the permission mode is `bypassPermissions`;
 - away mode is on (`away.json` has `"on": true`);
@@ -474,7 +474,7 @@ A Codex run has no Claude Code session id, so no hook reaches it. Its script fet
 python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ```
 
-   `<askaway>` is the installed `plugins/askaway` folder, and `<id>` is the `id` of the `ask` output. `--timeout` sets the seconds to wait (default 110, under the 120 s limit of the Bash tool, which kills a longer call; a longer wait needs a longer Bash timeout).
+   `<askaway>` is the installed `plugins/askaway-user` folder, and `<id>` is the `id` of the `ask` output. `--timeout` sets the seconds to wait (default 110, under the 120 s limit of the Bash tool, which kills a longer call; a longer wait needs a longer Bash timeout).
 3. Read the exit code: `0` answered or delivered (the output has the `key`, and `text` for the `other` key); `2` no answer before the timeout; `1` an error, or an answer that expired or was damaged.
 
 ## 🗂️ State folder
@@ -494,7 +494,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 
 Writes go to a hidden `.<name>.<hex>.tmp` file first and are then renamed into place. An answer is published with an exclusive link, so only the first one written stays. Prune removes the stale `.tmp` files.
 
-`ASKAWAY_HOME` replaces `~/.claude/state/askaway`. The full contract is in [plugins/askaway/SPEC.md](plugins/askaway/SPEC.md).
+`ASKAWAY_HOME` replaces `~/.claude/state/askaway`. The full contract is in [plugins/askaway-user/SPEC.md](plugins/askaway-user/SPEC.md).
 
 ### One machine, one login
 
@@ -502,7 +502,7 @@ The state folder belongs to one user, and every Claude Code session that runs as
 
 ### What AskAway User reads and writes
 
-- **Hooks** (`plugins/askaway/hooks/command-hooks.json`) read the hook input from stdin: session id, permission mode, working directory, tool name and tool input.
+- **Hooks** (`plugins/askaway-user/hooks/command-hooks.json`) read the hook input from stdin: session id, permission mode, working directory, tool name and tool input.
   - `SessionStart` (on `startup`, `resume`, `clear` or `compact`), `UserPromptSubmit` and `PostToolUse` run `hook deliver`: it reads `q/`, `a/`, `d/` and `s/`, writes a delivery marker for each answer it hands over (to `d/` for the main session, to `s/` for the subagent whose own `ask` filed the question), and puts the answer text into that session's context.
   - `PreToolUse` on `AskUserQuestion` runs `hook ask-guard`: it reads the away state and writes nothing.
   - `PreToolUse` on `.*` (every tool) runs `hook pause-guard`: it exits at once when no pause is on file; otherwise it reads `q/`, `a/`, `d/` and `s/`; its only write is the `clock_mark` stamp in the state folder, when a pause has an answer that is not marked yet.
@@ -516,7 +516,7 @@ The state folder belongs to one user, and every Claude Code session that runs as
 
 ## 🧾 Decisions
 
-The choices behind AskAway User's behaviour, grouped by area. Each row says what was decided, the alternative it won over and why, and **Since** links to the version's entry in [CHANGELOG.md](CHANGELOG.md) (versions before 0.4.0-beta.6 predate the CHANGELOG; a date means the decision kept the behaviour as it was). Most were settled by the owner during the review rounds of the betas. The full rules are in [SPEC.md](plugins/askaway/SPEC.md).
+The choices behind AskAway User's behaviour, grouped by area. Each row says what was decided, the alternative it won over and why, and **Since** links to the version's entry in [CHANGELOG.md](CHANGELOG.md) (versions before 0.4.0-beta.6 predate the CHANGELOG; a date means the decision kept the behaviour as it was). Most were settled by the owner during the review rounds of the betas. The full rules are in [SPEC.md](plugins/askaway-user/SPEC.md).
 
 <details>
 <summary>Question contract (17)</summary>
@@ -738,7 +738,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 
 ## 🔒 Security and privacy
 
-Report a vulnerability privately, not in a public issue. [SECURITY.md](SECURITY.md) has the reporting channel, the supported versions and the response time. The known limits of the single-user state folder are in the [Security](plugins/askaway/SPEC.md#security) and [Panel credential](plugins/askaway/SPEC.md#panel-credential) sections of the spec.
+Report a vulnerability privately, not in a public issue. [SECURITY.md](SECURITY.md) has the reporting channel, the supported versions and the response time. The known limits of the single-user state folder are in the [Security](plugins/askaway-user/SPEC.md#security) and [Panel credential](plugins/askaway-user/SPEC.md#panel-credential) sections of the spec.
 
 - **What leaves the machine:** nothing. Questions, answers and delivery markers are plain JSON files in your state folder, and AskAway User makes no network calls of its own. The answer text is injected into the asking session's prompt, so it reaches the model that session uses.
 - **Paid calls:** none. AskAway User makes no network calls, so it makes no paid ones.
@@ -777,29 +777,29 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway/tests/` | 611 |
-| CLI and hooks (Python), `plugins/askaway/scripts/tests/` | 1590 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 611 |
+| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 1590 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway/scripts`, at commit b3ff63a (details texts required again), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at commit b3ff63a (details texts required again), 2026-11-14. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
 The tests and the layout of the repository are in [CONTRIBUTING.md](CONTRIBUTING.md). Run the mod tests from the repository root:
 
 ```bash
-claude plugin test plugins/askaway
+claude plugin test plugins/askaway-user
 ```
 
 Run the CLI and hooks tests (they need `pytest`: `python3 -m pip install pytest`):
 
 ```bash
-cd plugins/askaway/scripts && python3 -m pytest tests -q
+cd plugins/askaway-user/scripts && python3 -m pytest tests -q
 ```
 
 Lint is the Biome 2.x gate, from the repository root:
 
 ```bash
-biome lint plugins/askaway
+biome lint plugins/askaway-user
 ```
 
 ## 📝 Changelog

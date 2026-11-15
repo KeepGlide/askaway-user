@@ -179,7 +179,7 @@ HookOutput = dict[str, Any] | None
 
 DEFAULT_HOME: Final = Path.home() / ".claude" / "state" / "askaway"
 SCRIPT_PATH: Final = Path(__file__).resolve()
-MIRROR_SCRIPT: Final = Path.home() / ".claude" / "mods" / "plugins" / "askaway" / "scripts" / "askaway.py"
+MIRROR_SCRIPT: Final = Path.home() / ".claude" / "mods" / "plugins" / "askaway-user" / "scripts" / "askaway.py"
 ID_PATTERN: Final = re.compile(r"q-[0-9a-z]+-[0-9a-f]{6}")
 BASE36: Final = string.digits + string.ascii_lowercase
 RUN_KINDS: Final = frozenset({"main", "subagent", "goal", "loop", "bash", "codex"})
@@ -312,7 +312,7 @@ NAME_WORD_BREAK: Final = re.compile(r"[^a-z0-9]+")
 # (symlinks resolved), its mirror under ~/.claude/mods (spelled out, or with ~, $HOME or ${HOME}), or the
 # plugin-root form the AskAway User skill teaches (a quoted path only). A planted path such as /x/askaway.py never matches.
 _HOME_PREFIX: Final = r"(?:~|\$HOME|\$\{HOME\})"
-_MIRROR_PATH: Final = rf"(?:{re.escape(str(MIRROR_SCRIPT))}|{_HOME_PREFIX}/\.claude/mods/plugins/askaway/scripts/askaway\.py)"
+_MIRROR_PATH: Final = rf"(?:{re.escape(str(MIRROR_SCRIPT))}|{_HOME_PREFIX}/\.claude/mods/plugins/askaway-user/scripts/askaway\.py)"
 _FIXED_SCRIPTS: Final = "|".join([re.escape(str(SCRIPT_PATH)), _MIRROR_PATH])
 _PLUGIN_ROOT_SCRIPT: Final = re.escape("${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py")
 _INBOX_HEAD: Final = (

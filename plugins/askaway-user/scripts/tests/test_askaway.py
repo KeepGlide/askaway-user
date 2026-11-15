@@ -1368,7 +1368,7 @@ def test_pause_guard_denies_bash_that_is_not_inbox(capsys, monkeypatch):
     "python3 {script} wait {item} --timeout 0",
     "python3 {script} export --format csv",
     "python3 {script} list --open --since '1h;`x`'",
-    "python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py status {item}",
+    "python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py status {item}",
 ])
 def test_pause_guard_lets_a_bash_command_run_inbox(command, capsys, monkeypatch):
     item = pending_pause(capsys, monkeypatch)
@@ -2857,11 +2857,11 @@ def test_normal_delivery_carries_no_reason(home, capsys, monkeypatch):
         (f"python3 {askaway.SCRIPT_PATH} status q-1-abcdef", True),
         (f'python3 "{askaway.SCRIPT_PATH}" status q-1-abcdef', True),
         (f"python3 {askaway.MIRROR_SCRIPT} list --open", True),
-        ("python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py status q-1-abcdef", True),
-        ("python3 $HOME/.claude/mods/plugins/askaway/scripts/askaway.py list --open", True),
-        ("python3 ${HOME}/.claude/mods/plugins/askaway/scripts/askaway.py wait q-1-abcdef", True),
+        ("python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py status q-1-abcdef", True),
+        ("python3 $HOME/.claude/mods/plugins/askaway-user/scripts/askaway.py list --open", True),
+        ("python3 ${HOME}/.claude/mods/plugins/askaway-user/scripts/askaway.py wait q-1-abcdef", True),
         ("python3 ~/evil/askaway.py status q-1-abcdef", False),
-        ("python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py answer q-1-abcdef A", False),
+        ("python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py answer q-1-abcdef A", False),
         ('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json \'{}\'', True),
         ("python3 /a/askaway.py status q-1-abcdef", False),
         ('python3 "/a b/askaway.py" status q-1-abcdef', False),
@@ -3745,8 +3745,8 @@ def test_bash_text_that_only_mentions_an_answer_or_a_copy_is_allowed(command, ca
     f"python3 {SCRIPT} prune --id q-1-abcdef '--force'",
     f"python3 {SCRIPT} prune --id q-1-abcdef --fo",
     f"python3 {SCRIPT} prune --id q-1-abcdef --f",
-    "python3 ~/.claude/mods/plugins/askaway/scripts/askaway.py prune --id q-1-abcdef --force",
-    "python3 $HOME/.claude/mods/plugins/askaway/scripts/askaway.py prune --id q-1-abcdef --force",
+    "python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py prune --id q-1-abcdef --force",
+    "python3 $HOME/.claude/mods/plugins/askaway-user/scripts/askaway.py prune --id q-1-abcdef --force",
     f"cd /tmp && python3 {SCRIPT} prune --id q-1-abcdef --force",
     f"sh -c 'python3 {SCRIPT} prune --id q-1-abcdef --force'",
 ])
@@ -4571,7 +4571,7 @@ def test_a_placeholder_word_tradeoff_or_title_is_refused(capsys):
 
 
 @pytest.mark.parametrize("command", [
-    ("python3 - <<'EOF'\nfrom pathlib import Path\np = Path('plugins/askaway/SPEC.md')\ns = p.read_text()\n"
+    ("python3 - <<'EOF'\nfrom pathlib import Path\np = Path('plugins/askaway-user/SPEC.md')\ns = p.read_text()\n"
      "s = s.replace('the answer record', 'the \"answer\" record under ~/.claude/state/askaway')\np.write_text(s)\nEOF"),
     "python3 -c \"print('askaway answer(' )\"",
 ])
@@ -5855,10 +5855,10 @@ def test_the_scanner_still_refuses_a_copy_after_a_cd_to_a_variable_in_a_command_
 
 
 @pytest.mark.parametrize("command", [
-    "cp /tmp/scratch/askaway.py ~/src/askaway/plugins/askaway/scripts/askaway.py",
-    "cd ~/src/askaway && cp /tmp/scratch/askaway.py plugins/askaway/scripts/",
-    "R=~/src/askaway; cp /tmp/scratch/test_askaway.py $R/plugins/askaway/scripts/tests/",
-    "cd ~/src/askaway && cp -t plugins/askaway/scripts/ /tmp/scratch/askaway.py",
+    "cp /tmp/scratch/askaway.py ~/src/askaway/plugins/askaway-user/scripts/askaway.py",
+    "cd ~/src/askaway && cp /tmp/scratch/askaway.py plugins/askaway-user/scripts/",
+    "R=~/src/askaway; cp /tmp/scratch/test_askaway.py $R/plugins/askaway-user/scripts/tests/",
+    "cd ~/src/askaway && cp -t plugins/askaway-user/scripts/ /tmp/scratch/askaway.py",
 ], ids=["absolute", "relative", "variable", "target-folder"])
 def test_a_copy_into_the_plugin_folder_passes(command, capsys, monkeypatch):
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
@@ -5885,7 +5885,7 @@ FORMER_COPY_OVER_DENIES = {
     # issue #5: an odd quote leaves the command unreadable, and _unreadable_reason then judges its words alone
     "issue-5-odd-quotes-md": "cat > askaway-notes.md <<'EOF'\nthe answer sits in the window's frame\nEOF",
     "issue-5-odd-quotes-ts": "cat > src/askaway.ts <<'EOF'\nconst answer = 'window\\'s';\nEOF",
-    "test-file-heredoc": ("cd ~/src/askaway && cat >> plugins/askaway/tests/askaway.test.ts <<'EOF'\n"
+    "test-file-heredoc": ("cd ~/src/askaway && cat >> plugins/askaway-user/tests/askaway.test.ts <<'EOF'\n"
                           "test('a written answer keeps the window\\'s name', () => {\n"
                           "  expect(line).toBe('Answered via panel by Ana; askaway list --open shows it')\n})\nEOF"),
     "commit-message-substitution-apostrophe": "git commit -m \"$(cat <<'EOF'\nfix(askaway): a subagent's answer\nEOF\n)\"",
@@ -5894,7 +5894,7 @@ FORMER_COPY_OVER_DENIES = {
     "issue-6-sed-glob-home": "cd ~ && sed -i '1s|.*|x|' notes.md",
     "issue-6-sed-glob-dotclaude": "cd ~/.claude && sed -i '1s|.*|x|' notes.md",
     "sed-script-glob": ("cd ~/.claude && sed -i '204s|.*|Release: 1.2.3, tag `v1.2.3`, pushed.|' notes/report.md"
-                        " && git status --short -- plugins/askaway notes/report.md"),
+                        " && git status --short -- plugins/askaway-user notes/report.md"),
     "sed-script-glob-home": "cd ~ && sed -i '1s|.*|# Notes|' notes.md",
     "sed-double-quoted-script": 'cd ~/.claude && sed -i "1s|.*|x|" notes.md',
     "sed-follow-symlinks": "cd ~/.claude && sed -i --follow-symlinks '1s|.*|x|' notes.md",

@@ -3,12 +3,13 @@
 All notable changes to AskAway User are recorded here, newest first. Entries before the rename name the plugin
 Askaway, its old id and its old skill name. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The version in
-`plugins/askaway/.claude-plugin/plugin.json` is set by each release commit.
+`plugins/askaway-user/.claude-plugin/plugin.json` is set by each release commit.
 Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
 ### Changed
+- **The plugin folder is now `plugins/askaway-user`**: the installed mirror path becomes `~/.claude/mods/plugins/askaway-user/scripts/askaway.py`. Anyone who calls the CLI by the old path `~/.claude/mods/plugins/askaway/scripts/askaway.py` must update it: the pause guard no longer lets a call through the old path while a question holds the session.
 - **The last answer of a round brings the Submit buttons into view**: the pick that gives a round its last missing answer scrolls the pane back to its top, where the tree and its Submit buttons are. Changing an answer afterwards scrolls nothing, and the focus never moves to a Submit button.
 
 ## [1.1.13] - 2026-11-14

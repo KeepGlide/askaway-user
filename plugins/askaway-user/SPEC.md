@@ -684,10 +684,10 @@ field, a recommended option, and on `refile` complete and file again; continue o
 ## Packaging
 
 - The catalog is not in this repository. It lives in `KeepGlide/claude-plugins` (marketplace `keepglide`), whose
-  entry `askaway` is a `git-subdir` source pointing at `plugins/askaway` of this repository. Installed with
+  entry `askaway` is a `git-subdir` source pointing at `plugins/askaway-user` of this repository. Installed with
   `claude plugin marketplace add KeepGlide/claude-plugins` and `claude plugin install askaway-user@keepglide`.
-- `plugins/askaway/.claude-plugin/plugin.json`: the manifest; `"hooks": "./hooks/command-hooks.json"`
+- `plugins/askaway-user/.claude-plugin/plugin.json`: the manifest; `"hooks": "./hooks/command-hooks.json"`
   declares the command hooks (`deliver`, `ask-guard`, `pause-guard`, `stamp-asker`), which use
   `python3` and `${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py`.
-- `plugins/askaway/hooks/hooks.json`: the mod, `{"description": "The AskAway User hooks module: pane, band row, toast and the /askaway commands", "modules": ["./register.tsx"]}`.
-- `plugins/askaway/skills/askaway-user-question-playbook/SKILL.md`: the skill (`askaway-user:askaway-user-question-playbook`) agents read before they file a question.
+- `plugins/askaway-user/hooks/hooks.json`: the mod, `{"description": "The AskAway User hooks module: pane, band row, toast and the /askaway commands", "modules": ["./register.tsx"]}`.
+- `plugins/askaway-user/skills/askaway-user-question-playbook/SKILL.md`: the skill (`askaway-user:askaway-user-question-playbook`) agents read before they file a question.

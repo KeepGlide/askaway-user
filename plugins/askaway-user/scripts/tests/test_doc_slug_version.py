@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-PLUGIN_JSON = REPO_ROOT / "plugins/askaway/.claude-plugin/plugin.json"
-DOCS = ["README.md", "README.pt-BR.md", "SECURITY.md", "plugins/askaway/.claude-plugin/plugin.json", "docs/WAVES.md"]
+PLUGIN_JSON = REPO_ROOT / "plugins/askaway-user/.claude-plugin/plugin.json"
+DOCS = ["README.md", "README.pt-BR.md", "SECURITY.md", "plugins/askaway-user/.claude-plugin/plugin.json", "docs/WAVES.md"]
 OLD_SLUG = re.compile(r"KeepGlide/askaway(?!-user)\b")  # the slug before the rename; CHANGELOG history keeps it
 
 
