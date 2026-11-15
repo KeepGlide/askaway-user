@@ -35,7 +35,7 @@ Terms:
   session gets its own session row so its title is still drawn (the Group's name labels the group). Outside a Desktop Group, its questions sit right under the family's title, with no session
   row, so the family's title is never drawn twice. The other sessions of the family are derived sessions, drawn as rows under
   the root's questions. A question with no session sits in its group under the session label "the session" ("a sessão").
-- **Round**: the open questions of one group; Submit all writes the round of the group on screen. Once every question of a round is answered (Submit all, or a tree row's Submit on its last open question), the pane scrolls back to its start (`$.ui.scroll`, `to: 'start'`), where the next round begins; a refused scroll changes nothing else.
+- **Round**: the open questions of one group; Submit all writes the round of the group on screen. Once every question of a round is answered (Submit all, or a tree row's Submit on its last open question), the pane scrolls back to its start (`$.ui.scroll`, `to: 'start'`), where the next round begins; a refused scroll changes nothing else. The pick that gives a round its last missing answer (an option press, or Keep in an Other field) scrolls the pane to its start too, so the tree and its Submit buttons are in view; a pick that changes an answer of a round already complete scrolls nothing, and the focus never moves to a Submit button (issue #52).
 
 ## State folder: `~/.claude/state/askaway/` (`ASKAWAY_HOME` env var overrides it; tests use it)
 

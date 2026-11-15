@@ -8,6 +8,9 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+### Changed
+- **The last answer of a round brings the Submit buttons into view**: the pick that gives a round its last missing answer scrolls the pane back to its top, where the tree and its Submit buttons are. Changing an answer afterwards scrolls nothing, and the focus never moves to a Submit button.
+
 ## [1.1.13] - 2026-11-14
 
 ### Changed

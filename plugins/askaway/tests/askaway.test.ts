@@ -1307,7 +1307,7 @@ test('a single-question window: Submit all is dim until its pick, then primary, 
   await pane.unmount()
 })
 
-test('once every question of the round is answered, the pane scrolls back to its start; a pick alone does not', async ($, on) => {
+test('the pick that completes a round scrolls the pane back to its start, and so does the submit that answers it', async ($, on) => {
   const files = new Map([[path('q', 'q-l1-cccccc'), question('q-l1-cccccc', 1000)]])
   const { logs, writes } = stubHost(on, files)
   await $.session.start(SESSION)
@@ -1315,10 +1315,37 @@ test('once every question of the round is answered, the pane scrolls back to its
   // The test kit answers no plugin's own $.ui.scroll, so each call shows as its logged failure, which never stops the submit.
   const scrollCalls = (): string[] => logs.filter(line => line.includes('ui.scroll'))
   await pane.press({ key: 'opt-q-l1-cccccc-B' })
-  expect(scrollCalls()).toEqual([])
+  expect(scrollCalls()).toHaveLength(1)
+  // The round is already complete: a changed answer leaves the pane where it is.
+  await pane.press({ key: 'opt-q-l1-cccccc-A' })
+  expect(scrollCalls()).toHaveLength(1)
   await pane.press({ key: 'submit-all' })
   expect(writes).toEqual([path('a', 'q-l1-cccccc')])
-  expect(scrollCalls()).toEqual(['askaway-user: no implementation for ui.scroll'])
+  expect(scrollCalls()).toEqual(Array(2).fill('askaway-user: no implementation for ui.scroll'))
+  await pane.unmount()
+})
+
+test('in a round of two questions only the pick that answers the last open one scrolls the pane to its start', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { logs, writes, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  const scrollCalls = (): string[] => logs.filter(line => line.includes('ui.scroll'))
+  await pane.press({ key: 'opt-q-l1-aaaaaa-A' })
+  await clock.advance(350)
+  expect(scrollCalls()).toEqual([])
+  await pane.press({ key: 'nav-next' })
+  await clock.advance(350)
+  await pane.press({ key: 'opt-q-l2-bbbbbb-A' })
+  await clock.advance(350)
+  expect(scrollCalls()).toHaveLength(1)
+  await pane.press({ key: 'opt-q-l2-bbbbbb-B' })
+  await clock.advance(350)
+  expect(scrollCalls()).toHaveLength(1)
+  expect(writes).toEqual([])
   await pane.unmount()
 })
 
@@ -9035,7 +9062,8 @@ test('gauntlet 7 pane-conc5-2: the poll retry reports no failure while this wind
   await clock.settle()
   await clock.advance(5000)
   expect(toasts).toEqual([])
-  expect(logs).toEqual([])
+  // The pick completes the round, so the pane scrolls to its start; the harness answers no plugin ui.scroll.
+  expect(logs.filter(line => !line.includes('ui.scroll'))).toEqual([])
   expect(JSON.parse(drafts[drafts.length - 1] ?? '{}').picks).toEqual({ 'q-l1-aaaaaa': { key: 'B' } })
   await pane.unmount()
 })

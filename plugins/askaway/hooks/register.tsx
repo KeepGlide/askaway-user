@@ -1282,10 +1282,19 @@ async function scrollToStart($: EngineInterface): Promise<void> {
 // Records a pick for one question. The card stays on that question. A card that is fading takes nothing. Nothing is
 // submitted or reviewed here: Next on the last question opens the review, and Submit all is the only submit path.
 async function pickOption($: EngineInterface, id: string, choice: Pick): Promise<void> {
-  const { open, group, leaving: fading } = await snapshot($)
+  const { open, group, leaving: fading, wizard: before } = await snapshot($)
   if (group === undefined || fading[id] !== undefined || !group.questions.some(question => question.id === id)) return
   await changeWizard($, prev => flow.choose(prunedWizard(prev, open), id, choice))
   await forgetUndelivered($, id)
+  await scrollIfCompleted($, group, before)
+}
+
+// The pick that gives the round its last missing answer takes the pane back to its top, where the tree and its Submit
+// buttons are. A pick that changes an answer of a round already complete moves nothing, and the focus stays where it is
+// (issue #52: nothing here can send an answer).
+async function scrollIfCompleted($: EngineInterface, group: Group, before: Wizard): Promise<void> {
+  if (flow.submittable(group, before) !== undefined) return
+  if (flow.submittable(group, (await snapshot($)).wizard) !== undefined) await scrollToStart($)
 }
 
 // A pick that changes is no longer the one a submit failed on, so its card drops the not-delivered line.
@@ -1396,12 +1405,13 @@ const samePick = (first: Pick | undefined, second: Pick | undefined): boolean =>
 // field: the focus goes to the Other button, which now draws the label chosen. The card stays. Blank text is not kept here:
 // the keepOther action decides it. A question that is not open, or fading out, takes nothing.
 async function keepOther($: EngineInterface, id: string, text: string): Promise<void> {
-  const { open, leaving: fading, wizard: before } = await snapshot($)
+  const { open, group, leaving: fading, wizard: before } = await snapshot($)
   if (fading[id] !== undefined || !open.some(question => question.id === id)) return
   await changeWizard($, prev => flow.keptOther(prunedWizard(prev, open), id, text))
   // Keeping the text the failed pick already had is not a change: the not-delivered line stays until the pick changes.
   if (!samePick(before.picks[id], (await snapshot($)).wizard.picks[id])) await forgetUndelivered($, id)
   await $.ui.focus({ requestId: PANE, key: otherButtonKey(id) })
+  if (group?.questions.some(question => question.id === id) === true) await scrollIfCompleted($, group, before)
 }
 
 // The recordings queue on one chain, as the draft writes do: a press that follows a blur waits for the blur's write, so the
