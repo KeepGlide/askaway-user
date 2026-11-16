@@ -1554,7 +1554,10 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
     fieldRows.delete(id)
     report($, update($, otherRowsAtom, ({ [id]: _, ...rest }) => rest))
     if (text.trim() !== '') {
-      report($, keepOther($, id, text))
+      // On the recording chain, so an idle commit already running writes before Keep and never after it.
+      const run = pendingRecords.then(() => keepOther($, id, text))
+      pendingRecords = run.catch(() => undefined)
+      report($, run)
       return
     }
     // A blank Enter after real typing commits the blank text, queued as a typed entry: it clears the label and an Other pick.
