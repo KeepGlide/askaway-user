@@ -8,6 +8,8 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-16
+
 ### Removed
 - **Other text no longer commits after a pause in typing**: the half-second idle commit from 2.1.0 redrew the pane while you typed, and the redraw dropped keys. The text counts again when you leave the field, press a button, press Enter or close the pane.
 
