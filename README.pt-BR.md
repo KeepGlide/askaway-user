@@ -722,7 +722,7 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 **O que não dá para garantir**
 
 - **O guarda barra o caminho direto, não o drible deliberado.** A ameaça é um agente que responde à própria pergunta por pressa, ou porque um texto que ele leu mandou. Uma escrita feita para escapar dele (um grupo `{ bash; }`, `x+=`, `echo "$x" | bash`, um `rev` no pipe) é um limite conhecido, listado na SPEC.md, e nenhum sandbox do sistema apoia o guarda: ligar um mudaria todo comando Bash de todas as sessões. Uma resposta pelo shell que passe ainda fica marcada `by: agent`.
-- **O guarda é um freio, não uma garantia.** Ele não cobre `find -exec`, `env -S`, `uv run`, `unset ASKAWAY_HOME`, uma cópia do script em outro caminho, um comando de PowerShell ou uma ferramenta MCP que grave arquivos fora de uma pausa, uma palavra de comando ou um alvo de gravação guardado numa variável, um nome de script montado na execução, um caminho `~user`, uma lista entre chaves, `eval "$X"`, nem uma cópia recursiva, `chmod`, `chown` ou `setfacl` num ancestral da pasta de estado. O shell do próprio usuário não é vigiado.
+- **O guarda é um freio, não uma garantia.** Ele não cobre `env -S`, `uv run`, `unset ASKAWAY_HOME`, uma cópia do script em outro caminho, um comando de PowerShell ou uma ferramenta MCP que grave arquivos fora de uma pausa, uma palavra de comando guardada numa variável, um alvo de gravação guardado numa variável que um comando anterior definiu, uma lista de nomes lida de um arquivo (`xargs -a`, `tar -T`), o código de um arquivo de script, um nome de script montado na execução, um caminho `~user`, uma lista entre chaves, `eval "$X"`, nem uma cópia recursiva, `chmod`, `chown` ou `setfacl` num ancestral da pasta de estado. O shell do próprio usuário não é vigiado.
 - **O token do painel não é isolamento.** Qualquer processo do mesmo usuário que consiga gravar a pasta de estado pode gerar um.
 - **Detecção de ausência.** `CLAUDE_CODE_SESSION_ATTENDED=0` é um sinal não oficial; um host que o define faz toda sessão contar como ausente.
 - **Quem fica retido.** Uma pausa da thread principal não segura subagentes que já estão rodando, e uma pergunta de risco alto sem sessão (Codex) não segura nenhuma sessão: o agente precisa parar sozinho.
@@ -778,9 +778,9 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 | Categoria | Testes |
 |---|---|
 | Mod (TypeScript), `plugins/askaway-user/tests/` | 612 |
-| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 1857 |
+| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2113 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit c67f86a (pasta de estado movida para askaway-user), em 2026-11-15. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit da versão 2.0.1 (o guarda do Bash lê links, extrações, find e xargs), em 2026-11-16. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -849,6 +849,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 1.1.12 | 2026-11-14 | O guard de Bash é só o scanner: a cópia congelada do guard antigo foi retirada depois de uma revisão limpa, e os excessos de negação dela acabaram; um make que lê o makefile da entrada padrão é lido como shell. |
 | 1.1.13 | 2026-11-14 | Toda pergunta volta a exigir todos os textos, qualquer que seja o risco, como a dona decidiu. |
 | 2.0.0 | 2026-11-15 | A pasta do plugin é `plugins/askaway-user` e a pasta de estado padrão é `~/.claude/state/askaway-user`, movida uma vez com um link simbólico no caminho antigo; a última resposta de uma rodada rola o painel até os botões Enviar. |
+| 2.0.1 | 2026-11-16 | O guarda do Bash lê mais formas de uma linha gravar numa pasta de estado: um link criado na mesma linha, `curl -o`, `tar -C`, `unzip -d`, `find -exec` e `-delete`, operandos que o `xargs` entrega, um alias, uma variável numa linha que cita a pasta e código em várias linhas. |
 
 ## 🤝 Contribuição
 

@@ -416,6 +416,34 @@ DELETE_COMMANDS: Final = frozenset({"rm", "unlink", "shred", "rmdir"})
 TARGET_FOLDER_COMMANDS: Final = frozenset({"cp", "ln", "install"})  # each also writes into the folder -t names
 LANDING_COMMANDS: Final = frozenset({"cp", "mv", "ln", "rsync", "install"})  # each puts a source into a folder by its name
 RSYNC_RELATIVE: Final = re.compile(r"--relative|-[A-Za-z]*R[A-Za-z]*")  # rsync -R keeps the source's whole path
+FED_NAME: Final = "fed-name"  # stands for a file name the scan cannot know (a download's, an xargs operand's): no state folder has it
+UNPLACED: Final = re.compile(r"[$`]")  # a word the scan cannot place: a variable or a substitution fills it at run time
+# A download writes the file an option names. Per command: the short options that take a value, those whose value is a
+# file it writes, those whose value is the folder it writes into, and the long options of each kind.
+FETCHERS: Final = {
+    "curl": ("AbcCdDeEFHKmoPQrtTuUwxXyYz", "oDc", "",
+             frozenset({"--output", "--dump-header", "--cookie-jar", "--trace", "--trace-ascii", "--stderr",
+                        "--etag-save", "--hsts", "--alt-svc", "--libcurl"}), frozenset({"--output-dir"})),
+    "wget": ("aAbBDeGiIlMoOPQRtTUwX", "Ooa", "P",
+             frozenset({"--output-document", "--output-file", "--append-output"}), frozenset({"--directory-prefix"})),
+}
+CURL_REMOTE_NAME: Final = frozenset({"-O", "-J", "--remote-name", "--remote-name-all", "--remote-header-name"})
+TAR_NAMES: Final = frozenset({"tar", "bsdtar", "gtar"})
+TAR_VALUE_LETTERS: Final = "bCfFgHIKLNTVX"
+TAR_EXTRACTS: Final = frozenset({"-x", "--extract", "--get"})
+TAR_WRITES_ARCHIVE: Final = frozenset({"-c", "-r", "-u", "-A", "--create", "--append", "--update", "--catenate",
+                                       "--concatenate"})
+UNZIP_READS_ONLY: Final = frozenset({"-l", "-p", "-t", "-v", "-z", "-Z"})  # list, pipe, test: nothing is unpacked
+FIND_GLOBAL_OPTION: Final = re.compile(r"-[HLP]|-O\d?|-D")
+FIND_EXPRESSION_START: Final = re.compile(r"-.*|[(!),]")
+FIND_FILE_ACTIONS: Final = frozenset({"-fprint", "-fprint0", "-fls", "-fprintf"})  # each writes the file its next word names
+FIND_RUN_ACTIONS: Final = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
+FED_VARIABLE: Final = "ASKAWAY_GUARD_FED"  # stands, in a -c script, for the replace string an xargs -I fills
+# a find whose output the line reads into a variable, or hands through xargs to a shell as its positional parameters
+FIND_OUTPUT_READ: Final = re.compile(r"\b(?:read|mapfile|readarray)\b|\bxargs\b[^|;&\n]*\b(?:sh|bash|dash|zsh|ksh)\b")
+LN_SYMBOLIC: Final = re.compile(r"--symbolic|-[A-Za-z]*s[A-Za-z]*")
+LN_RELATIVE: Final = re.compile(r"--relative|-[A-Za-z]*r[A-Za-z]*")
+LN_EXACT: Final = re.compile(r"--no-target-directory|-[A-Za-z]*T[A-Za-z]*")
 PYTHON_NAME: Final = re.compile(r"python(?:3(?:\.\d+)?)?")
 CODE_RUNNERS: Final = frozenset({"perl", "ruby", "node", "bun", "deno", "php"})
 SHELL_NAMES: Final = frozenset({
@@ -502,8 +530,15 @@ STDIN_MESSAGE_OPTIONS: Final = frozenset({"-F", "--file", "--body-file"})  # eac
 GIT_CONFIG_ENV: Final = "GIT_CONFIG"  # GIT_CONFIG_COUNT, GIT_CONFIG_KEY_0, GIT_CONFIG_PARAMETERS, GIT_CONFIG_GLOBAL...
 STATE_FOLDER_PATH: Final = re.compile(r"\.claude[\W_]*state")  # ~/.claude/state, spelled out or with $HOME
 WRITE_CODE: Final = re.compile(r"open\(.*?(?:['\"][wax+]|>)|write|unlink|remove|rename|os\.replace\(|rmtree|copy|move"
+                               r"|mkdir|makedirs|chmod|chown|utime|mkfifo|appendFile|rmSync"
                                r"|os\.(?:symlink|link)\(|symlink_to|hardlink_to"
                                r"|touch|truncate|\b(?:rm|mv|cp|tee)\b")
+CODE_ASSIGNMENT: Final = re.compile(r"\s*(?:(?:const|let|var|my|our|local|export)\s+)?\$?(\w+)\s*(?::[^=]+)?=(?!=)")
+# a string that is a path into the state folder: a / or ~ before the folder's name and no space, or the two names as
+# quoted parts of a join. A pattern that only names the folder (r"state/askaway|ASKAWAY_HOME") is no path.
+CODE_PATH_VALUE: Final = re.compile(
+    r"""['"][^'"\s]*[/~][^'"\s]*?state[^'"\s\w]*askaway|['"]state['"]\s*[,/+]\s*['"]askaway""")
+CODE_TEXT_EDIT: Final = re.compile(r"\.replace\(|\bsub\(|\.format\(|\.read")  # the line edits or reads text: its value is no path
 ANSWER_CODE: Final = re.compile(r"cmd_answer|answer\(|['\"]answer['\"]")
 AWAY_CODE: Final = re.compile(r"['\"]away['\"]|\baway\w*")  # the away switch as a string or as an identifier such as away_path
 AWAY_SWITCH_TEXT: Final = re.compile(r"\baway\s+(?:on|off)\b")
@@ -2975,10 +3010,19 @@ def _code_reason(code: str, *, sandboxed: bool) -> str | None:
 
     Judged line by line, so prose inside a heredoc that edits a document (a README line that names the state
     folder next to the word "write") does not count: the mention and the write must share a line of code, and
-    an answer needs the askaway module or script named in the code.
+    an answer needs the askaway module or script named in the code. A name a line assigns a path into the state
+    folder (p = '~/.claude/state/askaway-user/a/x') stands for the mention on the lines after it, and so does a name
+    built from one; a line that edits or reads text (replace, sub, format, read) gives its name no path.
     """
-    if any(STATE_MENTION.search(line) and WRITE_CODE.search(line) for line in code.splitlines()):
-        return STATE_DENIED
+    named: set[str] = set()  # the names a line gave a path into the state folder, or a value built from one
+    for line in code.splitlines():
+        mentions = STATE_MENTION.search(line) is not None
+        carried = any(re.search(rf"(?<![\w.]){re.escape(name)}\b", line) for name in named)
+        if (mentions or carried) and WRITE_CODE.search(line):
+            return STATE_DENIED
+        assigned = CODE_ASSIGNMENT.match(line)
+        if assigned is not None and (carried or CODE_PATH_VALUE.search(line)) and not CODE_TEXT_EDIT.search(line):
+            named.add(assigned[1])
     if not sandboxed and ASKAWAY_CODE.search(code) and (reason := _askaway_code_reason(code)) is not None:
         return reason
     if not sandboxed and "askaway" in code and RUNS_CODE.search(code):
@@ -3062,6 +3106,15 @@ def _command_targets(name: str, args: Sequence[str], raw: Sequence[str]) -> list
     of= targets, and the folder a cp, ln or install -t names, even glued to its option (-tDIR, --target-directory=DIR)."""
     if name == "dd":
         return [(arg[3:], False) for arg in args if arg.startswith("of=")]
+    if name in FETCHERS:
+        return [(target, False) for target in _fetch_targets(name, args)]
+    if name in TAR_NAMES:
+        return [(target, False) for target in _tar_targets(args)]
+    if name == "unzip":
+        return [(target, False) for target in _unzip_targets(args)]
+    if name == "find":
+        found = _find_parts(args, raw)
+        return [(file, False) for file in found.files] + [(start, True) for start in found.starts if found.deletes]
     if name == "mv":
         return _move_targets(args) + _landing_targets(name, args)
     if _edits_in_place(name, args):
@@ -3102,6 +3155,132 @@ def _landing_places(name: str, source: str, keeps_path: bool) -> list[str]:
     if keeps_path and source.strip(os.sep):
         places.append(source.strip(os.sep))
     return places
+
+
+def _option_values(args: Sequence[str], value_letters: str, long_names: frozenset[str]) -> dict[str, list[str]]:
+    """Every option of a command line, with the values it takes. A short option that takes one (a letter of
+    value_letters) reads the rest of its word, or else the next word; a long option of long_names reads the text after
+    its =, or else the next word. Any other option is a flag with no value."""
+    found: dict[str, list[str]] = {}
+    words = iter(args)
+    for arg in words:
+        if arg == "--":
+            break
+        if arg.startswith("--"):
+            name, equals, value = arg.partition("=")
+            values = found.setdefault(name, [])
+            if name in long_names:
+                values.append(value if equals else next(words, ""))
+        elif arg.startswith("-"):
+            for index, letter in enumerate(arg[1:], 1):
+                values = found.setdefault("-" + letter, [])
+                if letter in value_letters:
+                    values.append(arg[index + 1:] or next(words, ""))
+                    break
+    return found
+
+
+def _fetch_targets(name: str, args: Sequence[str]) -> list[str]:
+    """What a curl or wget writes: each file an option names (not - for stdout), a file of unknown name in each folder
+    an option names, and a file of unknown name in the working directory when the name comes from the URL (curl -O,
+    wget with no -O)."""
+    value_letters, file_letters, folder_letters, file_long, folder_long = FETCHERS[name]
+    found = _option_values(args, value_letters, file_long | folder_long)
+    files = [value for key in (*("-" + letter for letter in file_letters), *file_long) for value in found.get(key, [])]
+    folders = [value for key in (*("-" + letter for letter in folder_letters), *folder_long)
+               for value in found.get(key, [])]
+    if name == "curl":
+        named_by_url = any(key in found for key in CURL_REMOTE_NAME)
+    else:
+        named_by_url = not (found.get("-O") or found.get("--output-document"))
+    targets = [file for file in files if file not in ("", "-")]
+    targets += [os.path.join(folder, FED_NAME) for folder in folders]
+    if named_by_url and not folders:
+        targets.append(os.path.join(os.curdir, FED_NAME))
+    return targets
+
+
+def _tar_targets(args: Sequence[str]) -> list[str]:
+    """What a tar writes: every path under the folder it unpacks into (-C, --directory, else the working directory),
+    since the archive names them, and the archive file it creates or adds to. The first word of the old form (tar xfC
+    a.tar DIR) is read as its letters, each value letter taking the next word in order."""
+    words = list(args)
+    if words and not words[0].startswith("-"):
+        rest = iter(words[1:])
+        words = [word for letter in words[0]
+                 for word in (("-" + letter, next(rest, "")) if letter in TAR_VALUE_LETTERS else ("-" + letter,))]
+        words += rest
+    found = _option_values(words, TAR_VALUE_LETTERS, frozenset({"--directory", "--file"}))
+    targets: list[str] = []
+    if any(key in found for key in TAR_EXTRACTS):
+        folders = [*found.get("-C", []), *found.get("--directory", [])] or [os.curdir]
+        targets += [_unpacked_into(folder) for folder in folders]
+    if any(key in found for key in TAR_WRITES_ARCHIVE):
+        targets += [file for file in (*found.get("-f", []), *found.get("--file", [])) if file not in ("", "-")]
+    return targets
+
+
+def _unzip_targets(args: Sequence[str]) -> list[str]:
+    """Every path under the folder an unzip unpacks into (-d, else the working directory), unless it only lists, pipes
+    or tests the archive."""
+    found = _option_values(args, "dP", frozenset())
+    if any(key in found for key in UNZIP_READS_ONLY):
+        return []
+    return [_unpacked_into(folder) for folder in found.get("-d", []) or [os.curdir]]
+
+
+def _unpacked_into(folder: str) -> str:
+    """The target that stands for what an archive puts into a folder: any path under it. A folder a variable names
+    cannot be placed, so it stands as one unknown file there, which _unplaced_reason holds on a line that reaches a
+    state folder; read as any path, it would count from the working directory, whatever the variable holds."""
+    return os.path.join(folder, FED_NAME if UNPLACED.search(folder) else "*")
+
+
+class _FindParts(NamedTuple):
+    starts: list[str]  # the folders it searches: the words before its expression, or the working directory
+    deletes: bool  # does -delete remove what it finds?
+    files: list[str]  # the files -fprint, -fprint0, -fls and -fprintf write
+    runs: list[list[str]]  # the raw words of each -exec, -execdir, -ok and -okdir command, up to its ; or {} +
+
+
+def _find_parts(args: Sequence[str], raw: Sequence[str]) -> _FindParts:
+    """A find command read for what it writes: where it searches, whether it deletes, the files its actions write and
+    the commands its actions run."""
+    starts: list[str] = []
+    index = 0
+    while index < len(args) and FIND_GLOBAL_OPTION.fullmatch(args[index]):
+        index += 2 if args[index] == "-D" else 1
+    while index < len(args) and not FIND_EXPRESSION_START.fullmatch(args[index]):
+        starts.append(args[index])
+        index += 1
+    files = [args[at + 1] for at in range(index, len(args) - 1) if args[at] in FIND_FILE_ACTIONS]
+    runs: list[list[str]] = []
+    for at in range(index, len(args)):
+        if args[at] in FIND_RUN_ACTIONS:
+            end = next((stop for stop in range(at + 1, len(args))
+                        if args[stop] == ";" or (args[stop] == "+" and args[stop - 1] == "{}")), len(args))
+            runs.append(list(raw[at + 1:end]))
+    return _FindParts(starts or [os.curdir], "-delete" in args[index:], files, runs)
+
+
+def _xargs_fed(words: Sequence[str]) -> bool:
+    """Does an xargs run this command? It then gets more operands than the line shows, read from xargs' input."""
+    for raw in words:
+        head = _unquote(raw)
+        if os.path.basename(head) == "xargs":
+            return True
+        if not (ASSIGNMENT.fullmatch(head) or head in PREFIX_WORDS or raw.isdigit()
+                or os.path.basename(head) in WRAPPER_NAMES):
+            return False
+    return False
+
+
+def _xargs_script_placeholder(words: Sequence[str]) -> str | None:
+    """The replace string of the xargs that runs this command, when it has one: xargs also fills it inside a -c script."""
+    for index, raw in enumerate(words):
+        if os.path.basename(_unquote(raw)) == "xargs":
+            return _xargs_placeholder(words[index + 1:])
+    return None
 
 
 def _write_targets(argv: Sequence[str], writes: Sequence[str]) -> list[tuple[str, bool]]:
@@ -3172,6 +3351,19 @@ class _FedTexts:
         self.spent = 0  # characters read in all: each read costs its text and FED_READ_COST
 
 
+class _LineFacts:
+    """What one line holds beyond the command being read, shared by its nested scans: whether any of its words names a
+    path inside a state folder, the links it makes and the aliases it defines."""
+
+    def __init__(self) -> None:
+        self.reaches = False  # a word names a path inside a state folder, or an ln or a read find names a folder above one
+        self.found = False  # a find searches a folder above a state folder: what xargs feeds may be a path inside it
+        # the place of each link the line makes (the real folder it sits in, and its name) -> the real path it points
+        # to, or "" when that path cannot be placed. A link made in the line is not on disk yet when the line is read.
+        self.links: dict[str, str] = {}
+        self.aliases: dict[str, str] = {}  # alias name -> its text
+
+
 class _ShellScan:
     """One Bash command read as the shell runs it: the working directory, whether the guard knows it, and the
     ASKAWAY_HOME it exports."""
@@ -3179,7 +3371,8 @@ class _ShellScan:
     def __init__(self, cwd: str, exported: Mapping[str, str], roots: tuple[str, ...], cwd_known: bool = True,
                  written: list[str] | None = None, depth: int = 0, *, hinted: bool | None = None, prose: bool = False,
                  strict: bool = False, fed: _FedTexts | None = None,
-                 variables: Mapping[str, str] | None = None) -> None:
+                 variables: Mapping[str, str] | None = None, line: "_LineFacts | None" = None) -> None:
+        self.line: _LineFacts = _LineFacts() if line is None else line  # what the whole line holds; nested scans share it
         self.hinted = hinted  # does the whole command mention the state folder? set by the first text() call
         self.strict = strict  # does the unknown directory come from more than a cd to a variable?
         self.prose = prose  # is this text inside a git or gh command, whose heredoc is message text?
@@ -3213,6 +3406,7 @@ class _ShellScan:
         if self.hinted is None:
             self.hinted = STATE_HINT.search(command) is not None
         simple_commands = _simple_commands(tokens, bodies)
+        self._mark_reached(simple_commands, command)
         self._record_fed([word for simple in simple_commands for word in simple.words])
         self._record_read_input(command, bodies, simple_commands)
         if not self._prose(simple_commands) and any(simple.heredoc for simple in simple_commands) and (
@@ -3300,9 +3494,64 @@ class _ShellScan:
         return bool(named) and all(_message_command(*_strip_prefix(simple.words), own_heredoc=simple.heredoc)
                                    for simple in named)
 
+    def _mark_reached(self, simple_commands: Sequence[_Simple], command: str) -> None:
+        """Note, before the line runs, whether a word of it names a path inside a state folder (an operand, or the value
+        of an assignment), or whether an ln links a folder above one. A later command whose own operand cannot be
+        placed (a variable, a substitution, what xargs feeds) may then be writing there: a function body is read before
+        its call, so the whole text is marked first. A find over a folder above one counts the same only where the line
+        can read its output into a variable (a substitution, a read); a find that only lists marks what xargs feeds."""
+        if self.line.reaches:
+            return
+        for simple in simple_commands:
+            env, argv = _strip_prefix(simple.words)
+            name = _command_name(argv)
+            args = [_unquote(word) for word in argv[1:]]
+            values = [assignment[2] for arg in args if (assignment := ASSIGNMENT.fullmatch(arg)) is not None]
+            wide = set(_find_parts(args, argv[1:]).starts) if name == "find" else set(args) if name == "ln" else set()
+            read = name != "find" or self.depth > 0 or FIND_OUTPUT_READ.search(command) is not None
+            for text in (*env.values(), *args, *values):
+                expanded = _expand(text, str(DEFAULT_HOME))
+                if os.sep not in expanded or (not self.cwd_known and not os.path.isabs(expanded)):
+                    continue
+                path = self._resolved(expanded)
+                above = text in wide and not EXPANSION.search(expanded) and _above(path, self.roots)
+                if _inside(path, self.roots) or (above and read):
+                    self.line.reaches = True
+                    return
+                if above:
+                    self.line.found = True
+
+    def _unaliased(self, simple: _Simple) -> tuple[_Simple, str | None]:
+        """The command with an alias the line defined read in place of its first word, as the shell reads it (an alias
+        is not read again inside its own text). An alias whose text is more than words (cd a && rm) is read as a line
+        of its own with the command's other words after it, and leaves the working directory unknown."""
+        seen: set[str] = set()
+        while True:
+            start = next((index for index, word in enumerate(simple.words)
+                          if not ASSIGNMENT.fullmatch(_unquote(word))), len(simple.words))
+            head = simple.words[start] if start < len(simple.words) else ""
+            if head not in self.line.aliases or head in seen:
+                return simple, None
+            seen.add(head)
+            text = self.line.aliases[head]
+            tokens = _shell_tokens(text)
+            if tokens is not None and all(kind == "word" for kind, _ in tokens):
+                words = [*simple.words[:start], *(word for _, word in tokens), *simple.words[start + 1:]]
+                simple = simple._replace(words=words)
+                continue
+            reason = self._child(self.exported).text(" ".join([text, *simple.words[start + 1:]]))
+            self.cwd_known = False
+            self.strict = True
+            return simple._replace(words=simple.words[:start]), reason
+
     def _simple(self, simple: _Simple) -> str | None:
+        simple, reason = self._unaliased(simple)
+        if reason is not None:
+            return reason
         env, argv = _strip_prefix(simple.words)
         name = _command_name(argv)
+        if name == "alias":
+            self.line.aliases.update(_assignments(argv[1:]))
         if not argv:
             self.variables.update(env)  # a plain assignment sets the variable in this shell
         elif name in (*SHELL_VAR_NAMES, "export"):
@@ -3349,7 +3598,7 @@ class _ShellScan:
         whole command hints."""
         return _ShellScan(self.cwd, exported, self.roots, self.cwd_known, self.written, self.depth + 1,
                           hinted=self.hinted, strict=self.strict, prose=self.prose or prose, fed=self.fed,
-                          variables=self.variables)
+                          variables=self.variables, line=self.line)
 
     def _directory_untracked(self, name: str, argv: Sequence[str], env: Mapping[str, str]) -> bool:
         """Does the command move this shell's directory where the scan cannot follow it?
@@ -3364,17 +3613,132 @@ class _ShellScan:
         sandboxed = bool(home) and (self.cwd_known or os.path.isabs(home)) and _sandbox_value(home, self.cwd, self.written)
         askaway_home = home if sandboxed else str(DEFAULT_HOME)
         checks = [_answer_reason(argv, sandboxed), _away_reason(argv, sandboxed), _forced_prune_reason(argv),
-                  self._write_reason(simple, argv, askaway_home), self._nested(simple, env, argv)]
+                  self._write_reason(simple, argv, askaway_home), self._nested(simple, env, argv),
+                  self._find_reason(env, argv)]
         code = _inline_code(argv)
         if code is not None:
             checks.append(_code_reason(code, sandboxed=sandboxed))
+        checks.append(self._placed_code_reason(simple, argv, code))
+        checks.append(self._unplaced_reason(simple, argv, askaway_home))  # last: the nested scans mark what they reach
         return next((reason for reason in checks if reason is not None), None)
+
+    def _placed_code_reason(self, simple: _Simple, argv: Sequence[str], code: str | None) -> str | None:
+        """Code that writes with no folder named in it, where the line itself places the write: the working directory
+        is inside a state folder (a relative name lands there), or the code names a link the line made to a place
+        inside or above one, or to a place unknown. The code is the -c or -e text, or the line when a heredoc feeds a
+        code runner."""
+        name = _command_name(argv)
+        if code is None and simple.heredoc and (name in CODE_RUNNERS or name.startswith("python")):
+            code = self.command
+        if code is None or WRITE_CODE.search(code) is None:
+            return None
+        if self.cwd_known and _inside(self._resolved(os.curdir), self.roots):
+            return STATE_DENIED
+        linked = any(place in code and (not target or _inside(target, self.roots) or _above(target, self.roots))
+                     for place, target in self.line.links.items())
+        return STATE_DENIED if linked else None
 
     def _write_reason(self, simple: _Simple, argv: Sequence[str], askaway_home: str) -> str | None:
         targets = _write_targets(argv, simple.writes)
         hit = any(self._hits_state(target, askaway_home, delete=removes) for target, removes in targets)
         self.written += [self._resolved(_expand(target, askaway_home)) for target in self._links_made(argv, askaway_home)]
+        self._record_links(argv, askaway_home)
         return STATE_DENIED if hit else None
+
+    def _find_reason(self, env: Mapping[str, str], argv: Sequence[str]) -> str | None:
+        """A find's -exec, -execdir, -ok and -okdir commands, each read as a command line with {} standing for a folder
+        it searches and for any path under it: find passes both."""
+        if _command_name(argv) != "find":
+            return None
+        found = _find_parts([_unquote(word) for word in argv[1:]], argv[1:])
+        starts = [word for word in argv[1:] if _unquote(word) in found.starts] or [os.curdir]
+        for run in found.runs:
+            for start in starts:
+                for path in (start, start.rstrip(os.sep) + os.sep + "*"):
+                    text = " ".join(word.replace("{}", path) for word in run)
+                    if (reason := self._child({**self.exported, **env}).text(text)) is not None:
+                        return reason
+        return None
+
+    def _unplaced_reason(self, simple: _Simple, argv: Sequence[str], askaway_home: str) -> str | None:
+        """A write whose target the scan cannot place, on a line that names a path inside a state folder: the target
+        may be that path. It cannot be placed when a variable or a substitution fills it, when it goes through a link
+        the line made to a place unknown, or when xargs feeds the command its operands (an operand xargs feeds with no
+        folder lands in the working directory, so it counts there by itself)."""
+        name = _command_name(argv)
+        args = [_unquote(word) for word in argv[1:]]
+        fed = _xargs_fed(simple.words) and (
+            name in WRITE_COMMANDS or name in DELETE_COMMANDS or name in ("mv", "dd") or _edits_in_place(name, args))
+        if fed and self._hits_state(os.path.join(os.curdir, FED_NAME), askaway_home, delete=False):
+            return STATE_DENIED
+        if not self.line.reaches:
+            return STATE_DENIED if fed and self.line.found else None
+        targets = [_expand(target, askaway_home) for target, _ in _write_targets(argv, simple.writes)]
+        unplaced = any(UNPLACED.search(target) or self._walk(target)[1] for target in targets)
+        return STATE_DENIED if fed or unplaced else None
+
+    def _record_links(self, argv: Sequence[str], askaway_home: str) -> None:
+        """Note the links a command leaves, so a later command of the line that writes through one is read at the place
+        the link points to: an ln's links, and a link the line made once a mv, cp or rsync puts it elsewhere. A place the
+        scan cannot name (an unknown working directory, a variable) is not noted; _unplaced_reason holds such a write."""
+        name = _command_name(argv)
+        args = [_unquote(word) for word in argv[1:]]
+        if not self.cwd_known or name not in ("ln", "mv", "cp", "rsync"):
+            return
+        operands, folder = _operands_and_folder(args)
+        operands = [_expand(operand, askaway_home) for operand in operands]
+        folder = None if folder is None else _expand(folder, askaway_home)
+        if folder is None and name == "ln" and len(operands) == 1:
+            folder = os.curdir
+        if folder is None and len(operands) < 2:
+            return
+        sources = operands if folder is not None else operands[:-1]
+        target = folder if folder is not None else operands[-1]
+        into = folder is not None or target.endswith(os.sep) or (
+            not any(LN_EXACT.fullmatch(arg) for arg in args) and os.path.isdir(self._walk(target)[0]))
+        for source in sources:
+            place = os.path.join(target, os.path.basename(source.rstrip(os.sep))) if into else target
+            if UNPLACED.search(place):
+                continue
+            key = self._place(place)
+            if name != "ln":
+                if (moved := self.line.links.get(self._place(source))) is not None:
+                    self.line.links[key] = moved  # the link itself was moved or copied: it points where it did
+            elif UNPLACED.search(source := self._variable_value(source)):
+                self.line.links[key] = ""
+            else:
+                beside = (not os.path.isabs(source) and any(LN_SYMBOLIC.fullmatch(arg) for arg in args)
+                          and not any(LN_RELATIVE.fullmatch(arg) for arg in args))
+                # a relative symlink points from the folder it sits in; ln -r and a hard link read it from here
+                self.line.links[key] = self._walk(os.path.join(os.path.dirname(key), source) if beside else source)[0]
+
+    def _variable_value(self, word: str) -> str:
+        """A word that is one variable the line set, read as its value; any other word as it is."""
+        variable = HERE_VARIABLE.fullmatch(word)
+        value = {**self.exported, **self.variables}.get(variable[1]) if variable is not None else None
+        return word if value is None else _expand(_unquote(value), str(DEFAULT_HOME))
+
+    def _place(self, text: str) -> str:
+        """The key of a link's place: the real folder it sits in, and its name."""
+        path = os.path.join(self.cwd, text).rstrip(os.sep) or os.sep
+        return os.path.join(self._walk(os.path.dirname(path))[0], os.path.basename(path))
+
+    def _walk(self, text: str) -> tuple[str, bool]:
+        """The real path a word names from this working directory, read through the links this line made, and whether
+        it goes through one whose target is unknown. Each part is followed as the system follows it, so a .. after a
+        link leaves from where the link points."""
+        path = os.path.join(self.cwd, text)
+        if not self.line.links:
+            return os.path.realpath(path), False
+        current, unknown = os.sep, False
+        for part in path.split(os.sep):
+            if part in ("", os.curdir):
+                continue
+            current = os.path.dirname(current) if part == os.pardir else os.path.join(current, part)
+            target = self.line.links.get(current)
+            unknown = unknown or target == ""
+            current = os.path.realpath(target or current)
+        return current, unknown
 
     def _links_made(self, argv: Sequence[str], askaway_home: str) -> list[str]:
         """The words a command may leave as a symlink, or move into place, for the sandbox check: the places an ln's links
@@ -3421,10 +3785,10 @@ class _ShellScan:
             # state folder; after any other untracked change (pushd, cd -, popd, CDPATH, source, eval) it always counts.
             return self.strict or bool(self.hinted)
         path = self._resolved(expanded)
-        climbed = os.path.realpath(os.path.join(self.cwd, expanded))  # a .. after a $ or { can climb back into the folder
+        climbed = self._walk(expanded)[0]  # a .. after a $ or { can climb back into the folder
         glob = GLOB.search(expanded)
         cut = expanded if glob is None else expanded[:expanded.rfind(os.sep, 0, glob.start()) + 1]
-        before_glob = os.path.realpath(os.path.join(self.cwd, cut))  # the directory a glob starts in, even after a $ or {
+        before_glob = self._walk(cut)[0]  # the directory a glob starts in, even after a $ or {
         if _inside(path, self.roots) or _inside(climbed, self.roots) or _inside(before_glob, self.roots):
             return True
         if delete and _above(climbed, self.roots):
@@ -3437,7 +3801,7 @@ class _ShellScan:
         under the directory before its first such mark, so that directory is the path."""
         wildcard = EXPANSION.search(expanded)
         literal = expanded if wildcard is None else expanded[:expanded.rfind(os.sep, 0, wildcard.start()) + 1]
-        return os.path.realpath(os.path.join(self.cwd, literal))
+        return self._walk(literal)[0]
 
     def _nested(self, simple: _Simple, env: Mapping[str, str], argv: Sequence[str]) -> str | None:
         """Text the command runs on its own: $(...) or `...` (with the exports so far), sh -c or eval (with the prefix).
@@ -3445,7 +3809,11 @@ class _ShellScan:
         the heredoc bodies and here-strings inside the line's substitutions (x=$(cat <<'EOF' ...); eval "$x") are
         scanned as command lines too (_fed_reason)."""
         scripts = _script_texts(argv)
-        scans = [(self.exported, text) for word in simple.words for text in _substitutions(word)]
+        placeholder = _xargs_script_placeholder(simple.words)
+        if placeholder is not None and argv:  # what xargs puts in the script is not known: read it as a variable is
+            written = _script_texts(simple.words[-len(argv):])  # the words as written: argv has the string as a glob
+            scripts = [text.replace(placeholder, "${" + FED_VARIABLE + "}") for text in written]
+        scans = [(self.exported, text) for word in (*simple.words, *simple.writes) for text in _substitutions(word)]
         scans += [({**self.exported, **env}, text) for text in scripts]
         for exported, text in scans:
             reason = self._child(exported, prose=_message_command(env, argv, own_heredoc=False)).text(text)
@@ -3479,7 +3847,7 @@ class _ShellScan:
         target = _directory_operand(operands[0])
         if target is None or (not self.cwd_known and not os.path.isabs(target)):
             return None
-        return os.path.realpath(os.path.join(self.cwd, target))
+        return self._walk(target)[0]
 
 
 def _working_directory() -> str | None:

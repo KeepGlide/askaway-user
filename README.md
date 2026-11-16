@@ -722,7 +722,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 **What it cannot guarantee**
 
 - **The guard stops the plain way, not deliberate evasion.** Its threat is an agent that answers its own question out of haste, or because text it read told it to. A spelling built to slip past it (a `{ bash; }` group, `x+=`, `echo "$x" | bash`, a `rev` in the pipe) is a known limit listed in SPEC.md, and no OS sandbox backs the guard: turning one on would change every Bash command of every session. A shell answer that gets through is still stamped `by: agent`.
-- **The guard is a deterrent, not a guarantee.** It does not model `find -exec`, `env -S`, `uv run`, `unset ASKAWAY_HOME`, a copy of the script at another path, a PowerShell command or an MCP tool that writes files outside a pause, a command word or write target held in a variable, a script name built at run time, a `~user` path, a brace list, `eval "$X"`, or a recursive copy, `chmod`, `chown` or `setfacl` on an ancestor of the state folder. The user's own shell is not guarded.
+- **The guard is a deterrent, not a guarantee.** It does not model `env -S`, `uv run`, `unset ASKAWAY_HOME`, a copy of the script at another path, a PowerShell command or an MCP tool that writes files outside a pause, a command word held in a variable, a write target held in a variable that an earlier command set, a list of names read from a file (`xargs -a`, `tar -T`), a script file's own code, a script name built at run time, a `~user` path, a brace list, `eval "$X"`, or a recursive copy, `chmod`, `chown` or `setfacl` on an ancestor of the state folder. The user's own shell is not guarded.
 - **The panel token is not isolation.** Any process of the same user that can write the state folder can mint one.
 - **Away detection.** `CLAUDE_CODE_SESSION_ATTENDED=0` is an unofficial signal; a host that sets it makes every session count as away.
 - **Who is held.** A main-thread pause does not hold subagents already running, and a high-risk question with no session (Codex) holds no session: the agent must stop on its own.
@@ -778,9 +778,9 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 | Category | Tests |
 |---|---|
 | Mod (TypeScript), `plugins/askaway-user/tests/` | 612 |
-| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 1857 |
+| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2113 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at commit c67f86a (state folder moved to askaway-user), 2026-11-15. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at the 2.0.1 release commit (Bash guard reads links, unpacks, find and xargs), 2026-11-16. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -849,6 +849,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.12 | 2026-11-14 | The Bash guard is the scanner alone: the frozen copy of the earlier guard is retired after a clean review, so its over-denies end; a make that reads its makefile from stdin is read as a shell. |
 | 1.1.13 | 2026-11-14 | Every question needs all of its texts again, whatever its risk, as the owner decided. |
 | 2.0.0 | 2026-11-15 | The plugin folder is `plugins/askaway-user` and the default state folder is `~/.claude/state/askaway-user`, moved once with a symlink left at the old path; the last answer of a round scrolls the pane to its Submit buttons. |
+| 2.0.1 | 2026-11-16 | The Bash guard reads more ways a line can write into a state folder: a link made on the same line, `curl -o`, `tar -C`, `unzip -d`, `find -exec` and `-delete`, operands fed by `xargs`, an alias, a variable on a line that names the folder, and code over several lines. |
 
 ## 🤝 Contributing
 
