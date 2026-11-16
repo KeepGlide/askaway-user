@@ -8,6 +8,12 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-16
+
+### Security
+- **The Bash guard reads more ways a command line can write into a state folder**: a write through a link the same line made, the file of `curl -o` and `wget -O` or `-P`, the folder a `tar` or an `unzip` unpacks into, `find -delete`, `-fprint` and the command of `-exec`, operands that `xargs` feeds, an alias the line defines, a target held in a variable or a substitution on a line that names a state path, and code that names the folder on one line and writes on another. These forms were allowed since before 2.0.0. The guard stays a deterrent, not a guarantee: SPEC.md (Bash and file guard, rule 6) lists what it still does not read.
+- **Unpacking or `find -delete` over a folder above the state folders is refused**: `cd ~ && tar xf a.tgz`, `unzip a.zip -d ~/.claude` and `find ~ -name x -delete` are denied, since they could reach the state folder. Run them in a subfolder.
+
 ## [2.0.0] - 2026-11-15
 
 Breaking: the plugin folder and the default state folder have new names. The CLI file name `askaway.py`, the `/askaway` command and the `ASKAWAY_*` variables are unchanged.

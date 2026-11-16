@@ -3448,6 +3448,191 @@ def test_a_copy_a_move_or_a_link_away_from_the_state_folders_still_passes(comman
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
 
 
+LINK_IN_THE_LINE = [
+    "ln -s {parent} /tmp/w/link && touch /tmp/w/link/{name}/a/q-1-abcdef.json",
+    "ln -s {parent} /tmp/w/link; echo x > /tmp/w/link/{name}/a/q-1-abcdef.json",
+    "ln -s {parent} /tmp/w/l && rm -rf /tmp/w/l/{name}/q",
+    "ln -s {parent} /tmp/w/l && cd /tmp/w/l && touch {name}/a/q-1-abcdef.json",
+    "ln -s {parent} /tmp/w/ && touch /tmp/w/state/{name}/a/q-1-abcdef.json",
+    "ln -s -t /tmp/w {parent} && touch /tmp/w/state/{name}/a/q-1-abcdef.json",
+    "cd /tmp/w && ln -s {parent} && touch state/{name}/a/q-1-abcdef.json",
+    "ln -sT {parent} /tmp/w/l && cp /tmp/x.json /tmp/w/l/{name}/a/",
+    "ln -s {parent} /tmp/w/l && mv /tmp/w/l /tmp/w/m && touch /tmp/w/m/{name}/a/q-1-abcdef.json",
+    "ln -s {parent} /tmp/w/l && ln -s /tmp/w/l /tmp/w/m && touch /tmp/w/m/{name}/a/q-1-abcdef.json",
+    "ln -s {parent} /tmp/w/l && sed -i s/A/B/ /tmp/w/l/{name}/a/q-1-abcdef.json",
+    "ln -s {parent} /tmp/w/l && touch /tmp/w/l/../state/{name}/a/q-1-abcdef.json",
+    "ln -s {parent}/.. /tmp/w/l && touch /tmp/w/l/state/{name}/a/q-1-abcdef.json",
+    "ln -s ../state {parent}/../w/l && touch {parent}/../w/l/{name}/a/q-1-abcdef.json",
+    "S={parent}; ln -s \"$S\" /tmp/w/l && touch /tmp/w/l/{name}/a/q-1-abcdef.json",
+    "ln -s {parent} /tmp/w/l && touch \"/tmp/w/l/$N/a/q-1-abcdef.json\"",
+]
+FETCHED_OR_UNPACKED = [
+    "curl -o {parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "curl -sSLo {parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "curl -o{parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "curl https://example.com/x --output {parent}/{name}/a/q-1-abcdef.json",
+    "curl --output={parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "cd {parent}/{name}/a && curl -O https://example.com/q-1-abcdef.json",
+    "curl --output-dir {parent}/{name}/a -O https://example.com/q-1-abcdef.json",
+    "curl -D {parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "curl -c {parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "wget -O {parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "wget -qO {parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "wget --output-document={parent}/{name}/a/q-1-abcdef.json https://example.com/x",
+    "wget -P {parent}/{name}/a https://example.com/q-1-abcdef.json",
+    "wget --directory-prefix={parent}/{name}/a https://example.com/q-1-abcdef.json",
+    "cd {parent}/{name}/a && wget https://example.com/q-1-abcdef.json",
+    "tar -xf /tmp/f.tar -C {parent}/{name}",
+    "tar -C {parent} -xf /tmp/f.tar",
+    "tar xf /tmp/f.tar --directory={parent}/{name}",
+    "tar xf /tmp/f.tar --directory {parent}",
+    "tar xfC /tmp/f.tar {parent}/{name}",
+    "tar -xzC{parent}/{name} -f /tmp/f.tgz",
+    "cd {parent}/{name} && tar xf /tmp/f.tar",
+    "cd {parent} && tar xzf /tmp/f.tgz",
+    "tar --extract --file=/tmp/f.tar -C {parent}",
+    "bsdtar -xf /tmp/f.tar -C {parent}/{name}",
+    "tar -cf {parent}/{name}/a/q-1-abcdef.json /tmp/src",
+    "unzip /tmp/f.zip -d {parent}/{name}",
+    "unzip -o /tmp/f.zip -d {parent}",
+    "unzip -d{parent}/{name} /tmp/f.zip",
+    "cd {parent}/{name} && unzip /tmp/f.zip",
+]
+FOUND_OR_FED = [
+    "find {parent}/{name} -name '*.json' -delete",
+    "find {parent} -type f -delete",
+    "cd {parent}/{name} && find . -type f -delete",
+    "find {parent}/{name}/a -type f -exec rm {{}} \\;",
+    "find {parent}/{name} -exec rm -f {{}} +",
+    "find {parent} -name 'q-*' -exec sed -i s/A/B/ {{}} \\;",
+    "find {parent}/{name}/a -execdir touch {{}} \\;",
+    "find {parent}/{name} -type f -ok rm {{}} \\;",
+    "find /tmp/forged -name x.json -exec cp {{}} {parent}/{name}/a/ \\;",
+    "find {parent}/{name}/q -exec sh -c 'rm \"$1\"' _ {{}} \\;",
+    "find /tmp -fprint {parent}/{name}/a/q-1-abcdef.json",
+    "find {parent}/{name}/a -type f | xargs rm -f",
+    "find {parent} -name 'q-*.json' -print0 | xargs -0 rm -f",
+    "find {parent}/{name} -type f | xargs sed -i s/A/B/",
+    "find {parent}/{name}/a | xargs -n 1 sh -c 'rm \"$0\"'",
+    "ls {parent}/{name}/a/* | xargs rm",
+    "echo {parent}/{name}/a/q-1-abcdef.json | xargs touch",
+    "printf '%s\\n' {parent}/{name}/a/q-1-abcdef.json | xargs -n1 rm",
+    "cd {parent}/{name}/a && ls | xargs rm",
+    "rm $(find {parent}/{name}/a -type f)",
+    "rm -f `ls -d {parent}/{name}/a/*`",
+    "touch \"$(ls -d {parent}/{name}/a)/q-1-abcdef.json\"",
+    "echo x > \"$(ls -d {parent}/{name}/a)/q-1-abcdef.json\"",
+    "p={parent}/{name}/a/q-1-abcdef.json; touch \"$p\"",
+    "d={parent}/{name}; echo x > $d/a/q-1-abcdef.json",
+    "for f in {parent}/{name}/a/*; do rm \"$f\"; done",
+    "find {parent}/{name}/a -type f | while read f; do rm \"$f\"; done",
+    "f() {{ rm -rf \"$1\"; }}; f {parent}/{name}/q",
+    "find {parent}/{name} -type f | xargs -I{{}} rm {{}}",
+    "for f in $(find {parent} -name 'q-*.json'); do rm \"$f\"; done",
+    "find {parent} -name 'q-*.json' | while read f; do rm \"$f\"; done",
+    "find {parent} -name 'q-*.json' | xargs sh -c 'rm \"$@\"' _",
+    "find {parent}/{name}/a -type f | xargs -I{{}} sh -c 'rm {{}}'",
+    "find {parent}/{name}/a -type f -print0 | xargs -0 -I% sh -c 'rm \"%\"'",
+    "find {parent} -name 'q-*.json' | xargs -I{{}} bash -c 'echo x > {{}}'",
+    "find {parent} -name 'q-*.json' | xargs -I{{}} rm {{}}",
+    "find {parent} -name 'q-*.json' | xargs -I{{}} mv {{}} /tmp/",
+]
+ALIASED = [
+    "alias t=touch; t {parent}/{name}/a/q-1-abcdef.json",
+    "shopt -s expand_aliases\nalias w='tee -a'\necho x | w {parent}/{name}/a/q-1-abcdef.json",
+    "alias go='cd {parent}/{name}'\ngo && touch a/q-1-abcdef.json",
+    "alias z='true && rm -rf'\nz {parent}/{name}/q",
+    "alias a=b b=rm; b -rf {parent}/{name}/q",
+]
+CODE_OVER_LINES = [
+    "python3 -c \"import os\np = os.path.expanduser('{parent}/{name}/a/q-1-abcdef.json')\nopen(p, 'w').write('x')\"",
+    "python3 -c \"import os; os.mkdir('{parent}/{name}/a/x')\"",
+    "python3 -c \"import os; os.makedirs('{parent}/{name}/a/x')\"",
+    "python3 -c \"import os; os.chmod('{parent}/{name}/a', 0)\"",
+    ("python3 <<'EOF'\nimport pathlib\nfolder = pathlib.Path('{parent}/{name}')\ntarget = folder / 'a' / 'q-1-abcdef.json'\n"
+     "target.write_text('x')\nEOF"),
+    "python3 <<'EOF'\nimport os\nhome = '{parent}/{name}'\nos.remove(home + '/q/q-1-abcdef.json')\nEOF",
+    "node -e \"const p = '{parent}/{name}/a/q-1-abcdef.json'\nrequire('fs').writeFileSync(p, 'x')\"",
+    "cd {parent}/{name}/a && python3 -c \"import os; os.unlink('q-1-abcdef.json')\"",
+    "cd {parent}/{name} && python3 -c \"open('a/q-1-abcdef.json', 'w')\"",
+    "cd {parent}/{name}/a && node -e \"require('fs').unlinkSync('q-1-abcdef.json')\"",
+    "cd {parent}/{name}/a && python3 <<'EOF'\nopen('q-1-abcdef.json', 'w').write('x')\nEOF",
+    "ln -s {parent} /tmp/l && python3 -c \"open('/tmp/l/{name}/a/q-1-abcdef.json', 'w')\"",
+    "ln -s {parent}/{name} /tmp/l && node -e \"require('fs').writeFileSync('/tmp/l/a/q-1-abcdef.json', 'x')\"",
+]
+
+
+@pytest.mark.parametrize("name", ["askaway", "askaway-user"])
+@pytest.mark.parametrize("template", LINK_IN_THE_LINE + FETCHED_OR_UNPACKED + FOUND_OR_FED + ALIASED + CODE_OVER_LINES)
+def test_a_write_the_scan_once_missed_is_denied(template, name, tmp_path_factory, monkeypatch, capsys):
+    """A link made earlier in the line, a download, an unpack, find's own actions, operands fed by xargs, a variable or
+    a substitution, an alias, and code that names the folder on one line and writes on another. The layout sits in a
+    folder whose name holds no write word, so no test name in the path can stand in for one."""
+    parent = parent_layout(tmp_path_factory.mktemp("layout"), monkeypatch, "default-and-link")
+    assert bash_denial(capsys, monkeypatch, template.format(name=name, parent=parent)) == askaway.STATE_DENIED
+
+
+@pytest.mark.parametrize("command", [
+    "ln -s /tmp/a /tmp/b && touch /tmp/b/x",
+    "ln -s ~/projects /tmp/p && touch /tmp/p/notes.txt",
+    "ln -s ~ /tmp/h && touch /tmp/h/notes.txt",
+    "curl -o /tmp/out.json https://example.com/x",
+    "curl -sSLO https://example.com/x.tgz",
+    "curl -s https://example.com/x | head",
+    "wget https://example.com/x.tgz",
+    "wget -P /tmp/dl https://example.com/x.tgz",
+    "tar -xf /tmp/f.tar -C /tmp/out",
+    "tar xzf a.tgz",
+    "tar -tf /tmp/f.tar",
+    "tar -czf /tmp/backup.tgz ~/.claude",
+    "unzip a.zip -d /tmp/out",
+    "unzip -l a.zip",
+    "find . -name '*.pyc' -delete",
+    "find . -name __pycache__ -exec rm -rf {} +",
+    "find ~/.claude -name '*.md'",
+    "find ~/.claude -name '*.md' -exec grep -l x {} +",
+    "find ~/.claude/state/askaway-user -name '*.json'",
+    "find ~/.claude/state/askaway-user -type f -exec cat {} \\;",
+    "find ~/.claude/state/askaway-user -name '*.json' | xargs cat",
+    "find ~/.claude/state/askaway-user -name '*.json' | xargs grep -l risk",
+    "git ls-files | xargs rm",
+    "find . -name '*.pyc' | xargs rm -f",
+    "rm $(git ls-files --others)",
+    "touch \"$(mktemp -d)/x\"",
+    "alias ll='ls -la'; ll /tmp",
+    "alias t=touch; t /tmp/x",
+    "python3 -c \"import os; os.makedirs('/tmp/x', exist_ok=True)\"",
+    "python3 -c \"import pathlib\np = pathlib.Path.home() / '.claude/state/askaway-user/q'\nprint(len(list(p.iterdir())))\"",
+    "python3 -c \"p = '/tmp/x'\nopen(p, 'w').write('x')\"",
+    ("python3 <<'EOF'\nfrom pathlib import Path\ndoc = Path('README.md')\ntext = doc.read_text()\n"
+     "text = text.replace('old', 'see ~/.claude/state/askaway-user for the files')\ndoc.write_text(text)\nEOF"),
+    "tar -czf /tmp/backup.tgz -C ~/.claude .",
+    "wget -qO- https://example.com/x",
+    "curl -o /dev/null https://example.com/x",
+    "unzip -p a.zip notes.txt",
+    "cd ~ && wget https://example.com/x.tgz",
+    "alias ls='ls --color'; ls /tmp",
+    "p=/tmp/x.json; touch \"$p\"",
+    "for f in /tmp/out/*; do rm \"$f\"; done",
+    "python3 /tmp/edit.py ~/.claude/state/askaway-user/a/q-1-abcdef.json",
+    "find ~ -maxdepth 4 -name 'Metadata*.zip' | head; cp a.zip \"$S/\"; rm \"$S/old.zip\"",
+    "find ~/.claude -name '*.md' | xargs grep -l x; touch \"$OUT/list.txt\"",
+    "W=$(mktemp -d); tar -xf /tmp/f.tar -C \"$W\"",
+    "unzip -q a.zip -d $D",
+    "find /tmp/out -type f | xargs -I{} sh -c 'rm {}'",
+    "ln -s /tmp/a /tmp/l && python3 -c \"open('/tmp/l/q', 'w')\"",
+    "cd /tmp && python3 -c \"open('q', 'w')\"",
+    "cd ~/.claude/state/askaway-user && python3 -c \"print(open('q/x.json').read())\"",
+    "git ls-files | xargs -I{} sh -c 'rm {}'",
+    "find ~/.claude/state/askaway-user -name '*.json' | xargs -I{} sh -c 'cat {}'",
+    "ln -s /tmp/a \"$S/y\"",
+    "d=/tmp/out; find $d/f -type f -delete",
+    "python3 -c \"import re\npattern = re.compile(r'state.askaway(-user)?')\nopen('/tmp/x', 'w').write(pattern.pattern)\"",
+])
+def test_a_download_an_unpack_a_find_and_an_alias_away_from_the_state_folders_still_pass(command, capsys, monkeypatch):
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+
+
 def test_an_unreadable_command_unrelated_to_the_state_folder_still_passes(capsys, monkeypatch):
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event('echo "it\'s')) == ""
 
@@ -3460,10 +3645,14 @@ def test_mv_cannot_move_a_folder_above_the_state_folder(command, capsys, monkeyp
     assert "panel" in bash_denial(capsys, monkeypatch, command)
 
 
+# A home under a link the line made is denied as an answer, or, where the scan follows the link, as a write into the folder.
+SANDBOX_LINK_DENIALS = (askaway.ANSWER_DENIED, askaway.STATE_DENIED)
+
+
 def test_a_sandbox_home_under_a_link_made_earlier_in_the_same_line_is_not_trusted(capsys, monkeypatch):
     link = "/tmp/askaway-test-link"
     command = f"ln -s ~/.claude/state {link} && ASKAWAY_HOME={link}/askaway python3 {SCRIPT} answer q-1-abcdef A"
-    assert bash_denial(capsys, monkeypatch, command) == askaway.ANSWER_DENIED
+    assert bash_denial(capsys, monkeypatch, command) in SANDBOX_LINK_DENIALS
 
 
 @pytest.mark.parametrize("command", [
@@ -3512,7 +3701,7 @@ def test_mv_into_a_target_directory_outside_the_state_folder_passes(capsys, monk
     f"ln -s ~/.claude/state /tmp/{{y3,}} && ASKAWAY_HOME=/tmp/y3/askaway python3 {SCRIPT} answer q-1-abcdef A",
 ])
 def test_a_link_named_through_an_expansion_still_makes_its_sandbox_home_untrusted(command, capsys, monkeypatch):
-    assert bash_denial(capsys, monkeypatch, command) == askaway.ANSWER_DENIED
+    assert bash_denial(capsys, monkeypatch, command) in SANDBOX_LINK_DENIALS
 
 
 @pytest.mark.parametrize("command", [
@@ -3623,7 +3812,7 @@ COPY_SANDBOX_ANSWER = f"ASKAWAY_HOME=/tmp/askaway-test-copy/askaway python3 {SCR
     f"cp -P /tmp/askaway-fixture /tmp/askaway-test-copy && {COPY_SANDBOX_ANSWER}",
 ])
 def test_a_copy_that_keeps_or_may_hold_a_link_is_not_a_sandbox_home(command, capsys, monkeypatch):
-    assert bash_denial(capsys, monkeypatch, command) == askaway.ANSWER_DENIED
+    assert bash_denial(capsys, monkeypatch, command) in SANDBOX_LINK_DENIALS
 
 
 LINK_SANDBOX_ANSWER = f"ASKAWAY_HOME=/tmp/state/askaway python3 {SCRIPT} answer q-1-abcdef A"
@@ -3636,7 +3825,7 @@ LINK_SANDBOX_ANSWER = f"ASKAWAY_HOME=/tmp/state/askaway python3 {SCRIPT} answer 
     f"cd /tmp && ln -S .x -s ~/.claude/state && {LINK_SANDBOX_ANSWER}",
 ])
 def test_a_link_ln_places_in_a_target_folder_or_the_cwd_is_not_a_sandbox_home(command, capsys, monkeypatch):
-    assert bash_denial(capsys, monkeypatch, command) == askaway.ANSWER_DENIED
+    assert bash_denial(capsys, monkeypatch, command) in SANDBOX_LINK_DENIALS
 
 
 def test_a_link_ln_places_in_an_unknown_cwd_is_denied_as_a_write_that_cannot_be_placed(capsys, monkeypatch):
