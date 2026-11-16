@@ -710,7 +710,7 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 | TTL de resposta não lida | 7 dias |
 | Limpeza | 30 dias por padrão (`ASKAWAY_PRUNE_DAYS`), no máximo uma vez por dia; os arquivos de token saem depois de um dia |
 | Token do painel | Uso único, no máximo 120 s de idade |
-| Painel | Consulta a cada 5 s; reconfere sessões encerradas no máximo a cada 30 s; trava de 350 ms numa repetição do mesmo movimento; grava o texto digitado em Outra após 500 ms sem tecla; entrega a uma sessão ociosa respostas com pelo menos 5 s |
+| Painel | Consulta a cada 5 s; reconfere sessões encerradas no máximo a cada 30 s; trava de 350 ms numa repetição do mesmo movimento; entrega a uma sessão ociosa respostas com pelo menos 5 s |
 | Execuções do painel | 5 s por operação de arquivo; 10 s por execução da CLI (`list`, `prune`, `answer`); uma execução que estoura o tempo mostra o aviso de falha, desfaz o apagamento do cartão e mantém a escolha |
 | Fade do cartão | Ignorado após 60 s: um fade mais antigo não apaga o cartão nem recusa um clique |
 | `wait` | Consulta a cada 0,5 s; timeout padrão de 110 s |
@@ -777,10 +777,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway-user/tests/` | 615 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 612 |
 | CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2113 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit da versão 2.1.0 (texto de Outra gravado após meio segundo sem tecla), em 2026-11-16. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit da versão 2.1.1 (gravação por pausa do texto de Outra removida), em 2026-11-16. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 
@@ -851,6 +851,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 2.0.0 | 2026-11-15 | A pasta do plugin é `plugins/askaway-user` e a pasta de estado padrão é `~/.claude/state/askaway-user`, movida uma vez com um link simbólico no caminho antigo; a última resposta de uma rodada rola o painel até os botões Enviar. |
 | 2.0.1 | 2026-11-16 | O guarda do Bash lê mais formas de uma linha gravar numa pasta de estado: um link criado na mesma linha, `curl -o`, `tar -C`, `unzip -d`, `find -exec` e `-delete`, operandos que o `xargs` entrega, um alias, uma variável numa linha que cita a pasta e código em várias linhas. |
 | 2.1.0 | 2026-11-16 | O texto digitado no campo Outra vira a resposta meio segundo depois da última tecla, então um clique fora do painel não o deixa mais sem registro. |
+| 2.1.1 | 2026-11-16 | Sai a gravação do texto de Outra por pausa na digitação: o redesenho durante a digitação perdia teclas. O texto volta a contar quando você sai do campo, aperta um botão, aperta Enter ou fecha o painel. |
 
 ## 🤝 Contribuição
 
