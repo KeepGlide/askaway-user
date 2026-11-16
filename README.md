@@ -710,7 +710,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 | Unread-answer TTL | 7 days |
 | Prune | 30 days by default (`ASKAWAY_PRUNE_DAYS`), at most once a day; token files are cleared after a day |
 | Panel token | One use, at most 120 s old |
-| Pane | Polls every 5 s; re-checks ended sessions at most every 30 s; 350 ms lock on a repeat of the same move; hands an idle session answers at least 5 s old |
+| Pane | Polls every 5 s; re-checks ended sessions at most every 30 s; 350 ms lock on a repeat of the same move; commits typed Other text after 500 ms with no key; hands an idle session answers at least 5 s old |
 | Pane process runs | 5 s per file operation; 10 s per CLI run (`list`, `prune`, `answer`); a run that times out shows the failure toast, undims the card and keeps the pick |
 | Card dim from a fade | Ignored after 60 s: an older fade neither dims its card nor refuses a press |
 | `wait` | Polls every 0.5 s; 110 s timeout by default |
@@ -777,10 +777,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway-user/tests/` | 612 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 615 |
 | CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2113 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at the 2.0.1 release commit (Bash guard reads links, unpacks, find and xargs), 2026-11-16. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at the 2.1.0 release commit (Other text committed after half a second with no key), 2026-11-16. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
@@ -850,6 +850,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 1.1.13 | 2026-11-14 | Every question needs all of its texts again, whatever its risk, as the owner decided. |
 | 2.0.0 | 2026-11-15 | The plugin folder is `plugins/askaway-user` and the default state folder is `~/.claude/state/askaway-user`, moved once with a symlink left at the old path; the last answer of a round scrolls the pane to its Submit buttons. |
 | 2.0.1 | 2026-11-16 | The Bash guard reads more ways a line can write into a state folder: a link made on the same line, `curl -o`, `tar -C`, `unzip -d`, `find -exec` and `-delete`, operands fed by `xargs`, an alias, a variable on a line that names the folder, and code over several lines. |
+| 2.1.0 | 2026-11-16 | Text typed in the Other field is kept as the answer half a second after the last key, so a click outside the pane no longer leaves it unrecorded. |
 
 ## 🤝 Contributing
 

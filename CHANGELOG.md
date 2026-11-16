@@ -8,6 +8,11 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-16
+
+### Added
+- **Other text is kept after a pause in typing**: half a second after the last key, the text typed in the Other field becomes the answer, with the field left open and its text in place. A click outside the pane, in the prompt box say, used to leave the text unrecorded until a later press in the pane.
+
 ## [2.0.1] - 2026-11-16
 
 ### Security
