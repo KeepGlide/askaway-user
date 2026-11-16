@@ -112,7 +112,7 @@ export function keptOther(wizard: Wizard, id: string, text: string): Wizard {
   }
 }
 
-// The text typed in an Other field, committed (the field lost the ring, or a button was pressed): the Other pick and the
+// The text typed in an Other field, committed (the field lost the ring, a button was pressed, or the idle timer ran): the Other pick and the
 // question's label take its trimmed text, which replaces an option pick and a kept label alike. Blank text clears the label,
 // and takes the Other pick away; an option pick stays. The step and the field round never move. The same wizard comes back
 // when nothing changes, so the caller can skip the write and the redraw.

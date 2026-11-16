@@ -489,11 +489,19 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
       Back, the details toggle, Submit all, a tree row's Submit, a tree jump and the review's Back. Submit all then sends the committed text as the reply.
       The Other link decides after that commit, from the wizard then: an Other pick already there stays, a kept label is picked
       (under the move lock), and no label focuses the field (`pressOther`);
+    - 500 ms with no key typed into any Other field (`OTHER_IDLE_MS`, `commitWhenIdle`, issue #55), which commits the
+      pending texts. Each key starts a timer and bumps a counter (`typingGeneration`); a timer commits only when no later key
+      came, so an older timer never commits text typed after it. This is the only commit after a click outside the pane (the
+      prompt box, say): no `ui.focus` reaches the pane then (#31). The redraw keeps the field's text and caret (#31);
+      the field round does not move, so the field stays open with its text;
     - closing the pane (`ui.close`), which commits the pending texts.
     A ring move onto one of the pane's own Buttons writes nothing; its press commits. A move onto the field or onto an engine
-    stop commits. Focus that does not leave the field, and an untouched field, write nothing. A pending text whose question has
+    stop commits. Focus that does not leave the field writes nothing until the idle timer, and an untouched field writes nothing. A pending text whose question has
     left the board is dropped, not recorded. A commit that changes nothing writes and redraws nothing (`typedOther` returns the
-    same wizard). The first-key commit and the idle-timer commit are not built; they wait for the desktop repro (#31).
+    same wizard). Not built (#55, after the #31 repro): a commit on the first key (the idle timer commits the whole text half a
+    second later, and a one-character commit would only redraw), a commit when the ring moves onto one of the pane's own
+    Buttons (its press commits, and the idle timer covers a ring that stops there), and a commit on the outside click itself
+    (the pane gets no event for it).
     A typed commit replaces what the question holds (an option pick, a kept label or an earlier typed text), so the text typed
     last wins. An emptied field clears the Other label and, when the pick is Other, the pick too: the link reads "Other…" again
     and the review reads "No answer". An option pick stays. A blank commit happens only when a real `onInput` created the
@@ -503,9 +511,9 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
     `labels` holds the Other text, typed or kept, equal to the Other pick's text while the pick is Other; a draft that breaks
     this is aligned on read (`alignOtherToLabels`, `hooks/wizard.ts`).
     The field has no submit label and no button: Enter keeps the typed text and picks it, and the placeholder says that the
-    text counts when the person leaves the field or presses a button, and that Enter also confirms: "Type your answer in one
-    paragraph. It counts when you leave the field or press a button; Enter also confirms." (pt "Digite sua resposta em um
-    parágrafo. Ela conta quando você sai do campo ou aperta um botão; Enter também confirma."; `input.placeholder`,
+    text counts once the person pauses typing, leaves the field or presses a button, and that Enter also confirms: "Type your answer in one
+    paragraph. It counts once you pause typing, leave the field or press a button; Enter also confirms." (pt "Digite sua resposta em um
+    parágrafo. Ela conta quando você para de digitar, sai do campo ou aperta um botão; Enter também confirma."; `input.placeholder`,
     `hooks/i18n.ts`). With a submitLabel the desktop draws a submit button beside the field and plain Enter types a newline,
     so the field passes none (owner's call after 0.4.2). The typed text is not drawn again under the link. A surface with no
     Input draws no Other option (`renderOther`);
@@ -562,7 +570,7 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
   the group has a pick. Back on the review shows the last question's card again, with its nav row (`leaveReview`). A jump leaves
   the review too (`jumpToQuestion`), any move does (`moveWizard`), and the group's Submit all clears it (`submitGroup`); a change to the group's questions (one leaves or arrives) closes it on the next poll (`closeChangedReview`), and only Next on the last question opens it again. A pick
   never draws the review; only Next on the last question does. A one-question group has no review.
-  "Other…" with its typed text records the pick when the ring leaves the field or a pane button is pressed (see Other…); the card stays. Enter in its field is Keep, which keeps the text as the button's label and picks it (see above); a blank Enter with no typing changes nothing, and after typing that emptied the field it is a blank commit (see Other…). After each pick the group
+  "Other…" with its typed text records the pick when the ring leaves the field, a pane button is pressed, or no key has come for 500 ms (see Other…); the card stays. Enter in its field is Keep, which keeps the text as the button's label and picks it (see above); a blank Enter with no typing changes nothing, and after typing that emptied the field it is a blank commit (see Other…). After each pick the group
   stays selected.
   A card that is fading after a press takes no pick.
 - **Move lock** (#34): a move (a pick, Next, or Back: the card's Back and the review's Back) drops a repeat of the same action for 350 ms (`MOVE_LOCK_MS`, `moveOnce`, `hooks/register.tsx`), so a double click does nothing. A different action goes through at once and takes the lock: an option press followed by Next moves on. The lock is one module-level value (`moveLock`), keyed `pick:<id>:<key>`, `other:<id>`, `next` or `back`; it is never drawn, so no button dims or is rebuilt for it. Submit all and the row Submit are not moves.

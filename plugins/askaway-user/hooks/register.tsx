@@ -63,6 +63,9 @@ const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES}`
 // A move (a pick, Next or Back) drops a repeat of the same action for this long: a second press of that action inside the window
 // (a double click) does nothing. A different action goes through at once.
 const MOVE_LOCK_MS = 350
+// The Other text typed is committed once no key has reached any Other field for this long (issue #55): a click outside the
+// pane sends the pane no focus event, so only this timer commits the text the person left there.
+const OTHER_IDLE_MS = 500
 // A card's fade older than this is a press a reload cut off (its reply never ended the fade): a press ignores it (issue #46).
 const LEAVING_MAX_AGE_MS = 60_000
 // The `list --open` run that finds the ended sessions repeats at most this often while the linked open questions do not change.
@@ -1372,11 +1375,22 @@ async function jumpToQuestion($: EngineInterface, id: string): Promise<void> {
 }
 
 // The Other text typed but not recorded yet, by question id. Typing keeps it here, not in the store, so a key does not
-// redraw the pane; it is recorded when the ring leaves the field (commitsOnFocus), before the pane's own button presses, and
-// when the pane closes (recordPendingOther). Keep drops it.
+// redraw the pane; it is recorded when the ring leaves the field (commitsOnFocus), before the pane's own button presses, when
+// no key has come for OTHER_IDLE_MS (commitWhenIdle), and when the pane closes (recordPendingOther). Keep drops it.
 const pendingOther = new Map<string, string>()
 // The height last drawn for each Other field (otherRowsAtom), so a key that keeps the height does not redraw.
 const fieldRows = new Map<string, number>()
+// Counts the keys typed into any Other field. Each key starts an idle timer that commits only if no later key came, so an
+// older timer never commits text typed after it.
+let typingGeneration = 0
+
+// Starts the idle commit for the key just typed (OTHER_IDLE_MS).
+function commitWhenIdle($: EngineInterface): void {
+  const generation = ++typingGeneration
+  $.clock.after(OTHER_IDLE_MS, () => {
+    if (generation === typingGeneration && pendingOther.size > 0) report($, recordPendingOther($))
+  })
+}
 
 // The key the pane's focus ring stood on last, as the ui.focus hook saw it: undefined for one of the engine's own stops.
 let focusedKey: string | undefined
@@ -1527,6 +1541,7 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
   jump: id => report($, afterPendingOther($, () => jumpToQuestion($, id))),
   typeOther: (id, text) => {
     pendingOther.set(id, text)
+    commitWhenIdle($)
     // A key redraws the pane only when it changes the field's height.
     const rows = otherRowsOf(text)
     if ((fieldRows.get(id) ?? OTHER_MIN_ROWS) !== rows) {
@@ -1539,7 +1554,10 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
     fieldRows.delete(id)
     report($, update($, otherRowsAtom, ({ [id]: _, ...rest }) => rest))
     if (text.trim() !== '') {
-      report($, keepOther($, id, text))
+      // On the recording chain, so an idle commit already running writes before Keep and never after it.
+      const run = pendingRecords.then(() => keepOther($, id, text))
+      pendingRecords = run.catch(() => undefined)
+      report($, run)
       return
     }
     // A blank Enter after real typing commits the blank text, queued as a typed entry: it clears the label and an Other pick.
