@@ -3821,6 +3821,65 @@ test('a ring onto an engine stop after typing commits the Other text: the field 
   await pane.unmount()
 })
 
+test('issue #55: 500 ms with no key commits the Other text typed, with no focus move: ✓ C · abc and draft.json {ts, picks, labels}', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { clock } = stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await clock.advance(499)
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
+  await clock.advance(1)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(true)
+  const draft = readJson(files, draftFile) as Record<string, unknown>
+  expect(Object.keys(draft).sort()).toEqual(['labels', 'picks', 'ts'])
+  expect(draft).toMatchObject({ picks: { 'q-l1-aaaaaa': { key: 'other', text: 'abc' } }, labels: { 'q-l1-aaaaaa': 'abc' } })
+  await pane.unmount()
+})
+
+test('issue #55: a later key restarts the idle timer, so an older timer never commits; the text typed last is committed', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { clock } = stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'ab', kind: 'change' })
+  await clock.advance(400)
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await clock.advance(400)
+  expect(await otherBold(pane, 'q-l1-aaaaaa')).toBe(false)
+  await clock.advance(100)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  await pane.unmount()
+})
+
+test('issue #55: the idle timer after Keep commits nothing more; the kept pick stays', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+  ])
+  const { clock } = stubHost(on, files, true, {}, {}, { LANG: 'en_US.UTF-8' })
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  await moveRing($, 'other-input-q-l1-aaaaaa')
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc', kind: 'change' })
+  await $.ui.input({ plugin: 'askaway-user', key: 'other-input-q-l1-aaaaaa', text: 'abc' })
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  const before = files.get(draftFile)
+  await clock.advance(500)
+  expect(await labelOf(pane, 'other-q-l1-aaaaaa')).toBe('✓ C · abc')
+  expect(files.get(draftFile)).toBe(before)
+  await pane.unmount()
+})
+
 test('a ring from the Other field to another field commits the Other text of the first one', async ($, on) => {
   const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
   stubHost(on, files)

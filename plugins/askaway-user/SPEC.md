@@ -489,11 +489,19 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
       Back, the details toggle, Submit all, a tree row's Submit, a tree jump and the review's Back. Submit all then sends the committed text as the reply.
       The Other link decides after that commit, from the wizard then: an Other pick already there stays, a kept label is picked
       (under the move lock), and no label focuses the field (`pressOther`);
+    - 500 ms with no key typed into any Other field (`OTHER_IDLE_MS`, `commitWhenIdle`, issue #55), which commits the
+      pending texts. Each key starts a timer and bumps a counter (`typingGeneration`); a timer commits only when no later key
+      came, so an older timer never commits text typed after it. This is the only commit after a click outside the pane (the
+      prompt box, say): no `ui.focus` reaches the pane then (#31). The redraw keeps the field's text and caret (#31);
+      the field round does not move, so the field stays open with its text;
     - closing the pane (`ui.close`), which commits the pending texts.
     A ring move onto one of the pane's own Buttons writes nothing; its press commits. A move onto the field or onto an engine
     stop commits. Focus that does not leave the field, and an untouched field, write nothing. A pending text whose question has
     left the board is dropped, not recorded. A commit that changes nothing writes and redraws nothing (`typedOther` returns the
-    same wizard). The first-key commit and the idle-timer commit are not built; they wait for the desktop repro (#31).
+    same wizard). Not built (#55, after the #31 repro): a commit on the first key (the idle timer commits the whole text half a
+    second later, and a one-character commit would only redraw), a commit when the ring moves onto one of the pane's own
+    Buttons (its press commits, and the idle timer covers a ring that stops there), and a commit on the outside click itself
+    (the pane gets no event for it).
     A typed commit replaces what the question holds (an option pick, a kept label or an earlier typed text), so the text typed
     last wins. An emptied field clears the Other label and, when the pick is Other, the pick too: the link reads "Other…" again
     and the review reads "No answer". An option pick stays. A blank commit happens only when a real `onInput` created the
