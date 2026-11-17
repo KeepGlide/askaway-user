@@ -308,7 +308,7 @@ rm -r ~/.claude/state/askaway-user
 > [!CAUTION]
 > Apagar a pasta de estado apaga cada pergunta e resposta dentro dela. Use o caminho do seu `ASKAWAY_HOME` se você definiu um.
 
-**O que fica:** a pasta de estado com as perguntas, respostas e marcas de entrega, e a entrada do marketplace, até você removê-las como acima. O AskAway User grava só dentro da pasta de estado ([O que o AskAway User lê e grava](#o-que-o-askaway-lê-e-grava)), e o painel guarda quatro chaves no armazenamento do mod (`lang`, `who`, `quiet` e `cleared`) fora dela; os passos de desinstalação acima não removem essas chaves.
+**O que fica:** a pasta de estado com as perguntas, respostas e marcas de entrega, e a entrada do marketplace, até você removê-las como acima. O AskAway User grava só dentro da pasta de estado ([O que o AskAway User lê e grava](#o-que-o-askaway-user-lê-e-grava)), e o painel guarda quatro chaves no armazenamento do mod (`lang`, `who`, `quiet` e `cleared`) fora dela; os passos de desinstalação acima não removem essas chaves.
 
 ## 🧭 Uso
 
@@ -451,9 +451,10 @@ Todo comando imprime uma linha JSON, exceto `export`, que imprime o seu document
 | Comando | O que faz |
 |---|---|
 | `ask --json '<entry>'` | Registra uma pergunta com os campos acima. `--strict` sai com 1 numa recusa (refile) ou num erro. Uma repetição de pergunta aberta (mesma sessão, mesma pergunta) devolve o id da aberta. |
-| `answer <id> <key> [--by <source>] [--text <text>]` | Registra uma resposta (agentes não devem chamá-lo). `--strict` sai com 1 quando a resposta é recusada ou inválida. |
+| `answer <id> <key> [--by <source>] [--text <text>]` | Registra uma resposta (agentes não devem chamá-lo). `--strict` sai com 1 quando a resposta é recusada ou inválida; uma pergunta retirada recusa toda resposta. |
+| `withdraw --id <id>` | A sessão que perguntou declara que você respondeu a pergunta aberta na janela do chat, então o cartão deixa de esperar na caixa de entrada. Não grava resposta; o `status` passa a trazer `"withdrawn": true`. Recusado para pergunta de outra sessão, pergunta sem sessão, pergunta com pausa (você responde essas no painel) e pergunta que não está aberta. `--strict` sai com 1 numa recusa. |
 | `status <id>` | Imprime o estado (`open`, `answered`, `delivered`, `expired`, `damaged` ou `damaged answer`), a chave e, quando houver, `who` e `by`, e `text` numa resposta Other. `--table` imprime uma tabela alinhada. `--strict` como em `ask`. |
-| `list [--open or --answered] [--since <when>]` | Lista as perguntas com o estado. `--since` precisa de `--answered` e mantém as respostas dadas desde `<quando>`. `--table` imprime uma tabela alinhada. |
+| `list [--open or --answered] [--since <when>]` | Lista as perguntas com o estado. `--since` precisa de `--answered` e mantém as respostas dadas desde `<quando>`. `--open` marca com `ended` e `ended_reason` a pergunta que não pode mais ser respondida (`chat` quando você a respondeu no chat, `session` quando a sessão dela terminou). `--table` imprime uma tabela alinhada. |
 | `wait <id> [--timeout 110] [--strict]` | Consulta a cada 0,5 s até a resposta existir, e então imprime `"status": "answered"` com a chave, ou `"status": "timeout"` quando os segundos acabam. `--strict` sai com 0 quando respondida ou entregue, 2 no timeout e 1 num erro ou em qualquer outro estado, como `expired` ou `damaged`; sem ele, a saída é 0. Um id desconhecido sai com 1 de qualquer modo. |
 | `export [--since <when>] [--format json, jsonl or csv]` | Grava cada pergunta com a sua resposta, da mais nova para a mais antiga. `--since` mantém as perguntas feitas desde `<quando>`. |
 | `away on`, `away off` or `away status` | Liga ou desliga o modo ausente, ou informa o estado. O Bash do agente não consegue rodar `away on` nem `away off`: o guarda do Bash nega. Você liga ou desliga pelo painel ou por `/askaway away`. |
@@ -485,6 +486,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ├── a/<id>.json   a resposta, vale a primeira gravação
 ├── d/<id>.json   a marca de entrega da cópia da sessão principal
 ├── s/<id>.json   a marca de entrega da cópia do próprio subagente que perguntou
+├── w/<id>.json   a retirada de uma pergunta respondida no chat, feita pela sessão que perguntou (`withdraw --id`)
 ├── away.json     modo ausente: {"on": true, "ts": ...}
 ├── draft.json    as escolhas do assistente, compartilhadas por todas as sessões da pasta
 ├── cleared.json  as linhas do Histórico que um Limpar histórico ocultou, compartilhadas por todas as sessões da pasta
@@ -503,7 +505,7 @@ A pasta de estado pertence a um usuário, e todas as sessões do Claude Code que
 ### O que o AskAway User lê e grava
 
 - **Ganchos** (`plugins/askaway-user/hooks/command-hooks.json`) leem a entrada do hook pela entrada padrão: id da sessão, modo de permissão, diretório de trabalho, nome e entrada da ferramenta.
-  - `SessionStart` (em `startup`, `resume`, `clear` ou `compact`), `UserPromptSubmit` e `PostToolUse` rodam `hook deliver`: ele lê `q/`, `a/`, `d/` e `s/`, grava uma marca de entrega para cada resposta que entrega (em `d/` para a sessão principal, em `s/` para o subagente cujo próprio `ask` registrou a pergunta), e coloca o texto da resposta no contexto daquela sessão.
+  - `SessionStart` (em `startup`, `resume`, `clear` ou `compact`), `UserPromptSubmit` e `PostToolUse` rodam `hook deliver`: ele lê `q/`, `a/`, `d/` e `s/`, grava uma marca de entrega para cada resposta que entrega (em `d/` para a sessão principal, em `s/` para o subagente cujo próprio `ask` registrou a pergunta), e coloca o texto da resposta no contexto daquela sessão. No `UserPromptSubmit` da sessão principal, acrescenta também uma linha com até 5 perguntas abertas da sessão e seus comandos `withdraw --id`.
   - `PreToolUse` em `AskUserQuestion` roda `hook ask-guard`: lê o estado ausente e não grava nada.
   - `PreToolUse` em `.*` (toda ferramenta) roda `hook pause-guard`: sai logo quando não há pausa em arquivo; senão lê `q/`, `a/`, `d/` e `s/`; a única gravação dele é a marca `clock_mark` na pasta de estado, quando uma pausa tem uma resposta ainda sem marca.
   - `PostToolUse` em `Bash` roda `hook stamp-asker`: depois de uma chamada de `ask`, grava `asker` (o `agent_id` de quem chamou, ou `main`) na pausa que a chamada registrou, e não altera outro campo.
@@ -759,7 +761,7 @@ Relate uma vulnerabilidade em privado, não numa issue pública. [SECURITY.md](S
 
 ## 🐞 Problemas conhecidos
 
-Nenhuma issue aberta traz o rótulo `bug` em 2026-11-14 (`gh issue list -R KeepGlide/askaway-user --state open --label bug`); defeitos abertos achados em revisão trazem `type:bug`. Estas limitações vêm do código, do CHANGELOG e desta página; os limites sem contorno estão em [Limites](#-limites):
+Nenhuma issue aberta traz o rótulo `bug` em 2026-11-17 (`gh issue list -R KeepGlide/askaway-user --state open --label bug`); defeitos abertos achados em revisão trazem `type:bug`. Estas limitações vêm do código, do CHANGELOG e desta página; os limites sem contorno estão em [Limites](#-limites):
 
 - **O Windows não é tratado.** A pasta de sessões do Claude Desktop é `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (padrão `~/.config`) no Linux e `~/Library/Application Support/Claude/claude-code-sessions` no macOS (`desktop_sessions_root`, `scripts/askaway.py`), então no Windows ela aponta para uma pasta que o Claude Desktop não usa. Isso não foi testado lá. Contorno: nenhum.
 - **Grupos do Desktop no macOS podem precisar do caminho da configuração.** O caminho padrão da configuração é `~/.config/Claude/claude_desktop_config.json` em todas as plataformas (`desktopConfigPathOf`, `hooks/register.tsx`). Se os grupos do Desktop faltarem no macOS, defina `ASKAWAY_DESKTOP_CONFIG` com o caminho do arquivo de configuração. As perguntas continuam agrupadas por família ou projeto.
@@ -777,10 +779,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway-user/tests/` | 612 |
-| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2113 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 616 |
+| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2157 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit da versão 2.1.1 (gravação por pausa do texto de Outra removida), em 2026-11-16. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
+Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit da versão 2.2.0 (perguntas respondidas no chat podem ser retiradas), em 2026-11-17. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
 
 ## 🔧 Desenvolvimento
 

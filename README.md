@@ -308,7 +308,7 @@ rm -r ~/.claude/state/askaway-user
 > [!CAUTION]
 > Deleting the state folder deletes every question and answer in it. Use your `ASKAWAY_HOME` path instead if you set one.
 
-**What stays:** the state folder with its questions, answers and delivery markers, and the marketplace entry, until you remove them as above. AskAway User writes only inside the state folder ([What AskAway User reads and writes](#what-askaway-reads-and-writes)), and the panel keeps four keys in the mod's store (`lang`, `who`, `quiet` and `cleared`) outside it; the uninstall steps above do not remove those keys.
+**What stays:** the state folder with its questions, answers and delivery markers, and the marketplace entry, until you remove them as above. AskAway User writes only inside the state folder ([What AskAway User reads and writes](#what-askaway-user-reads-and-writes)), and the panel keeps four keys in the mod's store (`lang`, `who`, `quiet` and `cleared`) outside it; the uninstall steps above do not remove those keys.
 
 ## 🧭 Usage
 
@@ -451,9 +451,10 @@ Every command prints one JSON line, except `export`, which prints its document. 
 | Command | What it does |
 |---|---|
 | `ask --json '<entry>'` | Files a question with the fields above. `--strict` exits 1 on a refile or an error. A repeat of an open question (same session, same question) returns the id of the open one. |
-| `answer <id> <key> [--by <source>] [--text <text>]` | Records an answer (agents must not call it). `--strict` exits 1 when the answer is refused or invalid. |
+| `answer <id> <key> [--by <source>] [--text <text>]` | Records an answer (agents must not call it). `--strict` exits 1 when the answer is refused or invalid; a withdrawn question refuses every answer. |
+| `withdraw --id <id>` | The asking session declares that you answered its open question in the chat window, so the card stops waiting in the inbox. Writes no answer; `status` then adds `"withdrawn": true`. Refused for a question of another session, a question with no session, a paused question (you answer those in the panel) and a question that is not open. `--strict` exits 1 on a refusal. |
 | `status <id>` | Prints the status (`open`, `answered`, `delivered`, `expired`, `damaged` or `damaged answer`), the key and, when set, `who` and `by`, and `text` for an Other reply. `--table` prints an aligned table. `--strict` as for `ask`. |
-| `list [--open or --answered] [--since <when>]` | Lists the questions with their status. `--since` needs `--answered` and keeps the answers given since `<when>`. `--table` prints an aligned table. |
+| `list [--open or --answered] [--since <when>]` | Lists the questions with their status. `--since` needs `--answered` and keeps the answers given since `<when>`. `--open` marks a question that can no longer be answered with `ended` and `ended_reason` (`chat` when you answered it in the chat, `session` when its session ended). `--table` prints an aligned table. |
 | `wait <id> [--timeout 110] [--strict]` | Polls every 0.5 s until the answer exists, then prints `"status": "answered"` with its key, or `"status": "timeout"` when the seconds run out. `--strict` exits 0 when answered or delivered, 2 on timeout, and 1 on an error or on any other status, such as `expired` or `damaged`; without it, the exit is 0. An unknown id exits 1 either way. |
 | `export [--since <when>] [--format json, jsonl or csv]` | Writes every question with its answer, newest first. `--since` keeps the questions asked since `<when>`. |
 | `away on`, `away off` or `away status` | Turns away mode on or off, or reports it. The agent's Bash cannot run `away on` or `away off`: the Bash guard denies them. You switch it from the panel or with `/askaway away`. |
@@ -485,6 +486,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ├── a/<id>.json   the answer, first writer wins
 ├── d/<id>.json   the delivery marker of the main session's copy
 ├── s/<id>.json   the delivery marker of the asking subagent's own copy
+├── w/<id>.json   the asking session's withdrawal of a question answered in the chat (`withdraw --id`)
 ├── away.json     away mode: {"on": true, "ts": ...}
 ├── draft.json    the wizard's picks, shared by every session of the folder
 ├── cleared.json  the History lines a Clear history hid, shared by every session of the folder
@@ -503,7 +505,7 @@ The state folder belongs to one user, and every Claude Code session that runs as
 ### What AskAway User reads and writes
 
 - **Hooks** (`plugins/askaway-user/hooks/command-hooks.json`) read the hook input from stdin: session id, permission mode, working directory, tool name and tool input.
-  - `SessionStart` (on `startup`, `resume`, `clear` or `compact`), `UserPromptSubmit` and `PostToolUse` run `hook deliver`: it reads `q/`, `a/`, `d/` and `s/`, writes a delivery marker for each answer it hands over (to `d/` for the main session, to `s/` for the subagent whose own `ask` filed the question), and puts the answer text into that session's context.
+  - `SessionStart` (on `startup`, `resume`, `clear` or `compact`), `UserPromptSubmit` and `PostToolUse` run `hook deliver`: it reads `q/`, `a/`, `d/` and `s/`, writes a delivery marker for each answer it hands over (to `d/` for the main session, to `s/` for the subagent whose own `ask` filed the question), and puts the answer text into that session's context. On the main session's `UserPromptSubmit` it also adds one line naming up to 5 of the session's open questions with their `withdraw --id` commands.
   - `PreToolUse` on `AskUserQuestion` runs `hook ask-guard`: it reads the away state and writes nothing.
   - `PreToolUse` on `.*` (every tool) runs `hook pause-guard`: it exits at once when no pause is on file; otherwise it reads `q/`, `a/`, `d/` and `s/`; its only write is the `clock_mark` stamp in the state folder, when a pause has an answer that is not marked yet.
   - `PostToolUse` on `Bash` runs `hook stamp-asker`: after an `ask` call it writes `asker` (the caller's `agent_id`, or `main`) onto the pause that call filed, and changes no other field.
@@ -759,7 +761,7 @@ Report a vulnerability privately, not in a public issue. [SECURITY.md](SECURITY.
 
 ## 🐞 Known issues
 
-No open issue carries the `bug` label as of 2026-11-14 (`gh issue list -R KeepGlide/askaway-user --state open --label bug`); open defects found in review carry `type:bug`. These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
+No open issue carries the `bug` label as of 2026-11-17 (`gh issue list -R KeepGlide/askaway-user --state open --label bug`); open defects found in review carry `type:bug`. These limitations come from the code, the CHANGELOG and this page; the limits without a workaround are in [Limits](#-limits):
 
 - **Windows is not handled.** The Claude Desktop session folder is `$XDG_CONFIG_HOME/Claude/claude-code-sessions` (default `~/.config`) on Linux and `~/Library/Application Support/Claude/claude-code-sessions` on macOS (`desktop_sessions_root`, `scripts/askaway.py`), so on Windows it points at a folder Claude Desktop does not use. It is not tested there. Workaround: none.
 - **Desktop Groups on macOS may need the config path set.** The default config path is `~/.config/Claude/claude_desktop_config.json` on every platform (`desktopConfigPathOf`, `hooks/register.tsx`). If Desktop Groups are missing on macOS, set `ASKAWAY_DESKTOP_CONFIG` to the config file's path. Questions still group by family or project.
@@ -777,10 +779,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway-user/tests/` | 612 |
-| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2113 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 616 |
+| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2157 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at the 2.1.1 release commit (idle commit of Other text removed), 2026-11-16. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
+Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at the 2.2.0 release commit (questions answered in the chat can be withdrawn), 2026-11-17. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
 
 ## 🔧 Development
 
