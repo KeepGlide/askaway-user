@@ -854,6 +854,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 2.0.1 | 2026-11-16 | The Bash guard reads more ways a line can write into a state folder: a link made on the same line, `curl -o`, `tar -C`, `unzip -d`, `find -exec` and `-delete`, operands fed by `xargs`, an alias, a variable on a line that names the folder, and code over several lines. |
 | 2.1.0 | 2026-11-16 | Text typed in the Other field is kept as the answer half a second after the last key, so a click outside the pane no longer leaves it unrecorded. |
 | 2.1.1 | 2026-11-16 | The idle commit of Other text is removed: its redraw while typing dropped keys. The text counts again when you leave the field, press a button, press Enter or close the pane. |
+| 2.2.0 | 2026-11-17 | A question answered in the chat window can be withdrawn with `withdraw --id`, so its card stops waiting in the inbox; the card says it was answered in the chat and offers Dismiss only. |
 
 ## 🤝 Contributing
 

@@ -8,6 +8,8 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-17
+
 ### Added
 - **Questions answered in the chat window can be withdrawn**: the asking session runs `askaway.py withdraw --id <id>` when you answer an open question in the chat, and its card stops waiting in the inbox. The card reads "Answered in the chat window. Dismiss to clear it." and offers only Dismiss. The session's prompt reminder lists up to 5 open questions with their withdraw commands. A withdrawn question refuses any answer; a paused question cannot be withdrawn, so the user answers it in the panel.
 

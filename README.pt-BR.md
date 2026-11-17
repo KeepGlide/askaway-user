@@ -854,6 +854,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 2.0.1 | 2026-11-16 | O guarda do Bash lê mais formas de uma linha gravar numa pasta de estado: um link criado na mesma linha, `curl -o`, `tar -C`, `unzip -d`, `find -exec` e `-delete`, operandos que o `xargs` entrega, um alias, uma variável numa linha que cita a pasta e código em várias linhas. |
 | 2.1.0 | 2026-11-16 | O texto digitado no campo Outra vira a resposta meio segundo depois da última tecla, então um clique fora do painel não o deixa mais sem registro. |
 | 2.1.1 | 2026-11-16 | Sai a gravação do texto de Outra por pausa na digitação: o redesenho durante a digitação perdia teclas. O texto volta a contar quando você sai do campo, aperta um botão, aperta Enter ou fecha o painel. |
+| 2.2.0 | 2026-11-17 | Uma pergunta respondida na janela do chat pode ser retirada com `withdraw --id`, para o cartão deixar de esperar na caixa de entrada; o cartão diz que foi respondida no chat e oferece só Dispensar. |
 
 ## 🤝 Contribuição
 
