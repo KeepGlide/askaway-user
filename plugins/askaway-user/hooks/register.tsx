@@ -25,7 +25,7 @@ import {
   otherInputKey,
   parseAnswer,
   parseAnswerWritten,
-  parseEndedIds,
+  parseEndedQuestions,
   whoText,
   parseAway,
   parseDelivery,
@@ -47,6 +47,7 @@ import {
   otherRowsOf,
   OTHER_MIN_ROWS,
   type DesktopGroups,
+  type EndedQuestion,
 } from './model'
 import * as flow from './wizard'
 import type { Group, Pick, Wizard } from './wizard'
@@ -113,6 +114,8 @@ const turn = atom({ plugin: 'askaway-user', key: 'turn' } as const, { isBusy: fa
 const langAtom = atom({ plugin: 'askaway-user', key: 'lang' } as const, DEFAULT_LANG)
 // The open questions whose asking session has ended (`list --open` marks them): the card shows a notice for them.
 const endedAtom = atom({ plugin: 'askaway-user', key: 'ended' } as const, [] as string[])
+// The subset of endedAtom whose person answered in the chat window (`ended_reason` "chat"): their card says so, not the session.
+const endedChatAtom = atom({ plugin: 'askaway-user', key: 'endedChat' } as const, [] as string[])
 // The damaged q/ files that pause their session (readBoard): the pane's notices.
 const damagedAtom = atom({ plugin: 'askaway-user', key: 'damagedPauses' } as const, [] as string[])
 // The stored answerer name: null before the question was asked, '' after a skip, else the name.
@@ -512,16 +515,16 @@ async function refreshEnded($: EngineInterface, home: string, next: Board, now: 
   return mergeEnded($, ended)
 }
 
-// One `list --open` run: the ended ids it printed. A run that cannot start, exits non-zero or prints output that is not the
+// One `list --open` run: the ended questions it printed, each with its reason. A run that cannot start, exits non-zero or prints output that is not the
 // list did not run: it is logged with its exit code and stderr (a press that it refuses only shows a toast) and gives undefined.
-async function runEndedList($: EngineInterface, home: string): Promise<string[] | undefined> {
+async function runEndedList($: EngineInterface, home: string): Promise<EndedQuestion[] | undefined> {
   const argv = ['python3', `${$.plugin.root}/scripts/askaway.py`, 'list', '--open']
   const run = await $.process.run(argv, { env: { ASKAWAY_HOME: home }, timeoutMs: CLI_RUN_TIMEOUT_MS }).catch((error: unknown) => {
     logEndedListFailure($, `did not start: ${error instanceof Error ? error.message : String(error)}`)
     return undefined
   })
   if (run === undefined) return undefined
-  const parsed = run.exitCode === 0 ? parseEndedIds(run.stdout) : undefined
+  const parsed = run.exitCode === 0 ? parseEndedQuestions(run.stdout) : undefined
   if (parsed === undefined) logEndedListFailure($, `failed (exit ${run.exitCode}): ${(run.stderr || run.stdout).trim()}`)
   else endedListFailure = undefined
   return parsed
@@ -538,14 +541,17 @@ function logEndedListFailure($: EngineInterface, detail: string): void {
   logFailure($, new Error(text))
 }
 
-// Writes the ended ids to the atom only when they changed, and gives them back.
-async function mergeEnded($: EngineInterface, ended: string[]): Promise<string[]> {
-  if (JSON.stringify(ended) !== JSON.stringify(await read($, endedAtom))) await update($, endedAtom, () => ended)
-  return ended
+// Writes the ended ids and the chat-ended ids to their atoms, each only when it changed, and gives the ended ids back.
+async function mergeEnded($: EngineInterface, ended: EndedQuestion[]): Promise<string[]> {
+  const ids = ended.map(item => item.id)
+  const chatIds = ended.filter(item => item.reason === 'chat').map(item => item.id)
+  if (JSON.stringify(ids) !== JSON.stringify(await read($, endedAtom))) await update($, endedAtom, () => ids)
+  if (JSON.stringify(chatIds) !== JSON.stringify(await read($, endedChatAtom))) await update($, endedChatAtom, () => chatIds)
+  return ids
 }
 
-// Dismiss on an ended or a damaged card: the CLI removes the question (prune --id), then the board is read again. An ended card's pause is
-// over and the person pressing Dismiss is the user, so its prune runs with --force, whatever the risk. A damaged card's prune does not:
+// Dismiss on an ended or a damaged card: the CLI removes the question (prune --id), then the board is read again. An ended card may still
+// hold a pause (a high-risk repeat can pause a withdrawn twin), and the person pressing Dismiss is the user, so its prune runs with --force, whatever the risk. A damaged card's prune does not:
 // a file the CLI reads as a question (a stored NaN literal) is refused, not deleted (Should-4).
 async function dismissQuestion($: EngineInterface, home: string, id: string, force: boolean): Promise<void> {
   const argv = ['python3', `${$.plugin.root}/scripts/askaway.py`, 'prune', '--id', id, '--strict', ...(force ? ['--force'] : [])]
@@ -1655,6 +1661,7 @@ export const register: Register = on => {
       footer: folder === undefined ? t(lang, 'command.awayUnavailable') : footerText(lang, current, now, hidden),
       away: await read($, isAway),
       ended: await read($, endedAtom),
+      endedChat: await read($, endedChatAtom),
       damagedPauses: await read($, damagedAtom),
       askWho: (await read($, whoAtom)) === null,
       groups,

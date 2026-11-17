@@ -21,6 +21,7 @@ import {
   optionLabelOf,
   parseAnswer,
   parseDelivery,
+  parseEndedQuestions,
   parseQuestion,
   pausedText,
   piecesOf,
@@ -209,6 +210,8 @@ function stubHost(
   // Every process run the pane makes, with the timeoutMs its init carries (undefined when it has none), in order (issue #45).
   const runs: { argv: string[]; timeoutMs?: number }[] = []
   const ended = new Set<string>()
+  // The ended ids whose reply came from the chat window: `list --open` reports them with ended_reason "chat".
+  const endedChat = new Set<string>()
   // The panel token calls in order (`install`, `write`, `chmod`).
   const tokenCalls: string[][] = []
   // The /askaway registrations in order: the description each one carries (M69).
@@ -362,7 +365,8 @@ function stubHost(
       if (holds.listExit !== undefined) return cliReply('', holds.listExit)
       if (holds.listStdout !== undefined) return cliReply(holds.listStdout)
       const items = [...files.keys()].filter(file => file.startsWith(`${STATE}/q/`)).map(file => ({ id: file.slice(`${STATE}/q/`.length, -5) }))
-      return cliReply(JSON.stringify({ items: items.map(item => (ended.has(item.id) ? { ...item, ended: true } : item)) }))
+      const reasonOf = (id: string) => (endedChat.has(id) ? 'chat' : 'session')
+      return cliReply(JSON.stringify({ items: items.map(item => (ended.has(item.id) ? { ...item, ended: true, ended_reason: reasonOf(item.id) } : item)) }))
     }
     if (e.argv[2] === 'prune') {
       if (holds.pruneExit !== undefined) return cliReply('', holds.pruneExit)
@@ -382,7 +386,7 @@ function stubHost(
     writes.push(path('a', id))
     return cliReply(JSON.stringify({ id, key, written: true }))
   })
-  return { toasts, writes, drafts, clearings, submits, clock, calls, runs, ended, tokenCalls, registrations, logs, links, titles }
+  return { toasts, writes, drafts, clearings, submits, clock, calls, runs, ended, endedChat, tokenCalls, registrations, logs, links, titles }
 }
 
 // The hook's reply with the result `$.process.run` gives for a child that exited (the fields the pane reads).
@@ -6500,6 +6504,32 @@ test('the ended notice reads in English with the recommended key, and a live ses
   await pane.unmount()
 })
 
+test('an ended card answered in the chat window draws the chat notice and Dismiss only, with no options', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone' })]])
+  const { ended, endedChat } = stubHost(on, files)
+  ended.add('q-l1-aaaaaa')
+  endedChat.add('q-l1-aaaaaa')
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  expect(await textsOf(pane)).toContain('Respondida na janela do chat. Dispense para limpar.')
+  expect(await textsOf(pane)).not.toContain('A sessão que perguntou terminou; o agente ficou na opção A.')
+  expect(await pane.find({ type: 'Button', key: 'dismiss-ended' })).toBeDefined()
+  expect(await pane.find({ type: 'Button', key: 'opt-q-l1-aaaaaa-A' })).toBeUndefined()
+  await pane.unmount()
+})
+
+test('the chat-answered ended notice reads in English and not as a session ended', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone' })]])
+  const { ended, endedChat } = stubHost(on, files, true, {}, {}, { LANG: '' })
+  ended.add('q-l1-aaaaaa')
+  endedChat.add('q-l1-aaaaaa')
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  expect(await textsOf(pane)).toContain('Answered in the chat window. Dismiss to clear it.')
+  expect(await textsOf(pane)).not.toContain('The session that asked has ended; the agent stayed on A.')
+  await pane.unmount()
+})
+
 test('Dismiss on an ended card removes the question through prune --id, and sends no answer', async ($, on) => {
   const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone' })]])
   const { ended, calls, writes } = stubHost(on, files)
@@ -6818,6 +6848,28 @@ test('the terminal card title names the asking session, dimmed beside the title'
   const pane = await mountPane($, 'terminal')
   expect(await pane.find({ type: 'Text', text: sessionLabelOf({ session_title: 'billing-api' }, 'pt') })).toBeDefined()
   await pane.unmount()
+})
+
+test('model: each ended item keeps its ended_reason; "chat" stays "chat", "session" and a missing reason read as "session"', () => {
+  const stdout = JSON.stringify({
+    items: [
+      { id: 'q-l1-aaaaaa', ended: true, ended_reason: 'chat' },
+      { id: 'q-l2-bbbbbb', ended: true, ended_reason: 'session' },
+      { id: 'q-l3-cccccc', ended: true },
+      { id: 'q-l4-dddddd' },
+    ],
+  })
+  expect(parseEndedQuestions(stdout)).toEqual([
+    { id: 'q-l1-aaaaaa', reason: 'chat' },
+    { id: 'q-l2-bbbbbb', reason: 'session' },
+    { id: 'q-l3-cccccc', reason: 'session' },
+  ])
+  expect(parseEndedQuestions('{"error":"no list"}')).toBeUndefined()
+})
+
+test('the chat-answered ended notice reads in both languages', () => {
+  expect(t('en', 'card.endedChat')).toBe('Answered in the chat window. Dismiss to clear it.')
+  expect(t('pt', 'card.endedChat')).toBe('Respondida na janela do chat. Dispense para limpar.')
 })
 
 test('the pt-BR ended notice and lead name the option as "opção", not a bare letter', () => {

@@ -142,6 +142,8 @@ declare module 'claude-code' {
       turn: { isBusy: boolean }
       // Ids of open questions whose asking session has ended (`list --open` marks them `ended`): their card shows a notice.
       ended: string[]
+      // The ended ids whose person answered in the chat window (`ended_reason` "chat"): their card says so instead of the session.
+      endedChat: string[]
       // Ids of damaged q/ files that pause their session (they name a session and are open): the pane draws a notice and Dismiss.
       damagedPauses: string[]
       // The answerer name (store key "who"): null before it was asked, '' after a skip, else the name.
