@@ -4,7 +4,8 @@
 State lives in one JSON file per item under ASKAWAY_HOME (default
 ~/.claude/state/askaway-user; the legacy ~/.claude/state/askaway is moved there once):
 q/ questions, a/ answers (first writer wins),
-d/ delivery markers (the main session's copy), s/ the asking subagent's own delivery markers and away.json.
+d/ delivery markers (the main session's copy), s/ the asking subagent's own delivery markers, w/ withdrawals
+(the asking session's "answered in chat" declarations), and away.json.
 Contract: SPEC.md next to this plugin.
 Hook modes fail open: any error exits 0 with no output, except the pause guard, which denies the call.
 """
@@ -171,6 +172,17 @@ def _exit_if_nothing_to_hold() -> None:
     _restore_stdin(raw)
 
 
+def _may_remind(raw: bytes) -> bool:
+    """Can this event owe the withdraw reminder: a UserPromptSubmit while the q/ folder holds a question? Runs before the
+    heavy imports; a folder with no question, or one that cannot be listed, owes none."""
+    if b'"UserPromptSubmit"' not in raw:
+        return False
+    try:
+        return bool(_json_names(os.path.join(_fast_home(), "q")))
+    except OSError:
+        return False
+
+
 def _exit_if_idle() -> None:
     if sys.argv[1:3] == ["hook", "pause-guard"]:
         _exit_if_nothing_to_hold()
@@ -180,7 +192,9 @@ def _exit_if_idle() -> None:
             return
         raw = sys.stdin.buffer.read()
         agent_id = _event_agent(raw)
-        if agent_id is None or _nothing_to_deliver(agent_id):
+        if agent_id is None and not _may_remind(raw):
+            sys.exit(0)
+        if agent_id is not None and _nothing_to_deliver(agent_id):
             sys.exit(0)
         _restore_stdin(raw)
     except Exception:  # noqa: BLE001 - fail open: a broken fast path still exits 0 with no output
@@ -246,6 +260,7 @@ UNKNOWN_WHO: Final = "unknown"
 CONTROL_CHARS: Final = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 MIN_OPTIONS: Final = 2
 TITLE_MAX: Final = 60
+REMINDER_LIMIT: Final = 5  # the open questions one UserPromptSubmit reminder names, newest first
 QUESTION_MAX: Final = 400
 CONTEXT_MAX: Final = 600
 HOW_MAX: Final = 400
@@ -347,7 +362,7 @@ WRITE_WORDS: Final = frozenset({
 READ_EXEMPT_WORDS: Final = frozenset({"merge", "commit", "archive"})  # the object right after a read verb: get_commit
 CAMEL_BREAK: Final = re.compile(r"([a-z0-9])([A-Z])")  # a lower-to-upper step starts a word in an MCP tool name
 NAME_WORD_BREAK: Final = re.compile(r"[^a-z0-9]+")
-# One simple `askaway.py ask|status|list|wait|export` call of the installed script: its path is SCRIPT_PATH
+# One simple `askaway.py ask|status|list|wait|export|withdraw` call of the installed script: its path is SCRIPT_PATH
 # (symlinks resolved), its mirror under ~/.claude/mods (spelled out, or with ~, $HOME or ${HOME}), or the
 # plugin-root form the AskAway User skill teaches (a quoted path only). A planted path such as /x/askaway.py never matches.
 _HOME_PREFIX: Final = r"(?:~|\$HOME|\$\{HOME\})"
@@ -357,7 +372,7 @@ _PLUGIN_ROOT_SCRIPT: Final = re.escape("${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py
 _INBOX_HEAD: Final = (
     r"^\s*(?:/usr/bin/)?python3(?:\.\d+)?[ \t]+"
     rf"(?:(?:{_FIXED_SCRIPTS})|\"(?:{_FIXED_SCRIPTS}|{_PLUGIN_ROOT_SCRIPT})\")"
-    r"[ \t]+(?:ask|status|list|wait|export)\b"
+    r"[ \t]+(?:ask|status|list|wait|export|withdraw)\b"
 )
 INBOX_HEAD: Final = re.compile(_INBOX_HEAD)
 INBOX_UNSAFE: Final = re.compile(r"[$`;&|<>]")  # outside single quotes these expand, run or redirect
@@ -778,6 +793,12 @@ def item_status(item_id: str) -> tuple[str, str | None]:
             return STATUS_DAMAGED_ANSWER, None
         return ("expired" if answer_lapsed(answer) else "answered"), key
     return "open", None
+
+
+def withdrawn(item_id: str) -> bool:
+    """Did the asking session withdraw the question, declaring it answered in chat? Its w/ marker says so; the status
+    stays open. Withdraw itself never sets or lifts a pause: it refuses a paused question."""
+    return read_json(item_path("w", item_id)) is not None
 
 
 OTHER_TEXT_MAX = 500
@@ -1512,14 +1533,15 @@ def _question_key(text: object) -> str:
 
 
 def open_twin(entry: Mapping[str, Any]) -> dict[str, Any] | None:
-    """The open question this session already asked with the same text, or None. Sessionless asks never match."""
+    """The open question this session already asked with the same text, or None. Sessionless asks never match, and
+    neither does a withdrawn question: it was answered in chat, so asking again files a new card."""
     session = entry.get("session")
     if not session:
         return None
     wanted = _question_key(entry["question"])
     return next((other for other in load_questions()[0]
                  if other.get("session") == session and _question_key(other.get("question")) == wanted
-                 and item_status(other["id"])[0] == "open"), None)
+                 and item_status(other["id"])[0] == "open" and not withdrawn(other["id"])), None)
 
 
 def _refile(raw: object, error: str, gaps: Gaps) -> dict[str, Any]:
@@ -1717,6 +1739,13 @@ def _stored_reply(item_id: str) -> dict[str, Any]:
     return {"id": item_id, "key": (stored or {}).get("key"), "written": False, **_answer_stamps(stored)}
 
 
+def _refused_answer(item_id: str, entry: Mapping[str, Any], by: str) -> str | None:
+    """Why a new answer is refused: the question was withdrawn in chat, or a shell answer is not from its session."""
+    if withdrawn(item_id):  # the chat answered it and the asking session said so: no answer is written
+        return "answer refused: the question was answered in chat and withdrawn"
+    return answer_refusal(entry, by)
+
+
 def cmd_answer(item_id: str, key: str, by: str, text: str | None) -> dict[str, Any]:
     if by not in ANSWER_SOURCES:
         raise ValueError(f"--by must be one of: {', '.join(sorted(ANSWER_SOURCES))}")
@@ -1727,7 +1756,7 @@ def cmd_answer(item_id: str, key: str, by: str, text: str | None) -> dict[str, A
         raise ValueError("unknown option key")
     if read_json(item_path("a", item_id)) is not None:  # first writer wins: a readable reply on file answers first
         return _stored_reply(item_id)
-    refusal = answer_refusal(entry, by)
+    refusal = _refused_answer(item_id, entry, by)
     if refusal is not None:
         return {"error": refusal}
     if by in TOKEN_SOURCES and not consume_panel_token():
@@ -1740,6 +1769,29 @@ def cmd_answer(item_id: str, key: str, by: str, text: str | None) -> dict[str, A
     if create_once(item_path("a", item_id), record):
         return {"id": item_id, "key": key, "written": True}
     return _stored_reply(item_id)
+
+
+def cmd_withdraw(item_id: str) -> dict[str, Any]:
+    """The asking session declares its question answered in chat: the open card ends (ended_reason chat). No answer is
+    written. A paused question is refused (only the user answers a pause); a repeat call changes nothing."""
+    with _ask_lock():  # held over the checks and the marker: an ask cannot pause the question between them
+        return _withdraw_id(item_id)
+
+
+def _withdraw_id(item_id: str) -> dict[str, Any]:
+    entry = _question_entry(item_id)
+    asked = entry.get("session")
+    if not asked:
+        return {"error": "withdraw refused: this question has no asking session"}
+    if caller_session() != asked:
+        return {"error": "withdraw refused: this question belongs to another session"}
+    status = item_status(item_id)[0]
+    if status != "open":
+        return {"error": f"withdraw refused: the question is {status}, not open"}
+    if entry.get("pause") is True:
+        return {"error": "withdraw refused: the question holds a pause; the user answers it in the AskAway User panel"}
+    create_once(item_path("w", item_id), {"id": item_id, "session": asked, "ts": now_ms()})
+    return {"id": item_id, "withdrawn": True}
 
 
 def question_status(item_id: str) -> tuple[str, str | None]:
@@ -1771,6 +1823,8 @@ def _status_reply(item_id: str, status: str, key: str | None) -> dict[str, Any]:
     if text:
         result["text"] = text
     result.update(_answer_stamps(answer))
+    if status == "open" and withdrawn(item_id):
+        result["withdrawn"] = True
     return result
 
 
@@ -1778,13 +1832,23 @@ def cmd_status(item_id: str) -> dict[str, Any]:
     return _status_reply(item_id, *question_status(item_id))
 
 
+def ended_reason(entry: Mapping[str, Any], released: ReleasedScan | None = None) -> str | None:
+    """Why an open question can no longer be answered: withdrawn in chat (chat wins when both hold), or its asking
+    session has ended (session). None while it can still be answered."""
+    if withdrawn(entry["id"]):
+        return "chat"
+    return "session" if session_ended(entry.get("session"), entry.get("project"), released) else None
+
+
 def _list_row(entry: Mapping[str, Any], released: ReleasedScan | None = None) -> dict[str, Any]:
     status, key = item_status(entry["id"])
     row = {"id": entry["id"], "title": entry.get("title"), "status": status,
            "recommended": entry.get("recommended"), "key": key}
-    # The pane reads this: an open question whose asking session has ended can no longer be answered.
-    if status == "open" and session_ended(entry.get("session"), entry.get("project"), released):
+    # The pane reads this: an open question that can no longer be answered, and why.
+    reason = ended_reason(entry, released) if status == "open" else None
+    if reason is not None:
         row["ended"] = True
+        row["ended_reason"] = reason
     answer = read_json(item_path("a", entry["id"]))
     text = other_text(answer) if key == OTHER_KEY else None
     if text:
@@ -1846,7 +1910,8 @@ def cmd_away(state: str) -> dict[str, Any]:
 
 
 def _present_files(item_id: str) -> list[Path]:
-    return [item_path(folder, item_id) for folder in ("q", "a", "d", "s") if os.path.lexists(item_path(folder, item_id))]
+    return [item_path(folder, item_id) for folder in ("q", "a", "d", "s", "w")
+            if os.path.lexists(item_path(folder, item_id))]
 
 
 def _removable(present: Sequence[Path]) -> bool:
@@ -1871,7 +1936,7 @@ def _remove_item(item_id: str) -> bool:
 
 def _remove_stale_temps() -> None:
     cutoff = time.time() - TEMP_STALE_S
-    for folder in (state_home(), *(state_home() / name for name in ("q", "a", "d", "s"))):
+    for folder in (state_home(), *(state_home() / name for name in ("q", "a", "d", "s", "w"))):
         for tmp in [*folder.glob(".*.tmp"), *(folder.glob(f"{TOKEN_DIR}/*") if folder == state_home() else ())]:
             with contextlib.suppress(OSError):
                 if tmp.is_file() and tmp.stat().st_mtime < cutoff:
@@ -1902,7 +1967,7 @@ def _unreadable_answers() -> list[str]:
 
 def _orphan_ids() -> list[str]:
     """Answer and marker files whose question file is gone: an interrupted prune left them, and no list shows them."""
-    ids = {path.stem for folder in ("a", "d", "s") for path in (state_home() / folder).glob("*.json")
+    ids = {path.stem for folder in ("a", "d", "s", "w") for path in (state_home() / folder).glob("*.json")
            if ID_PATTERN.fullmatch(path.stem)}
     return [item_id for item_id in sorted(ids) if not os.path.lexists(item_path("q", item_id))]
 
@@ -2028,12 +2093,14 @@ def cmd_wait(item_id: str, timeout: float) -> dict[str, Any]:
         raise ValueError("--timeout must be a finite number of seconds, zero or more")
     deadline = time.monotonic() + timeout
     status, key = question_status(item_id)
-    while status == "open":
+    while status == "open" and not withdrawn(item_id):
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return {"id": item_id, "status": "timeout"}
         time.sleep(min(WAIT_POLL_S, remaining))
         status, key = question_status(item_id)
+    if status == "open":  # withdrawn in chat: no answer will come, so the wait ends at once
+        return {"id": item_id, "status": "withdrawn"}
     reply = _status_reply(item_id, status, key)
     line = _wait_line(item_id, status)
     if line is not None:
@@ -2200,6 +2267,11 @@ def build_parser() -> argparse.ArgumentParser:
     answer.add_argument("--strict", action="store_true")
     answer.set_defaults(run=lambda a: cmd_answer(a.id, a.key, a.by, a.text))
 
+    withdraw = commands.add_parser("withdraw")
+    withdraw.add_argument("--id", dest="item_id", required=True)
+    withdraw.add_argument("--strict", action="store_true")
+    withdraw.set_defaults(run=lambda a: cmd_withdraw(a.item_id))
+
     status = commands.add_parser("status")
     status.add_argument("id")
     status.add_argument("--strict", action="store_true")
@@ -2331,7 +2403,7 @@ def _blanked_single_quoted(text: str) -> str:
 
 
 def inbox_call(command: str) -> bool:
-    """Is the command one simple `askaway.py ask|status|list|wait|export` call of a fixed script path?
+    """Is the command one simple `askaway.py ask|status|list|wait|export|withdraw` call of a fixed script path?
 
     Inside single quotes the text is data, so an operator, a backtick or `$` there is let through. Outside them,
     any operator, `$` or backtick is not. The script path (the head) may name $HOME, as the installed mirror does.
@@ -2348,7 +2420,7 @@ def inbox_call(command: str) -> bool:
 
 
 def _exempt_call(tool: object, command: str) -> bool:
-    """A call the pause lets through: one simple inbox ask, status, list, wait or export, a tool of READ_ONLY_TOOLS,
+    """A call the pause lets through: one simple inbox ask, status, list, wait, export or withdraw, a tool of READ_ONLY_TOOLS,
     or a read-only MCP tool. Any other tool is held."""
     if tool == "Bash" and inbox_call(command):
         return True
@@ -4391,27 +4463,81 @@ def _daily_cleanup() -> None:
         _maybe_prune()
 
 
-def hook_deliver(event: Mapping[str, Any]) -> HookOutput:
-    # A subagent's hook call carries the parent's session_id plus an agent_id. It takes only the answers its own ask
-    # filed (asker == agent_id), as hook context in its own transcript, and marks them in s/; the main thread takes every
-    # answer of its session and marks it in d/. So each gets the reply once, and the main thread's copy never ends a
-    # subagent's pause.
-    asker = event.get("agent_id") or None
-    if asker is not None and not isinstance(asker, str):
+def _withdrawable_for(entry: Mapping[str, Any], session: str) -> bool:
+    """Would withdraw accept this question from this session: open, its own session's, not withdrawn, no pause."""
+    if entry.get("session") != session or entry.get("pause") is True:
+        return False
+    return item_status(entry["id"])[0] == "open" and not withdrawn(entry["id"])
+
+
+def _open_questions_line(session: str) -> str | None:
+    """The reminder's text: the session's open questions the chat may already have answered, each with its withdraw
+    command (REMINDER_LIMIT, newest first). None when there are none."""
+    chosen: list[dict[str, Any]] = []
+    entries, _damaged = load_questions()
+    for entry in entries:
+        if len(chosen) == REMINDER_LIMIT:
+            break
+        if _withdrawable_for(entry, session):
+            chosen.append(entry)
+    if not chosen:
         return None
-    item_ids = answered_ids()
-    event_name = event.get("hook_event_name")
-    if not item_ids or not isinstance(event_name, str):
+    named = [f"{item['id']} {_literal(_clip(item.get('title') or item['id'], TITLE_MAX))}: "
+             f"`python3 {SCRIPT_PATH} withdraw --id {item['id']}`" for item in chosen]
+    return ("AskAway User: open questions of this session. If the user's message answers one of them in chat, run only "
+            f"that question's command to withdraw it: {'; '.join(named)}.")
+
+
+def _withdraw_reminder(event: Mapping[str, Any]) -> str | None:
+    """The reminder line for the main thread's UserPromptSubmit, or None for any other event or caller."""
+    session = event.get("session_id")
+    if event.get("hook_event_name") != "UserPromptSubmit" or event.get("agent_id") or not isinstance(session, str):
         return None
+    try:
+        return _open_questions_line(session) if session else None
+    except Exception:  # noqa: BLE001 - best effort: a failed read costs the reminder, never a delivery
+        return None
+
+
+def _print_context(event_name: str, lines: list[str]) -> None:
+    """Prints the lines as one hook output. Printed and flushed right after the markers (run_hook prints only what a
+    handler returns), so a timeout after the claims still leaves the lines out."""
+    if lines:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": event_name,
+                                                 "additionalContext": "\n".join(lines)}}), flush=True)
+
+
+def _deliver_run(event: Mapping[str, Any], event_name: str, item_ids: list[str], asker: str | None,
+                 reminder: str | None) -> None:
+    """A run with answers to claim: the cleanup around the claims, then one output with the claimed lines and the reminder."""
     jumped = _clock_jumped(state_home() / PRUNE_STAMP)
     if not jumped:
         _daily_cleanup()  # before any marker: a hook timeout during the cleanup costs no claimed line
     lines = _claimed_lines(event, item_ids, asker)
-    if lines:  # printed and flushed right after the markers (run_hook prints only what a handler returns)
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": event_name,
-                                                 "additionalContext": "\n".join(lines)}}), flush=True)
+    if reminder is not None:
+        lines.append(reminder)
+    _print_context(event_name, lines)
     if jumped:
         _daily_cleanup()  # after a clock jump it only moves the stamp, once the deliveries have read the expiry hold
+
+
+def hook_deliver(event: Mapping[str, Any]) -> HookOutput:
+    # A subagent's hook call carries the parent's session_id plus an agent_id. It takes only the answers its own ask
+    # filed (asker == agent_id), as hook context in its own transcript, and marks them in s/; the main thread takes every
+    # answer of its session and marks it in d/. So each gets the reply once, and the main thread's copy never ends a
+    # subagent's pause. The main thread's UserPromptSubmit also gets the withdraw reminder, as one more line.
+    asker = event.get("agent_id") or None
+    if asker is not None and not isinstance(asker, str):
+        return None
+    event_name = event.get("hook_event_name")
+    if not isinstance(event_name, str):
+        return None
+    item_ids = answered_ids()
+    reminder = _withdraw_reminder(event)
+    if item_ids:
+        _deliver_run(event, event_name, item_ids, asker, reminder)
+    elif reminder is not None:
+        _print_context(event_name, [reminder])
     return None
 
 

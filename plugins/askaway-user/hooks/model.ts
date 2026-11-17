@@ -239,9 +239,14 @@ export function parseAnswerWritten(stdout: string): boolean | undefined {
   return isRecord(raw) && typeof raw.written === 'boolean' ? raw.written : undefined
 }
 
-// The ids `askaway.py list --open` marks `ended`: open questions whose asking session has ended. Undefined when the
-// output is not a list reply, so the caller keeps what it knew.
-export function parseEndedIds(stdout: string): string[] | undefined {
+// Why an ended question is ended, from `ended_reason`: "chat" when the person answered it in the chat window, else "session"
+// (an older CLI writes no reason, and that means "session").
+export type EndedReason = 'chat' | 'session'
+export type EndedQuestion = { id: string; reason: EndedReason }
+
+// The open questions `askaway.py list --open` marks `ended`, each with its reason: open questions whose asking session has
+// ended. Undefined when the output is not a list reply, so the caller keeps what it knew.
+export function parseEndedQuestions(stdout: string): EndedQuestion[] | undefined {
   let raw: unknown
   try {
     raw = JSON.parse(stdout)
@@ -249,9 +254,11 @@ export function parseEndedIds(stdout: string): string[] | undefined {
     return undefined
   }
   if (!isRecord(raw) || !Array.isArray(raw.items)) return undefined
-  return raw.items.flatMap((item: unknown) =>
-    isRecord(item) && item.ended === true && typeof item.id === 'string' ? [item.id] : [],
-  )
+  return raw.items.flatMap((item: unknown): EndedQuestion[] => {
+    if (!isRecord(item) || item.ended !== true || typeof item.id !== 'string') return []
+    const reason: EndedReason = item.ended_reason === 'chat' ? 'chat' : 'session'
+    return [{ id: item.id, reason }]
+  })
 }
 
 // Control characters (Cc) and the line and paragraph separators (Zl, Zp) become spaces: askaway.py's _one_line.

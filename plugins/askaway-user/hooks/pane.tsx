@@ -69,6 +69,8 @@ export type PaneView = {
   footer?: string
   // The ids of open questions whose asking session has ended: their card shows a notice and Dismiss, no options.
   ended: readonly string[]
+  // The subset of ended whose person answered in the chat window: their notice says so (register: endedChat).
+  endedChat: readonly string[]
   // The damaged q/ files that pause their session (register: damagedPauses): each draws a notice with its id and Dismiss.
   // Optional: the register sets it.
   damagedPauses?: readonly string[]
@@ -529,6 +531,7 @@ function renderQuestion(
   }
   const { isLeaving } = card
   const isEnded = view.ended.includes(question.id)
+  const isEndedInChat = view.endedChat.includes(question.id)
   const drawsFitHint = question.options.some(option => typeof option.fit === 'number')
   const details = sectionsOf(lang, question, 'details')
   return (
@@ -543,7 +546,9 @@ function renderQuestion(
         {!isEnded && drawsFitHint && <Text dimColor={isLeaving}>{t(lang, 'option.fitHint')}</Text>}
       </Box>
       {isEnded ? (
-        <Text key={`ended-${question.id}`}>{t(lang, 'card.ended', { key: question.recommended })}</Text>
+        <Text key={`ended-${question.id}`}>
+          {isEndedInChat ? t(lang, 'card.endedChat') : t(lang, 'card.ended', { key: question.recommended })}
+        </Text>
       ) : (
         <Box flexDirection="column" gap={2} marginTop={1}>
           {question.options.map(option => renderOption(ui, lang, actions, card, option))}

@@ -1366,6 +1366,7 @@ def test_pause_guard_denies_bash_that_is_not_inbox(capsys, monkeypatch):
     "python3 {script} status {item}",
     "python3 {script} list --open",
     "python3 {script} wait {item} --timeout 0",
+    "python3 {script} withdraw --id {item}",
     "python3 {script} export --format csv",
     "python3 {script} list --open --since '1h;`x`'",
     "python3 ~/.claude/mods/plugins/askaway-user/scripts/askaway.py status {item}",
@@ -1382,6 +1383,8 @@ def test_pause_guard_lets_a_bash_command_run_inbox(command, capsys, monkeypatch)
     "askaway.py status x && rm y",
     "python3 scripts/askaway.py status {item} && rm y",
     "python3 scripts/askaway.py wait {item} ; rm y",
+    "python3 scripts/askaway.py withdraw --id {item} && python3 scripts/askaway.py answer {item} A",
+    "python3 scripts/askaway.py withdraw --id {item} ; python3 scripts/askaway.py prune --force",
     "python3 scripts/askaway.py export > out.csv && rm y",
     "python3 $(rm -rf x)askaway.py status {item}",
     "python3 /x/askaway.py status {item}",
@@ -2069,6 +2072,128 @@ def test_deliver_ignores_corrupt_files(home, capsys, monkeypatch):
     (home / "a" / "q-bad-000000.json").write_text('{"key": "A"}', encoding="utf-8")
     assert run_hook(capsys, monkeypatch, "deliver", deliver_event()) == ""
     assert not (home / "d" / "q-bad-000000.json").exists()
+
+
+# ---- withdraw reminder on UserPromptSubmit ----------------------------
+
+REMINDER_HEAD = "AskAway User: open questions of this session"
+
+
+def hook_context(capsys, monkeypatch, event: dict) -> str:
+    """The additionalContext the deliver hook prints for this event, or '' when it prints nothing."""
+    out = run_hook(capsys, monkeypatch, "deliver", event)
+    return json.loads(out)["hookSpecificOutput"]["additionalContext"] if out else ""
+
+
+def test_user_prompt_reminds_the_session_of_its_open_question_with_its_withdraw_command(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    context = hook_context(capsys, monkeypatch, deliver_event())
+    assert context.startswith(REMINDER_HEAD)
+    assert f"`python3 {askaway.SCRIPT_PATH} withdraw --id {item}`" in context
+    assert "Cache backend" in context
+
+
+def test_reminder_line_is_one_line_and_the_hook_output_is_one_object(home, capsys, monkeypatch):
+    ask_from(capsys, monkeypatch, SESSION)
+    out = run_hook(capsys, monkeypatch, "deliver", deliver_event())
+    assert len(out.splitlines()) == 1
+    assert json.loads(out)["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+
+
+@pytest.mark.parametrize("event_name", ["SessionStart", "PostToolUse"])
+def test_reminder_is_only_for_user_prompt_submit(event_name, home, capsys, monkeypatch):
+    ask_from(capsys, monkeypatch, SESSION)
+    assert hook_context(capsys, monkeypatch, {**deliver_event(), "hook_event_name": event_name}) == ""
+
+
+def test_subagent_user_prompt_gets_no_reminder(home, capsys, monkeypatch):
+    ask_from(capsys, monkeypatch, SESSION)
+    assert hook_context(capsys, monkeypatch, {**deliver_event(), "agent_id": "agent-1"}) == ""
+
+
+def test_reminder_skips_other_sessions_questions(home, capsys, monkeypatch):
+    ask_from(capsys, monkeypatch, "other-session")
+    assert hook_context(capsys, monkeypatch, deliver_event(session=SESSION)) == ""
+
+
+def test_reminder_skips_a_withdrawn_question(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert hook_context(capsys, monkeypatch, deliver_event()) == ""
+
+
+def test_reminder_skips_a_paused_question_and_keeps_the_plain_one(home, capsys, monkeypatch):
+    paused = pending_pause(capsys, monkeypatch)
+    plain = ask_from(capsys, monkeypatch, SESSION, title="Plain one")
+    context = hook_context(capsys, monkeypatch, deliver_event())
+    assert f"withdraw --id {plain}" in context and f"withdraw --id {paused}" not in context
+
+
+def test_reminder_skips_a_question_without_a_session(home, capsys, monkeypatch):
+    ask_item(capsys)
+    assert hook_context(capsys, monkeypatch, deliver_event()) == ""
+
+
+def test_reminder_is_absent_when_no_question_is_open(home, capsys, monkeypatch):
+    assert hook_context(capsys, monkeypatch, deliver_event()) == ""
+
+
+def test_reminder_skips_an_answered_question_and_the_delivery_still_prints(home, capsys, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    item = ask_item(capsys)
+    cli(capsys, "answer", item, "B")
+    context = hook_context(capsys, monkeypatch, deliver_event())
+    assert f"AskAway User question {item}" in context
+    assert "withdraw" not in context
+
+
+def test_reminder_names_at_most_five_open_questions_newest_first(home, capsys, monkeypatch):
+    items = [ask_from(capsys, monkeypatch, SESSION, title=f"Topic {number}") for number in range(6)]
+    context = hook_context(capsys, monkeypatch, deliver_event())
+    assert context.count("withdraw --id ") == 5
+    assert f"withdraw --id {items[-1]}" in context and f"withdraw --id {items[0]}" not in context
+
+
+def test_reminder_clips_a_long_title(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    path = home / "q" / f"{item}.json"
+    entry = json.loads(path.read_text(encoding="utf-8"))
+    entry["title"] = "T" * 200
+    path.write_text(json.dumps(entry), encoding="utf-8")
+    context = hook_context(capsys, monkeypatch, deliver_event())
+    assert "T" * (askaway.TITLE_MAX - 1) + "…" in context
+    assert "T" * askaway.TITLE_MAX not in context
+
+
+def test_reminder_comes_after_the_delivery_line_in_one_hook_object(home, capsys, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    answered = ask_item(capsys, title="Answered one")
+    cli(capsys, "answer", answered, "B")
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
+    open_item = ask_from(capsys, monkeypatch, SESSION, title="Still open")
+    context = hook_context(capsys, monkeypatch, deliver_event())
+    assert f"AskAway User question {answered}" in context
+    assert f"withdraw --id {open_item}" in context
+    assert context.index(f"AskAway User question {answered}") < context.index(REMINDER_HEAD)
+
+
+def test_user_prompt_with_no_question_on_file_exits_before_the_heavy_imports(home):
+    env = {**os.environ, "ASKAWAY_HOME": str(home)}
+    proc = subprocess.run([sys.executable, "-X", "importtime", str(SCRIPT), "hook", "deliver"],
+                          input=json.dumps(deliver_event()).encode("utf-8"), capture_output=True, env=env,
+                          timeout=20, check=False)
+    assert proc.returncode == 0 and proc.stdout == b""
+    assert not imported_argparse(proc)
+
+
+def test_reminder_subprocess_prints_through_the_real_entry_point(home, capsys, monkeypatch):
+    ask_from(capsys, monkeypatch, SESSION)
+    env = {**os.environ, "ASKAWAY_HOME": str(home)}
+    proc = subprocess.run([sys.executable, str(SCRIPT), "hook", "deliver"], input=json.dumps(deliver_event()),
+                          capture_output=True, text=True, env=env, timeout=20, check=False)
+    assert proc.returncode == 0
+    assert "withdraw --id " in json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
 
 
 def test_fast_path_takes_a_marker_with_content_without_parsing_it(home, monkeypatch):
@@ -4280,7 +4405,7 @@ def test_mcp_tools_outside_the_exact_read_prefixes_are_denied_in_a_pause(tool, c
 # ---- gauntlet 4, package P1: per-command help, pause-guard inbox calls, ask reply and fit, tables,
 # ---- prune --force, retried high-risk writes and the clock-jump guard of the daily prune
 
-HELP_COMMANDS = ("ask", "answer", "status", "list", "away", "prune", "wait", "export", "hook")
+HELP_COMMANDS = ("ask", "answer", "status", "list", "away", "prune", "wait", "export", "withdraw", "hook")
 
 
 @pytest.mark.parametrize("flag", ["--help", "-h"])
@@ -4808,6 +4933,14 @@ def test_an_answered_question_or_other_text_is_not_a_duplicate(home, capsys, mon
     assert again["action"] == "continue" and again["id"] != first["id"]
     other = cli(capsys, "ask", "--json", json.dumps(base_entry(question="Which queue should the worker use?")))
     assert other["action"] == "continue" and "duplicate" not in other
+
+
+def test_a_withdrawn_question_is_not_a_duplicate(home, capsys, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    first = cli(capsys, "ask", "--json", json.dumps(base_entry()))
+    cli(capsys, "withdraw", "--id", first["id"])
+    again = cli(capsys, "ask", "--json", json.dumps(base_entry()))
+    assert again["action"] == "continue" and again["id"] != first["id"] and "duplicate" not in again
 
 
 def test_questions_without_a_session_are_never_duplicates(home, capsys):
@@ -7154,3 +7287,201 @@ def test_read_only_mcp_finds_write_words_in_any_case_or_separator(tool):
 @pytest.mark.parametrize("tool", ["get_node", "listItems", "getMergeRequest", "query_database", "search-files"])
 def test_read_only_mcp_still_passes_read_names_in_any_case_or_separator(tool):
     assert askaway.is_read_only_mcp(f"mcp__srv__{tool}")
+
+
+# ---- withdraw: the asking session declares its question answered in chat ----
+
+def test_withdraw_by_the_asking_session_marks_the_question_and_lists_it_ended_by_chat(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    assert cli(capsys, "withdraw", "--id", item) == {"id": item, "withdrawn": True}
+    assert set(stored(home, "w", item)) == {"id", "session", "ts"}
+    assert stored(home, "w", item)["session"] == SESSION
+    assert cli(capsys, "list")["items"] == [{"id": item, "title": "Cache backend", "status": "open",
+                                             "recommended": "A", "key": None,
+                                             "ended": True, "ended_reason": "chat"}]
+
+
+def test_withdraw_from_another_session_is_refused_and_writes_no_marker(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "other-session")
+    refused = cli(capsys, "withdraw", "--id", item)
+    assert "another session" in refused["error"]
+    assert not (home / "w" / f"{item}.json").exists()
+
+
+def test_withdraw_of_an_answered_question_is_refused_and_writes_no_marker(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "answer", item, "B")
+    assert cli(capsys, "withdraw", "--id", item) == {"error": "withdraw refused: the question is answered, not open"}
+    assert not (home / "w" / f"{item}.json").exists()
+
+
+def test_withdraw_of_a_question_without_a_session_is_refused_from_any_session(home, capsys, monkeypatch):
+    item = ask_item(capsys)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "other-session")
+    assert cli(capsys, "withdraw", "--id", item) == {"error": "withdraw refused: this question has no asking session"}
+    assert not (home / "w" / f"{item}.json").exists()
+
+
+def test_withdraw_of_a_paused_question_is_refused_and_writes_no_marker(home, capsys, monkeypatch):
+    item = pending_pause(capsys, monkeypatch)
+    assert cli(capsys, "withdraw", "--id", item) == {
+        "error": "withdraw refused: the question holds a pause; the user answers it in the AskAway User panel"}
+    assert not (home / "w" / f"{item}.json").exists()
+
+
+def test_withdraw_of_an_answered_paused_question_says_it_is_answered_not_paused(home, capsys, monkeypatch):
+    item = pending_pause(capsys, monkeypatch)
+    cli(capsys, "answer", item, "B")
+    assert cli(capsys, "withdraw", "--id", item) == {"error": "withdraw refused: the question is answered, not open"}
+
+
+def test_refused_withdraw_of_a_paused_question_leaves_the_pause_guard_denying_edits(home, capsys, monkeypatch):
+    item = pending_pause(capsys, monkeypatch)
+    cli(capsys, "withdraw", "--id", item)
+    out = hook_json(capsys, monkeypatch, "pause-guard", edit_event())
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert not (home / "a" / f"{item}.json").exists()
+
+
+def test_withdraw_typed_in_bash_is_let_through_by_the_pause_guard_and_refused_on_a_pause(home, capsys, monkeypatch):
+    item = pending_pause(capsys, monkeypatch)
+    command = f"python3 {askaway.SCRIPT_PATH} withdraw --id {item}"
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+    assert "error" in cli(capsys, "withdraw", "--id", item)
+    assert hook_json(capsys, monkeypatch, "pause-guard", edit_event())["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_withdraw_writes_its_marker_and_reads_its_status_under_the_ask_lock(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    held = {"lock": False}
+    checks: list[bool] = []
+    real_status = askaway.item_status
+    real_create_once = askaway.create_once
+
+    @contextlib.contextmanager
+    def lock_spy():
+        held["lock"] = True
+        try:
+            yield
+        finally:
+            held["lock"] = False
+
+    def status_spy(item_id):
+        checks.append(held["lock"])
+        return real_status(item_id)
+
+    def create_spy(path, record):
+        checks.append(held["lock"])
+        return real_create_once(path, record)
+
+    monkeypatch.setattr(askaway, "_ask_lock", lock_spy)
+    monkeypatch.setattr(askaway, "item_status", status_spy)
+    monkeypatch.setattr(askaway, "create_once", create_spy)
+    assert cli(capsys, "withdraw", "--id", item) == {"id": item, "withdrawn": True}
+    assert checks and all(checks)
+
+
+def test_withdraw_twice_is_idempotent_and_keeps_the_first_marker(home, clock, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    first = stored(home, "w", item)
+    clock["ms"] += 60_000
+    assert cli(capsys, "withdraw", "--id", item) == {"id": item, "withdrawn": True}
+    assert stored(home, "w", item) == first
+
+
+def test_withdraw_of_a_damaged_question_is_a_usage_error_and_writes_no_marker(home, capsys):
+    item = ask_item(capsys)
+    (home / "q" / f"{item}.json").write_text("[]", encoding="utf-8")
+    assert usage_error(capsys, "withdraw", "--id", item) == {"error": "damaged inbox question: its file does not read"}
+    assert not (home / "w" / f"{item}.json").exists()
+
+
+def test_withdraw_needs_an_id(capsys):
+    assert "error" in usage_error(capsys, "withdraw")
+
+
+def test_withdraw_refusal_exits_0_and_exits_1_only_with_strict(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "other-session")
+    code, refused = run_code(capsys, "withdraw", "--id", item)
+    assert code == 0 and "another session" in refused["error"]
+    code, refused = run_code(capsys, "withdraw", "--id", item, "--strict")
+    assert code == 1 and "another session" in refused["error"]
+
+
+def test_withdraw_typed_in_bash_is_not_denied_by_the_tamper_check_without_a_pause(capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    command = f"python3 {askaway.SCRIPT_PATH} withdraw --id {item}"
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+
+
+def test_answer_of_a_withdrawn_question_is_refused_and_writes_no_answer(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "answer", item, "B") == {"error": "answer refused: the question was answered in chat and withdrawn"}
+    assert not (home / "a" / f"{item}.json").exists()
+
+
+def test_answer_on_file_still_answers_first_even_when_a_withdrawal_marker_exists(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "answer", item, "B")
+    (home / "w").mkdir(parents=True, exist_ok=True)
+    (home / "w" / f"{item}.json").write_text(json.dumps({"id": item, "session": SESSION, "ts": 1}), encoding="utf-8")
+    reply = cli(capsys, "answer", item, "A")
+    assert reply["key"] == "B" and reply["written"] is False
+
+
+def test_status_reports_withdrawn_on_the_question_that_stays_open(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "status", item) == {"id": item, "status": "open", "key": None, "withdrawn": True}
+
+
+def test_wait_returns_withdrawn_at_once_and_strict_exits_1(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "wait", item, "--timeout", "5") == {"id": item, "status": "withdrawn"}
+    assert run_code(capsys, "wait", item, "--timeout", "5", "--strict") == (1, {"id": item, "status": "withdrawn"})
+
+
+def test_list_gives_a_session_ended_question_the_reason_session(home, capsys, monkeypatch):
+    ask_from(capsys, monkeypatch, SESSION)
+    release_marker(home, SESSION)
+    assert cli(capsys, "list")["items"][0]["ended_reason"] == "session"
+
+
+def test_a_withdrawn_question_whose_session_ended_is_listed_with_the_reason_chat(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    release_marker(home, SESSION)
+    assert cli(capsys, "list")["items"][0]["ended_reason"] == "chat"
+
+
+def test_prune_id_force_removes_a_withdrawn_question_and_its_marker(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "prune", "--id", item, "--force") == {"removed": 1, "id": item}
+    assert not (home / "q" / f"{item}.json").exists()
+    assert not (home / "w" / f"{item}.json").exists()
+    assert cli(capsys, "list") == {"items": []}
+
+
+def test_prune_removes_a_withdrawal_marker_whose_question_is_gone(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    (home / "q" / f"{item}.json").unlink()
+    assert cli(capsys, "prune") == {"removed": 1, "removed_ids": [item]}
+    assert not (home / "w" / f"{item}.json").exists()
