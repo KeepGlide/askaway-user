@@ -855,6 +855,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 2.1.0 | 2026-11-16 | O texto digitado no campo Outra vira a resposta meio segundo depois da última tecla, então um clique fora do painel não o deixa mais sem registro. |
 | 2.1.1 | 2026-11-16 | Sai a gravação do texto de Outra por pausa na digitação: o redesenho durante a digitação perdia teclas. O texto volta a contar quando você sai do campo, aperta um botão, aperta Enter ou fecha o painel. |
 | 2.2.0 | 2026-11-17 | Uma pergunta respondida na janela do chat pode ser retirada com `withdraw --id`, para o cartão deixar de esperar na caixa de entrada; o cartão diz que foi respondida no chat e oferece só Dispensar. |
+| 2.3.1 | 2026-11-20 | A limpeza diária sempre remove as perguntas retiradas, e o painel lê as retiradas de uma só fonte por pasta. |
 | 2.3.0 | 2026-11-20 | Uma sessão rodando `/goal` nunca é capturada: o `ask` não registra nada e o `AskUserQuestion` não é negado. Uma pergunta respondida na janela do chat sai da caixa de entrada na hora, a não ser que tenha pausa, e o `prune` a remove. A árvore do Desktop desenha uma linha contínua para as sessões derivadas. |
 
 ## 🤝 Contribuição

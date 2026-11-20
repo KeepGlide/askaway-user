@@ -8,6 +8,12 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-20
+
+### Fixed
+- **A withdrawn question is always swept by the daily prune**: an error in the other daily cleanups no longer skips it.
+- **The pane decides withdrawn questions from one source**, the withdrawals the asking sessions wrote, and does not carry one folder's withdrawals over to another.
+
 ## [2.3.0] - 2026-11-20
 
 ### Added
@@ -1078,7 +1084,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/KeepGlide/askaway-user/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/KeepGlide/askaway-user/compare/v2.2.0...v2.3.0
 [1.1.13]: https://github.com/KeepGlide/askaway-user/compare/v1.1.12...v1.1.13
 [1.1.12]: https://github.com/KeepGlide/askaway-user/compare/v1.1.11...v1.1.12

@@ -855,6 +855,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 2.1.0 | 2026-11-16 | Text typed in the Other field is kept as the answer half a second after the last key, so a click outside the pane no longer leaves it unrecorded. |
 | 2.1.1 | 2026-11-16 | The idle commit of Other text is removed: its redraw while typing dropped keys. The text counts again when you leave the field, press a button, press Enter or close the pane. |
 | 2.2.0 | 2026-11-17 | A question answered in the chat window can be withdrawn with `withdraw --id`, so its card stops waiting in the inbox; the card says it was answered in the chat and offers Dismiss only. |
+| 2.3.1 | 2026-11-20 | The daily prune always sweeps withdrawn questions, and the pane reads withdrawals from one source per folder. |
 | 2.3.0 | 2026-11-20 | A `/goal` session is never captured: `ask` files nothing and its `AskUserQuestion` is not denied. A question answered in the chat window leaves the inbox at once unless it holds a pause, and `prune` removes it. The desktop tree draws one continuous line for the derived sessions. |
 
 ## 🤝 Contributing
