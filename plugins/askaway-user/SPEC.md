@@ -446,6 +446,12 @@ not in moving the button above the questions. `hooks/pane.tsx`, `renderPane`.
     with a mark and its title: ● the question on screen (bold), ○ the others; a picked row ends with " ✓ - " and its Submit link.
     The questions of a session that is not the last are indented with `paddingLeft={1}` and prefixed "│  "; those
     of the last session are indented with `paddingLeft={4}` (`renderBranchSession`, `renderTreeQuestion`, `hooks/pane.tsx`).
+    On the Desktop (owner, 2026-11-20, as KeepAway Repo's timeline line) the glyphs give way to one continuous line: a `subtle` rule in an
+    axis 3 cells wide, beside each derived session that is not the last, stretched to the height of its label and its question rows, so the
+    blocks touch and the line runs on with no gap; the last session's rule stops at the middle of its label, and its rows have no rule. A
+    `subtle` tick one cell wide joins the rule to each session's label at its middle. The marks stay in the same column under either session
+    (`renderLineSession`, `lineAxis`, `lineTick`, `hooks/pane.tsx`). The review tree and the History tree on the Desktop draw the same line;
+    the terminal keeps "├ ", "│  " and "└ ".
   - The card shows the questions of one group at a time (the group on screen); the other groups stay in the tree only,
     and the picks of every group are kept.
   - **Pressing a question row**: each question row is a link. Where the surface draws Markdown it is a Markdown block, `<mark> [<title>](file:///askaway/jump/<question id>)`, the one mark being the row's state (● on screen, ○ waiting) and never the link mark `▪` (`LINK_MARK`, `hooks/look.ts`) beside it, the title in `**…**` while the card on screen is that question; `pressableLinks` names only that href, and `onLinkPress` runs the jump. The Desktop draws the link dotted and underlined, as its own links. Where Markdown is not drawn it is the underlined plain Button it was (key `tree-jump-<question id>`, `treeLink`, `renderTreeQuestion`,

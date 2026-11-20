@@ -5499,6 +5499,46 @@ test('a tree row reads its title in the current language: the pt-BR title in Por
   await pane.unmount()
 })
 
+test('the desktop tree hangs its derived sessions off one subtle line: the first session block stretches with its rule and rows, the last rule stops at its label, a tick joins each label, and no glyph is drawn', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 's1', session_title: 'spec-49 follow-ups' })],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000, { session: 's2' })],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($, 'desktop')
+  const nodes = nodesOf(await pane.drawn())
+  const nodeAt = (key: string) => nodes.find(node => keyOfNode(node) === key)
+  // The first session is not the last: its block is a stretched row, the rule beside every row of the block, and its tick joins its label.
+  const first = nodeAt('session-q-l1-aaaaaa')
+  expect(first?.props).toMatchObject({ flexDirection: 'row', alignItems: 'stretch' })
+  const firstNodes = nodesOf(first)
+  expect(firstNodes.find(node => keyOfNode(node) === 'session-q-l1-aaaaaa-rule')?.props).toMatchObject({ backgroundColor: 'subtle', flexGrow: 1 })
+  expect(firstNodes.some(node => keyOfNode(node) === 'session-q-l1-aaaaaa-tick-line')).toBe(true)
+  expect(firstNodes.some(node => keyOfNode(node) === 'tree-jump-q-l1-aaaaaa')).toBe(true)
+  // The last session: its rule stops at its label's middle (a spacer of the same height below it), and its rows sit outside the label row.
+  const last = nodeAt('session-q-l2-bbbbbb')
+  expect(last?.props).toMatchObject({ flexDirection: 'column' })
+  const lastLabelNodes = nodesOf(nodeAt('session-q-l2-bbbbbb-label'))
+  expect(lastLabelNodes.find(node => keyOfNode(node) === 'session-q-l2-bbbbbb-rule')?.props).toMatchObject({ backgroundColor: 'subtle', flexGrow: 1 })
+  expect(lastLabelNodes.some(node => keyOfNode(node) === 'session-q-l2-bbbbbb-stop')).toBe(true)
+  expect(lastLabelNodes.some(node => keyOfNode(node) === 'tree-jump-q-l2-bbbbbb')).toBe(false)
+  expect(nodesOf(last).some(node => keyOfNode(node) === 'tree-jump-q-l2-bbbbbb')).toBe(true)
+  // The labels take no glyph; the tick joins the rule to each label.
+  expect(await pane.find({ type: 'Text', text: 'Spec-49 Follow-ups' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: 'a sessão' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '├ Spec-49 Follow-ups' })).toBeUndefined()
+  expect(await pane.find({ type: 'Text', text: '└ a sessão' })).toBeUndefined()
+  await pane.unmount()
+  // The terminal keeps its glyphs and draws no line.
+  const terminal = await mountPane($)
+  const terminalNodes = nodesOf(await terminal.drawn())
+  expect(terminalNodes.some(node => String(keyOfNode(node)).endsWith('-rule'))).toBe(false)
+  expect(terminalNodes.some(node => (node.props as Record<string, unknown> | undefined)?.backgroundColor === 'subtle')).toBe(false)
+  expect(await terminal.find({ type: 'Text', text: '├ Spec-49 Follow-ups' })).toBeDefined()
+  await terminal.unmount()
+})
+
 test('the tree draws the group row in bold, each session with ├ or └, and one mark per question', async ($, on) => {
   stubHost(on, treeFiles())
   await $.session.start(SESSION)
@@ -5875,9 +5915,10 @@ test('History: an Other text with Markdown in it never makes a link or a style; 
   // beta.35: a History row is plain text, so the typed text reads as it was typed and makes no link.
   expect(await pane.find({ type: 'Markdown', text: /\(#local_evil\)/ })).toBeUndefined()
   expect((await textsOf(pane)).some(text => text.startsWith('○ Title q-l1-aaaaaa ✓ “*x* ](#local_evil)” · '))).toBe(true)
-  // The group of a question with no project and no family is keyed ''; its session row (null session, key '') still draws, as "└ a sessão".
+  // The group of a question with no project and no family is keyed ''; its session row (null session, key '') still draws, as "a sessão":
+  // the desktop line draws no glyph, its tick joins the label instead.
   const texts = await textsOf(pane)
-  expect(texts).toContain('└ a sessão')
+  expect(texts).toContain('a sessão')
   await pane.unmount()
 })
 
@@ -5896,7 +5937,7 @@ test('History: the family label and a derived session row link to their Desktop 
   const icon = nodesOf(await pane.drawn()).find(node => node.type === 'Svg' && (node.props as Record<string, unknown>).alt === '' && (node.props as Record<string, unknown>).width === 16)
   expect(icon?.props).toMatchObject({ alt: '', width: 16, height: 16 })
   expect(await pane.find({ type: 'Markdown', text: '**[Release Checklist Review](#local_root)**' })).toBeDefined()
-  expect(await pane.find({ type: 'Markdown', text: '└ [Child Session](#local_child)' })).toBeDefined()
+  expect(await pane.find({ type: 'Markdown', text: '[Child Session](#local_child)' })).toBeDefined()
   // The root's row sits under the family label with no lead; the child's row under its session row.
   expect((await textsOf(pane)).some(text => text.startsWith('○ Title q-l1-aaaaaa ✓ Keep · '))).toBe(true)
   expect((await textsOf(pane)).some(text => text.startsWith('○ Title q-l2-bbbbbb ✓ '))).toBe(true)
@@ -5934,9 +5975,9 @@ test('History: a family id that is not a well-formed Desktop id draws a plain bo
   const markdowns = nodesOf(await pane.drawn()).filter(node => node.type === 'Markdown').map(node => String((node.props as Record<string, unknown>).text))
   expect(markdowns.some(text => text.includes('](https://') || text.includes('Odd Fam'))).toBe(false)
   expect(await pane.find({ type: 'Text', text: 'Odd Fam' })).toBeDefined()
-  // The legacy derived session (no desktop_session, title unlike the family's) is a "└" row under its family's label.
+  // The legacy derived session (no desktop_session, title unlike the family's) is a row under its family's label, with no glyph on the line.
   expect(await pane.find({ type: 'Markdown', text: '**[Old Root](#local_old)**' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: '└ Child Session' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: 'Child Session' })).toBeDefined()
   await pane.unmount()
 })
 
