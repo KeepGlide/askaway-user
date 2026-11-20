@@ -8,6 +8,13 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+### Added
+- **The question tree draws one straight line on the desktop**: the sessions of a group hang off a continuous line with a short tick to each session, as in KeepAway Repo's timeline, instead of "├", "│" and "└" pieces with gaps between rows. The terminal keeps its glyphs.
+
+### Changed
+- **A question answered in the chat window is discarded**: once the asking session withdraws it, its card leaves the inbox at once, with no Dismiss to press, and the daily prune deletes its files. A withdrawn question that still holds a pause keeps its card, since only its Dismiss lifts the pause.
+- **Sessions running `/goal` are never captured**: a `/goal` session cannot stop to wait, so its AskUserQuestion stays in its own window even while you are away, `askaway.py ask` files nothing and tells it to continue on its recommended option, and an old pause no longer holds it. The goal is read from the session's transcript, a forked or resumed session included; anything unclear counts as no goal.
+
 ## [2.2.0] - 2026-11-17
 
 ### Added
