@@ -117,6 +117,9 @@ The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","ac
   A `pause` on a question filed without a session holds no session's pause: no hook
   stops your calls, so you stop on your own and treat the `pause` reply as a stop.
 - `low` and `medium` never pause a new question; a repeat of a paused question does.
+- `"captured":false` with `"reason":"goal"` and `"action":"continue"`: this session runs under `/goal`, which
+  cannot stop to wait, so nothing was filed. Continue on `recommended` (null when the entry had none) and ask in this
+  window if you must. It never says pause.
 - `"action":"open"` with `"duplicate":true`: the same question is already open.
   Do not file it again; continue on its `recommended` option.
 - `"action":"pause"` with `"duplicate":true`: the same question is already open and

@@ -1298,6 +1298,57 @@ def _session_file(session: str | None, suffix: str, project: str | None) -> Path
     return next(projects_root().glob(f"*/{name}"), None)
 
 
+def _record_of(line: str) -> dict[str, Any] | None:
+    """One transcript line as a JSON object, or None (a line that is not JSON, or not an object)."""
+    try:
+        record = json.loads(line)
+    except (ValueError, RecursionError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _goal_state(line: str, session: str, inherited: bool) -> bool | None:
+    """The goal state one transcript line sets for this session: True while a goal runs, False once it is met or
+    cleared, None for a line that is no goal record of the session (a line that is not JSON is none). While
+    `inherited`, a record of another session counts too: a forked or resumed transcript starts with the parent's
+    copied lines, and the parent's goal goes on in the child until the child's own records say otherwise."""
+    record = _record_of(line)
+    if record is None:
+        return None
+    owner = record.get("sessionId")
+    if owner != session and not (inherited and isinstance(owner, str) and owner):
+        return None
+    attachment = record.get("attachment")
+    if record.get("type") == "attachment" and isinstance(attachment, dict) and attachment.get("type") == "goal_status":
+        return attachment.get("met") is False  # exactly false: a missing or null met is no unmet goal
+    command = record.get("commandRun")
+    if isinstance(command, dict) and command.get("command") == "goal" and command.get("args") == "clear":
+        return False
+    return None
+
+
+def goal_active(session: str | None, project: str | None) -> bool:
+    """Is this session running under /goal? Its transcript says so: the last goal record decides (_goal_state), the
+    parent's copied records counting until the session's own first record. Any failure reads as not a goal session, so the normal capture stays."""
+    try:
+        path = _session_file(session, ".jsonl", project)
+        if not session or path is None:
+            return False
+        active, inherited = False, True
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if inherited and session in line and (_record_of(line) or {}).get("sessionId") == session:
+                    inherited = False  # the session's own records begin: another session's lines no longer count
+                if "goal" not in line:
+                    continue  # every goal record names "goal": a cheap prefilter, never the decision
+                state = _goal_state(line, session, inherited)
+                if state is not None:
+                    active = state
+        return active
+    except Exception:  # noqa: BLE001 - fail open: a transcript that cannot be read is not a goal session
+        return False
+
+
 def _title_rows(path: Path) -> dict[str, str]:
     """The last title text per title entry type, streamed; unparsable lines are skipped."""
     latest: dict[str, str] = {}
@@ -1618,10 +1669,24 @@ def _duplicate_reply(twin: Mapping[str, Any]) -> dict[str, Any]:
             "action": action, "duplicate": True}
 
 
+GOAL_MESSAGE: Final = ("This session runs under /goal and cannot stop: nothing was filed. Continue with the recommended "
+                       "option and ask in this window if you must.")
+
+
+def _goal_reply(raw: object) -> dict[str, Any]:
+    """The reply to an ask from a /goal session: nothing is filed, and the session continues on its recommended option."""
+    return {"captured": False, "reason": "goal", "action": "continue", "recommended": _given_text(raw, "recommended"),
+            "message": GOAL_MESSAGE}
+
+
 def cmd_ask(json_text: str | None) -> dict[str, Any]:
     raw: object = None
     twin: dict[str, Any] | None = None
     try:
+        if goal_active(caller_session(), os.getcwd()):  # before parsing and validation: a goal session never gets a refile
+            with contextlib.suppress(Exception):  # an entry that does not parse still continues, with no recommended key
+                raw = _entry_json(json_text)
+            return _goal_reply(raw)
         raw = _entry_json(json_text)
         if not isinstance(raw, dict):
             raise ValueError("the entry must be a JSON object")  # noqa: TRY004 - CLI validation channel
@@ -1972,6 +2037,30 @@ def _orphan_ids() -> list[str]:
     return [item_id for item_id in sorted(ids) if not os.path.lexists(item_path("q", item_id))]
 
 
+def _withdrawn_unpaused(entry: Mapping[str, Any]) -> bool:
+    """A withdrawn question that holds no pause: answered in chat, and nothing waits on it."""
+    item_id = entry["id"]
+    return entry.get("pause") is not True and withdrawn(item_id) and item_status(item_id)[0] == "open"
+
+
+def _withdrawn_ids(entries: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The withdrawn questions prune may remove whatever the window, read only (_remove_withdrawn checks them again)."""
+    return [entry["id"] for entry in entries if _withdrawn_unpaused(entry)]
+
+
+def _remove_withdrawn(item_ids: Sequence[str]) -> list[str]:
+    """Remove each withdrawn question that still holds no pause, under the ask lock: a high-risk repeat that pauses one
+    between the listing and the removal keeps it. Returns the ids removed."""
+    with _ask_lock():
+        removed: list[str] = []
+        for item_id in dict.fromkeys(item_ids):
+            entry = read_json(item_path("q", item_id))
+            if (entry is not None and _question_matches(item_id, entry) and _withdrawn_unpaused(entry)
+                    and _remove_item(item_id)):
+                removed.append(item_id)
+        return removed
+
+
 def _closed_ids(days: int, entries: Sequence[Mapping[str, Any]]) -> list[str]:
     """The closed items whose closing time is older than the window."""
     cutoff = now_ms() - days * DAY_MS
@@ -2006,9 +2095,10 @@ def cmd_prune(days: int, dry_run: bool) -> dict[str, Any]:
     entries, damaged = load_questions()
     # Damaged files are cleared whatever the window: the user's way out of a pause.
     candidates = [*sorted({*damaged, *_unreadable_answers()}), *_orphan_ids(), *_closed_ids(days, entries)]
+    withdrawn_ids = _withdrawn_ids(entries)
     if dry_run:
-        return {"dry_run": True, "would_remove_ids": _would_remove(candidates)}
-    removed = _remove_all(candidates)
+        return {"dry_run": True, "would_remove_ids": _would_remove([*candidates, *withdrawn_ids])}
+    removed = [*_remove_all(candidates), *_remove_withdrawn(withdrawn_ids)]
     return {"removed": len(removed), "removed_ids": removed}
 
 
@@ -2379,6 +2469,9 @@ def hook_ask_guard(event: Mapping[str, Any]) -> HookOutput:
     if not skeletons:
         return None
     multi_selects = [question.get("multiSelect") is True for question in questions]
+    if goal_active(event.get("session_id"), event.get("cwd")):
+        # a /goal session cannot stop to wait: its question stays in its own window
+        return None
     return deny(askuser_reason(skeletons, multi_selects))
 
 
@@ -4056,6 +4149,8 @@ def _pause_decision(event: Mapping[str, Any]) -> HookOutput:
     blocking = _holding_question(session, event.get("agent_id") or None)
     if blocking is None:
         return None
+    if goal_active(session, event.get("cwd")):  # a /goal session cannot stop to wait: its pause does not deny
+        return None
     item_id, title = blocking
     hint = _ask_form_hint(tool, command)
     if title is None:
@@ -4379,8 +4474,10 @@ def _maybe_prune() -> None:
             return
         with contextlib.suppress(OSError):
             _remove_stale_temps()
-            _remove_all(_closed_ids(prune_days(), load_questions()[0]))  # never a damaged file: the user clears those
+            entries = load_questions()[0]  # never a damaged file: the user clears those
+            _remove_all(_closed_ids(prune_days(), entries))
             _remove_all(_orphan_ids())
+            _remove_withdrawn(_withdrawn_ids(entries))
 
 
 def _foreign_recheck_due() -> bool:

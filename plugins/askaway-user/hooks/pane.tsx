@@ -214,9 +214,22 @@ type TreeRow = (place: RowPlace) => RenderElement
 // `href`: a Desktop session id (local_<uuid>) the label links to, as "#<id>", where the surface draws Markdown; the
 // surface opens it itself. Absent, the label is plain text.
 type TreeSession = { key: string; label: string; isRoot: boolean; href?: string; rows: readonly TreeRow[] }
-type TreeBranch = { key: string; label: string; href?: string; sessions: readonly TreeSession[] }
+// `line`: the desktop draws the derived sessions on one line (renderLineSession); the terminal draws their "├ "/"└ " glyphs.
+type TreeBranch = { key: string; label: string; href?: string; line: boolean; sessions: readonly TreeSession[] }
 const ROOT_PLACE: RowPlace = { lead: '', indent: 1 }
 export const placeUnder = (isFinal: boolean): RowPlace => (isFinal ? { lead: '', indent: 4 } : { lead: '│  ', indent: 1 })
+
+// The desktop line (owner, 2026-11-20; as KeepAway Repo's timeline line): one `subtle` rule beside a branch's derived sessions, in an axis
+// TREE_AXIS_COLUMNS cells wide with the rule at its right edge, and a tick TREE_TICK_COLUMNS cell wide that joins the rule to each session's
+// label. The tick is a thin row: spacers of TREE_TICK_SHARE on each side of its line, so it sits at the label's middle, a fraction of its height.
+const TREE_LINE_FILL = 'subtle' as const
+const TREE_AXIS_COLUMNS = 3
+const TREE_TICK_COLUMNS = 1
+const TREE_RULE_WIDTH = '12%'
+const TREE_TICK_SHARE = 4
+// The rows under a non-final session sit one cell past the axis (3 + 1); under the last session, with no axis, they sit at placeUnder(true)'s
+// 4. Both put the marks in the same column.
+const LINE_ROW_PLACE: RowPlace = { lead: '', indent: 1 }
 
 // The tree of the open questions: every group in turn, one under the other, each with its sessions and their questions.
 // Indentation is the Box's paddingLeft, not leading spaces, which a desktop may collapse.
@@ -237,6 +250,7 @@ function renderGroup(tree: TreeContext, group: Group): RenderElement {
   return renderBranch(tree.ui, {
     key: `group-${group.key}`,
     label: groupLabelOf(group.questions[0], tree.lang),
+    line: tree.view.surface === 'desktop',
     sessions: group.sessions.flatMap(questions => {
       const [first] = questions
       if (first === undefined) return []
@@ -262,7 +276,71 @@ function renderBranch(ui: Ui, branch: TreeBranch): RenderElement {
     <Box key={branch.key} flexDirection="column">
       {sessionLink(ui, branch.href, branch.label, true) ?? <Text bold>{branch.label}</Text>}
       {branch.sessions.filter(session => session.isRoot).map(session => renderRootRows(ui, session))}
-      {derived.map((session, index) => renderBranchSession(ui, session, index === lastSession))}
+      {derived.map((session, index) =>
+        branch.line ? renderLineSession(ui, session, index === lastSession) : renderBranchSession(ui, session, index === lastSession),
+      )}
+    </Box>
+  )
+}
+
+// A derived session on the desktop: its label and rows beside one line. When another session follows, the rule runs the whole block
+// (label and rows) with no gap, so the rows hang off it. The last session's rule stops at its label's middle, and its rows sit with no
+// rule beside them.
+function renderLineSession(ui: Ui, session: TreeSession, isFinal: boolean): RenderElement {
+  const { Box } = ui
+  if (isFinal) {
+    return (
+      <Box key={session.key} flexDirection="column">
+        {renderLineLabel(ui, session, lineAxis(ui, session.key, true))}
+        {session.rows.map(row => row(placeUnder(true)))}
+      </Box>
+    )
+  }
+  return (
+    <Box key={session.key} flexDirection="row" alignItems="stretch">
+      {lineAxis(ui, session.key, false)}
+      <Box key={`${session.key}-body`} flexDirection="column" flexGrow={1}>
+        {renderLineLabel(ui, session)}
+        {session.rows.map(row => row(LINE_ROW_PLACE))}
+      </Box>
+    </Box>
+  )
+}
+
+// The axis of a line: the rule at its right edge, filling the height of the row it sits in. `isStop`: a spacer under the rule of equal
+// height, so the rule ends at the middle of the row (the last session's label).
+function lineAxis(ui: Ui, key: string, isStop: boolean): RenderElement {
+  const { Box } = ui
+  return (
+    <Box key={`${key}-axis`} width={TREE_AXIS_COLUMNS} flexDirection="column" alignItems="flex-end">
+      <Box key={`${key}-rule`} width={TREE_RULE_WIDTH} flexGrow={1} backgroundColor={TREE_LINE_FILL} />
+      {isStop && <Box key={`${key}-stop`} flexGrow={1} />}
+    </Box>
+  )
+}
+
+// The tick that joins the rule to a label: a thin `subtle` row at the label's middle, in a column one cell wide.
+function lineTick(ui: Ui, key: string): RenderElement {
+  const { Box } = ui
+  return (
+    <Box key={`${key}-tick`} width={TREE_TICK_COLUMNS} flexDirection="column">
+      <Box key={`${key}-tick-above`} flexGrow={TREE_TICK_SHARE} />
+      <Box key={`${key}-tick-line`} width="100%" flexGrow={1} backgroundColor={TREE_LINE_FILL} />
+      <Box key={`${key}-tick-below`} flexGrow={TREE_TICK_SHARE} />
+    </Box>
+  )
+}
+
+// A session's label on the desktop line: the axis (only under the last session), the tick, then the label, linked where a session is known.
+function renderLineLabel(ui: Ui, session: TreeSession, axis?: RenderElement): RenderElement {
+  const { Box, Text } = ui
+  return (
+    <Box key={`${session.key}-label`} flexDirection="row" alignItems="stretch">
+      {axis}
+      {lineTick(ui, session.key)}
+      <Box key={`${session.key}-name`} flexGrow={1}>
+        {sessionLink(ui, session.href, session.label, false) ?? <Text>{session.label}</Text>}
+      </Box>
     </Box>
   )
 }
@@ -322,6 +400,7 @@ function renderHistory(tree: TreeContext, history: readonly HistoryGroup[], clea
             key: `history-group-${group.key}`,
             label: group.label,
             href: linked ? group.href : undefined,
+            line: linked,
             sessions: group.sessions.map(session => ({
               key: `history-session-${session.key}`,
               label: session.label,
@@ -947,6 +1026,7 @@ function renderReview(tree: TreeContext, group: Group, screen: Screen): RenderEl
       {renderBranch(ui, {
         key: `group-${group.key}`,
         label: groupLabelOf(group.questions[0], lang),
+        line: view.surface === 'desktop',
         sessions: group.sessions.flatMap(questions => {
           const [first] = questions
           if (first === undefined) return []

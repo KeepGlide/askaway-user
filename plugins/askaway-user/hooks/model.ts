@@ -211,6 +211,7 @@ export function parseQuestion(raw: unknown, id: string): Question | undefined {
     options,
     recommended,
     risk: typeof raw.risk === 'string' ? raw.risk : 'low',
+    ...(raw.pause === true && { pause: true }),
     translations: translationsOf(raw.translations, options),
   }
 }
@@ -334,15 +335,38 @@ export function parseCleared(raw: unknown): Cleared | undefined {
   return { ts, ids }
 }
 
+// A state-folder file name is an item id when it matches the id pattern (the w/ markers, the q/ files).
+export const isItemId = (id: string): boolean => ID_PATTERN.test(id)
+
+const isWithdrawn = (board: Board, id: string): boolean => board.withdrawn?.includes(id) === true
+
+// A withdrawn question is off the board unless it holds a pause: the pause is lifted only from its card, so that card stays
+// (the chat notice and Dismiss, register: endedChat).
+const isWithdrawnOff = (board: Board, question: Question): boolean => isWithdrawn(board, question.id) && question.pause !== true
+
+// THE derivation of the questions on the board: every question of the folder but the withdrawn ones that hold no pause. The
+// open questions, the counts, the rounds, the toast and the pick path all read it through here, so every view agrees.
+export function boardQuestions(board: Board): Question[] {
+  return board.questions.filter(question => !isWithdrawnOff(board, question))
+}
+
+// The ids of the withdrawn questions off the board: their picks and drafts are dropped as an ended question's are (settledIds).
+export const hiddenWithdrawnIds = (board: Board): string[] =>
+  board.questions.filter(question => isWithdrawnOff(board, question)).map(question => question.id)
+
+// The ids of the withdrawn questions that hold a pause: they stay on the board, drawn with the chat notice and Dismiss.
+export const pausedWithdrawnIds = (board: Board): string[] =>
+  board.questions.filter(question => isWithdrawn(board, question.id) && question.pause === true).map(question => question.id)
+
 export const isOpenIn = (board: Board, id: string): boolean =>
-  board.questions.some(question => question.id === id) && !board.answers.some(answer => answer.id === id)
+  boardQuestions(board).some(question => question.id === id) && !board.answers.some(answer => answer.id === id)
 
 // The open questions the pane lists: no answer yet and no delivery marker, except a card still fading out after its
 // press (answered, but in `leaving`). Oldest first, so the card that has waited longest sits on top, as in the mock.
 export function openQuestions(board: Board, leaving: Leaving): Question[] {
   const answered = new Set(board.answers.map(answer => answer.id))
   const delivered = new Set(board.delivered.map(delivery => delivery.id))
-  return board.questions
+  return boardQuestions(board)
     .filter(question => (!answered.has(question.id) || leaving[question.id] !== undefined) && !delivered.has(question.id))
     .sort((a, b) => a.ts - b.ts)
 }

@@ -16,6 +16,8 @@ import {
   answerWho,
   footerText,
   groupBySession,
+  hiddenWithdrawnIds,
+  isItemId,
   isOpenIn,
   isOwnButtonKey,
   leadOf,
@@ -41,6 +43,7 @@ import {
   withLocalAnswers,
   damagedPauseOf,
   pausedText,
+  pausedWithdrawnIds,
   NO_DESKTOP_GROUPS,
   parseDesktopGroups,
   withDesktopGroup,
@@ -164,6 +167,8 @@ let panelFolderMade = false
 const questionCache = new Map<string, Question>()
 const answerCache = new Map<string, Answer>()
 const deliveryCache = new Map<string, Delivery>()
+// The ids the w/ markers named at the last listing that worked: a failed listing keeps them (readWithdrawn).
+let withdrawnFolder: string[] = []
 // Question ids whose answer a press is writing now, answer ids being handed to the prompt now, and group keys whose
 // submit-all is in flight. Each is checked before the first await, so a second press or an overlapping poll does nothing.
 const pressing = new Set<string>()
@@ -354,14 +359,29 @@ async function readDesktopGroups($: EngineInterface): Promise<DesktopGroups> {
   }
 }
 
+// The ids the asking sessions withdrew: the names of the w/ markers, read on each poll. A missing folder reads as none; a listing
+// that fails keeps the last set, as the other readers do.
+async function readWithdrawn($: EngineInterface, home: string): Promise<string[]> {
+  const listed = await jsonIds($, `${home}/w`)
+  if (listed !== undefined) withdrawnFolder = listed.filter(isItemId)
+  return withdrawnFolder
+}
+
 // The board, and the ids of the reply files listed in a/ (an unreadable one included), so a poll lists that folder once.
 async function readBoard($: EngineInterface, home: string): Promise<{ board: Board; answerFileIds: string[]; damagedPauses: string[] }> {
   const questions = await readCached($, `${home}/q`, questionCache, parseQuestion)
   const answers = await readCached($, `${home}/a`, answerCache, parseAnswer)
   const delivered = await readCached($, `${home}/d`, deliveryCache, parseDelivery)
   const groups = await readDesktopGroups($)
+  // The markers' ids and the chat-ended ids of the last list run; the board hides the withdrawn ones (boardQuestions).
+  const withdrawn = [...new Set([...(await readWithdrawn($, home)), ...(await read($, endedChatAtom))])]
   return {
-    board: { questions: questions.found.map(question => withDesktopGroup(question, groups)), answers: answers.found, delivered: delivered.found },
+    board: {
+      questions: questions.found.map(question => withDesktopGroup(question, groups)),
+      answers: answers.found,
+      delivered: delivered.found,
+      withdrawn,
+    },
     answerFileIds: answers.ids,
     damagedPauses: await damagedPausesOf($, home, questions, answers.ids, delivered.ids),
   }
@@ -546,7 +566,12 @@ async function mergeEnded($: EngineInterface, ended: EndedQuestion[]): Promise<s
   const ids = ended.map(item => item.id)
   const chatIds = ended.filter(item => item.reason === 'chat').map(item => item.id)
   if (JSON.stringify(ids) !== JSON.stringify(await read($, endedAtom))) await update($, endedAtom, () => ids)
-  if (JSON.stringify(chatIds) !== JSON.stringify(await read($, endedChatAtom))) await update($, endedChatAtom, () => chatIds)
+  if (JSON.stringify(chatIds) !== JSON.stringify(await read($, endedChatAtom))) {
+    await update($, endedChatAtom, () => chatIds)
+    // A question answered in the chat is withdrawn now, not at the next poll: the board hides it from this write on.
+    const current = await read($, board)
+    await mergeBoard($, { ...current, withdrawn: [...new Set([...(current.withdrawn ?? []), ...chatIds])] })
+  }
   return ids
 }
 
@@ -1189,12 +1214,14 @@ function queueChanges<V>(before: Record<string, V>, after: Record<string, V>, qu
 
 // Submit all: each question of the group gets its answer through the answer path, then its picks are cleared and the
 // step goes back to the first question. Nothing is written unless every question has a pick.
-// The ids whose pick may go once the submit has run: their reply is on the board, or their session ended (a pick of an ended
-// question is dropped, H9). A pick whose press is still in flight stays (H6).
+// The ids whose pick may go once the submit has run: their reply is on the board, or their session ended, or they were withdrawn
+// off the board (a pick of an ended or hidden question is dropped, H9). A pick whose press is still in flight stays (H6).
 async function settledIds($: EngineInterface, ids: readonly string[]): Promise<string[]> {
-  const stored = new Set((await read($, board)).answers.map(answer => answer.id))
+  const current = await read($, board)
+  const stored = new Set(current.answers.map(answer => answer.id))
   const ended = new Set(await read($, endedAtom))
-  return ids.filter(id => stored.has(id) || ended.has(id))
+  const hidden = new Set(hiddenWithdrawnIds(current))
+  return ids.filter(id => stored.has(id) || ended.has(id) || hidden.has(id))
 }
 
 // Records the outcome of a submit for the questions it asked: one that is not settled keeps its pick as a draft, and its card
@@ -1660,8 +1687,9 @@ export const register: Register = on => {
       leaving: fading,
       footer: folder === undefined ? t(lang, 'command.awayUnavailable') : footerText(lang, current, now, hidden),
       away: await read($, isAway),
-      ended: await read($, endedAtom),
-      endedChat: await read($, endedChatAtom),
+      // A withdrawn question that holds a pause stays with its card: the chat notice and Dismiss, which lift the pause.
+      ended: [...new Set([...(await read($, endedAtom)), ...pausedWithdrawnIds(current)])],
+      endedChat: [...new Set([...(await read($, endedChatAtom)), ...pausedWithdrawnIds(current)])],
       damagedPauses: await read($, damagedAtom),
       askWho: (await read($, whoAtom)) === null,
       groups,

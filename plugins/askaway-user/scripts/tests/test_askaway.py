@@ -7485,3 +7485,189 @@ def test_prune_removes_a_withdrawal_marker_whose_question_is_gone(home, capsys, 
     (home / "q" / f"{item}.json").unlink()
     assert cli(capsys, "prune") == {"removed": 1, "removed_ids": [item]}
     assert not (home / "w" / f"{item}.json").exists()
+
+
+# ---- /goal sessions are never captured (SPEC, goal) ----
+
+def goal_status_row(met: object, session: str = SESSION) -> str:
+    attachment = {"type": "goal_status", "met": met, "sentinel": True, "condition": "the suite is green"}
+    return json.dumps({"type": "attachment", "attachment": attachment, "sessionId": session})
+
+
+def goal_clear_row(session: str = SESSION) -> str:
+    return json.dumps({"type": "system", "commandRun": {"command": "goal", "args": "clear"}, "sessionId": session})
+
+
+OWN_ROW = json.dumps({"type": "user", "message": {"content": "next step"}, "sessionId": SESSION})
+
+
+def tree(folder: Path) -> list[Path]:
+    return sorted(folder.rglob("*")) if folder.exists() else []
+
+
+@pytest.mark.parametrize("rows, active", [
+    ([goal_status_row(False)], True),
+    ([goal_status_row(False), goal_status_row(False)], True),  # every check writes met false
+    ([goal_status_row(False), goal_status_row(True)], False),  # the goal was reached
+    ([goal_status_row(False), goal_clear_row()], False),  # /goal clear
+    ([goal_status_row(False), goal_status_row(True), goal_status_row(False)], True),  # a new goal after a met one
+    ([goal_status_row(False), goal_status_row(None)], False),  # met must be exactly false
+    ([goal_status_row(False, session="other-session")], True),  # a fork's copied parent lines: the goal goes on
+    ([goal_status_row(False, session="parent"), OWN_ROW], True),  # inherited, then the child's own non-goal records
+    ([goal_status_row(False, session="parent"), goal_status_row(True, session="parent"), OWN_ROW], False),
+    ([goal_status_row(False, session="parent"), OWN_ROW, goal_status_row(True)], False),  # the child's own record decides
+    ([OWN_ROW, goal_status_row(False, session="other-session")], False),  # after the session's own records begin
+    ([goal_status_row(False), goal_clear_row(session="other-session")], True),
+    ([goal_status_row(False), "{torn line"], True),  # a torn line is skipped, not read as the end of the goal
+    (["{ not json goal_status"], False),  # garbage is not a goal
+    ([json.dumps({"type": "user", "message": {"content": 'goal_status "met": false'}, "sessionId": SESSION})], False),
+    ([json.dumps({"type": "user", "toolUseResult": goal_status_row(False), "sessionId": SESSION})], False),
+])
+def test_goal_active_follows_the_last_qualifying_record_of_the_session(home, rows, active):
+    write_transcript(home, rows)
+    assert askaway.goal_active(SESSION, os.getcwd()) is active
+
+
+def test_goal_is_not_active_without_a_transcript(home):
+    assert askaway.goal_active(SESSION, os.getcwd()) is False
+
+
+def test_goal_is_not_active_when_the_transcript_cannot_be_read(home):
+    (home.parent / "projects" / PROJECT_DIR / f"{SESSION}.jsonl").mkdir(parents=True)
+    assert askaway.goal_active(SESSION, os.getcwd()) is False
+
+
+def test_goal_detection_fails_open_on_a_session_id_that_is_not_text(home):
+    write_transcript(home, [goal_status_row(False)])
+    assert askaway.goal_active(None, os.getcwd()) is False
+    assert askaway.goal_active(7, os.getcwd()) is False
+
+
+def test_ask_guard_lets_a_goal_session_keep_its_question_in_its_window(home, capsys, monkeypatch):
+    write_transcript(home, [goal_status_row(False)])
+    cli(capsys, "away", "on")
+    assert run_hook(capsys, monkeypatch, "ask-guard", askuser_payload()) == ""
+
+
+def test_ask_guard_still_denies_a_session_whose_goal_is_met(home, capsys, monkeypatch):
+    write_transcript(home, [goal_status_row(False), goal_status_row(True)])
+    cli(capsys, "away", "on")
+    out = hook_json(capsys, monkeypatch, "ask-guard", askuser_payload())
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_ask_in_a_goal_session_files_nothing_and_says_continue(home, capsys, monkeypatch):
+    write_transcript(home, [goal_status_row(False)])
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    before = tree(home)
+    assert cli(capsys, "ask", "--json", json.dumps(base_entry(risk="high"))) == {
+        "captured": False, "reason": "goal", "action": "continue", "recommended": "A",
+        "message": "This session runs under /goal and cannot stop: nothing was filed. Continue with the recommended "
+                   "option and ask in this window if you must."}
+    assert tree(home) == before
+
+
+def test_a_goal_session_ask_with_missing_fields_is_not_refiled(home, capsys, monkeypatch):
+    write_transcript(home, [goal_status_row(False)])
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    reply = cli(capsys, "ask", "--json", json.dumps({"recommended": "B"}))
+    assert reply["action"] == "continue" and reply["captured"] is False and reply["recommended"] == "B"
+
+
+@pytest.mark.parametrize("text", ["xx", "", '{"recommended": "A", "recommended": "B"}'])
+def test_a_goal_session_ask_that_does_not_parse_still_continues(home, capsys, monkeypatch, text):
+    write_transcript(home, [goal_status_row(False)])
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    reply = cli(capsys, "ask", "--json", text)
+    assert reply["action"] == "continue" and reply["captured"] is False and reply["recommended"] is None
+
+
+def test_a_goal_session_ask_without_a_recommended_key_reads_null(home, capsys, monkeypatch):
+    write_transcript(home, [goal_status_row(False)])
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    assert cli(capsys, "ask", "--json", json.dumps({"title": "x"}))["recommended"] is None
+
+
+def test_pause_guard_lets_a_goal_session_run_past_its_pause(home, capsys, monkeypatch):
+    pending_pause(capsys, monkeypatch)
+    write_transcript(home, [goal_status_row(False)])
+    assert run_hook(capsys, monkeypatch, "pause-guard", edit_event()) == ""
+
+
+def test_pause_guard_still_denies_a_paused_session_whose_goal_is_met(home, capsys, monkeypatch):
+    pending_pause(capsys, monkeypatch)
+    write_transcript(home, [goal_status_row(False), goal_status_row(True)])
+    out = hook_json(capsys, monkeypatch, "pause-guard", edit_event())
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_pause_guard_denies_a_paused_session_whose_transcript_is_garbage(home, capsys, monkeypatch):
+    pending_pause(capsys, monkeypatch)
+    write_transcript(home, ["goal_status {torn"])
+    out = hook_json(capsys, monkeypatch, "pause-guard", edit_event())
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_pause_guard_keeps_denying_the_answer_command_of_a_goal_session(home, capsys, monkeypatch):
+    item = pending_pause(capsys, monkeypatch)
+    write_transcript(home, [goal_status_row(False)])
+    command = f"python3 {askaway.SCRIPT_PATH} answer {item} A"
+    out = hook_json(capsys, monkeypatch, "pause-guard", edit_event(tool="Bash", command=command))
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+# ---- withdrawn questions without a pause are pruned whatever the window ----
+
+@pytest.mark.parametrize("days", ["0", "999"])
+def test_prune_sweeps_a_withdrawn_question_that_holds_no_pause_whatever_the_window(home, capsys, monkeypatch, days):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "prune", "--days", days) == {"removed": 1, "removed_ids": [item]}
+    assert not (home / "q" / f"{item}.json").exists()
+    assert not (home / "w" / f"{item}.json").exists()
+
+
+def test_prune_dry_run_lists_a_withdrawn_question_and_removes_nothing(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "prune", "--days", "999", "--dry-run") == {"dry_run": True, "would_remove_ids": [item]}
+    assert (home / "q" / f"{item}.json").exists() and (home / "w" / f"{item}.json").exists()
+
+
+def test_prune_keeps_a_withdrawn_question_that_holds_a_pause(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    # Written directly: no ask path pauses a withdrawn question today, so the pause is the state under test.
+    paused = {**stored(home, "q", item), "pause": True, "risk": "high"}
+    (home / "q" / f"{item}.json").write_text(json.dumps(paused), encoding="utf-8")
+    assert cli(capsys, "prune", "--days", "0") == {"removed": 0, "removed_ids": []}
+    assert (home / "q" / f"{item}.json").exists() and (home / "w" / f"{item}.json").exists()
+
+
+def test_prune_rechecks_the_pause_under_the_lock_before_it_removes(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    listed = askaway._withdrawn_ids
+
+    def list_then_pause(entries):
+        ids = listed(entries)
+        paused = {**stored(home, "q", item), "pause": True, "risk": "high"}
+        (home / "q" / f"{item}.json").write_text(json.dumps(paused), encoding="utf-8")
+        return ids
+
+    monkeypatch.setattr(askaway, "_withdrawn_ids", list_then_pause)
+    assert cli(capsys, "prune", "--days", "0") == {"removed": 0, "removed_ids": []}
+    assert (home / "q" / f"{item}.json").exists()
+
+
+def test_the_daily_cleanup_sweeps_a_withdrawn_question_without_a_pause(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    askaway._maybe_prune()
+    assert not (home / "q" / f"{item}.json").exists()
+    assert not (home / "w" / f"{item}.json").exists()
