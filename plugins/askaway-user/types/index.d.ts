@@ -58,6 +58,9 @@ export type Question = {
   options: QuestionOption[]
   recommended: string
   risk: string
+  // True when the question holds a pause (the CLI's `pause` flag): its session waits for the user's answer. A withdrawn question
+  // that holds one stays on the board (Board.withdrawn). Absent when the file holds no pause.
+  pause?: boolean
   // The optional translations of the agent-written text (beta.34), by the pane's language tag; absent when the file has none. A
   // translation is drawn only when it is complete for its language (hooks/model.ts isCompleteTranslation); a partial one is ignored.
   translations?: QuestionTranslations
@@ -113,6 +116,9 @@ export type Board = {
   questions: Question[]
   answers: Answer[]
   delivered: Delivery[]
+  // The ids the asking sessions withdrew (their w/ markers, and the chat-ended ids of the last `list --open` run). A withdrawn
+  // question that holds no pause is off the board (hooks/model.ts boardQuestions). Absent reads as none.
+  withdrawn?: string[]
 }
 
 // The drawn state the hooks module reads and writes (see hooks/register.tsx), named in the contract.

@@ -34,7 +34,8 @@ import {
   historyOf,
   titleCase,
   urgencyGradeOf,
- desktopSessionOf, groupKeyOf, groupLabelOf, isRootSession, parseDesktopGroups, withDesktopGroup, otherRowsOf } from '../hooks/model'
+ desktopSessionOf, groupKeyOf, groupLabelOf, isRootSession, parseDesktopGroups, withDesktopGroup, otherRowsOf,
+  boardQuestions, hiddenWithdrawnIds, isItemId, isOpenIn, openQuestions, pausedWithdrawnIds } from '../hooks/model'
 import { heldButtons } from '../hooks/held'
 import { placeUnder, renderPane, renderTreeQuestion } from '../hooks/pane'
 import { t } from '../hooks/i18n'
@@ -6504,8 +6505,8 @@ test('the ended notice reads in English with the recommended key, and a live ses
   await pane.unmount()
 })
 
-test('an ended card answered in the chat window draws the chat notice and Dismiss only, with no options', async ($, on) => {
-  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone' })]])
+test('a paused question answered in the chat window draws the chat notice and Dismiss only, with no options', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone', pause: true, risk: 'high' })]])
   const { ended, endedChat } = stubHost(on, files)
   ended.add('q-l1-aaaaaa')
   endedChat.add('q-l1-aaaaaa')
@@ -6519,7 +6520,7 @@ test('an ended card answered in the chat window draws the chat notice and Dismis
 })
 
 test('the chat-answered ended notice reads in English and not as a session ended', async ($, on) => {
-  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone' })]])
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone', pause: true, risk: 'high' })]])
   const { ended, endedChat } = stubHost(on, files, true, {}, {}, { LANG: '' })
   ended.add('q-l1-aaaaaa')
   endedChat.add('q-l1-aaaaaa')
@@ -6528,6 +6529,120 @@ test('the chat-answered ended notice reads in English and not as a session ended
   expect(await textsOf(pane)).toContain('Answered in the chat window. Dismiss to clear it.')
   expect(await textsOf(pane)).not.toContain('The session that asked has ended; the agent stayed on A.')
   await pane.unmount()
+})
+
+test('a question withdrawn in the chat with no pause is off the board: no card, no notice, no Dismiss', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-gone' })],
+    [path('w', 'q-l1-aaaaaa'), JSON.stringify({ id: 'q-l1-aaaaaa', session: 'sess-gone', ts: 2 })],
+  ])
+  const { ended, endedChat } = stubHost(on, files)
+  ended.add('q-l1-aaaaaa')
+  endedChat.add('q-l1-aaaaaa')
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  expect(await textsOf(pane)).not.toContain('Title q-l1-aaaaaa')
+  expect(await textsOf(pane)).not.toContain('Respondida na janela do chat. Dispense para limpar.')
+  expect(await pane.find({ type: 'Button', key: 'dismiss-ended' })).toBeUndefined()
+  await pane.unmount()
+})
+
+test('w/ marker hides the card at the next poll, without waiting for a list run', async ($, on) => {
+  const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-live' })]])
+  const { clock, runs } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const shown = await mountPane($)
+  expect(await textsOf(shown)).toContain('Title q-l1-aaaaaa')
+  await shown.unmount()
+  const listRunsBefore = runs.filter(run => run.argv.includes('list')).length
+  files.set(path('w', 'q-l1-aaaaaa'), JSON.stringify({ id: 'q-l1-aaaaaa', session: 'sess-live', ts: 2 }))
+  await clock.advance(5000)
+  const pane = await mountPane($)
+  expect(await textsOf(pane)).not.toContain('Title q-l1-aaaaaa')
+  expect(runs.filter(run => run.argv.includes('list')).length).toBe(listRunsBefore)
+  await pane.unmount()
+})
+
+test('a paused question withdrawn by its marker keeps its card with the chat notice at once, and Dismiss', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-live', pause: true, risk: 'high' })],
+    [path('w', 'q-l1-aaaaaa'), JSON.stringify({ id: 'q-l1-aaaaaa', session: 'sess-live', ts: 2 })],
+  ])
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  expect(await textsOf(pane)).toContain('Respondida na janela do chat. Dispense para limpar.')
+  expect(await pane.find({ type: 'Button', key: 'dismiss-ended' })).toBeDefined()
+  expect(await pane.find({ type: 'Button', key: 'opt-q-l1-aaaaaa-A' })).toBeUndefined()
+  await pane.unmount()
+})
+
+test('a round completes without its withdrawn question: Submit all counts and waits for the questions left', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('w', 'q-l2-bbbbbb'), JSON.stringify({ id: 'q-l2-bbbbbb', session: SELF, ts: 3 })],
+  ])
+  const { writes, clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  expect(await labelOf(pane, 'submit-all')).toBe('Sem resposta · Enviar tudo (1)')
+  await pane.press({ key: 'opt-q-l1-aaaaaa-B' })
+  expect(await labelOf(pane, 'submit-all')).toBe('Resposta: B · Enviar tudo (1)')
+  await pane.press({ key: 'submit-all' })
+  expect(writes).toEqual([path('a', 'q-l1-aaaaaa')])
+  await clock.advance(250)
+  expect(await textsOf(pane)).toContain('Nenhuma pendente')
+  await pane.unmount()
+})
+
+test('the band counts only the questions on the board: a withdrawn one is left out', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
+    [path('q', 'q-l2-bbbbbb'), question('q-l2-bbbbbb', 2000)],
+    [path('w', 'q-l2-bbbbbb'), JSON.stringify({ id: 'q-l2-bbbbbb', session: SELF, ts: 3 })],
+  ])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  await clock.advance(5000)
+  const band = await mountBand($)
+  expect(await band.find({ type: 'Text', text: '1 pergunta aguardando · 1 grupo' })).toBeDefined()
+  await band.unmount()
+})
+
+test('a failed listing of the w/ folder keeps the last set: the withdrawn question stays off the board', async ($, on) => {
+  const files = new Map([
+    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000, { session: 'sess-live' })],
+    [path('w', 'q-l1-aaaaaa'), JSON.stringify({ id: 'q-l1-aaaaaa', session: 'sess-live', ts: 2 })],
+  ])
+  const holds: Holds = {}
+  const { clock } = stubHost(on, files, true, {}, holds)
+  await $.session.start(SESSION)
+  holds.failListOf = `${STATE}/w`
+  await clock.advance(5000)
+  expect(holds.failListOf).toBeUndefined()
+  const pane = await mountPane($)
+  expect(await textsOf(pane)).not.toContain('Title q-l1-aaaaaa')
+  await pane.unmount()
+})
+
+test('model: a withdrawn question with no pause is off the board; a withdrawn one that holds a pause stays on it', () => {
+  const plain = parsedQuestion('q-l1-aaaaaa', 1000)
+  const paused = parsedQuestion('q-l2-bbbbbb', 2000, { pause: true, risk: 'high' })
+  const board: Board = { questions: [plain, paused], answers: [], delivered: [], withdrawn: ['q-l1-aaaaaa', 'q-l2-bbbbbb'] }
+  expect(boardQuestions(board).map(question => question.id)).toEqual(['q-l2-bbbbbb'])
+  expect(openQuestions(board, {}).map(question => question.id)).toEqual(['q-l2-bbbbbb'])
+  expect(isOpenIn(board, 'q-l1-aaaaaa')).toBe(false)
+  expect(isOpenIn(board, 'q-l2-bbbbbb')).toBe(true)
+  expect(hiddenWithdrawnIds(board)).toEqual(['q-l1-aaaaaa'])
+  expect(pausedWithdrawnIds(board)).toEqual(['q-l2-bbbbbb'])
+  expect(isItemId('q-l1-aaaaaa')).toBe(true)
+  expect(isItemId('.q-l1-aaaaaa.json')).toBe(false)
+})
+
+test('model: a question file that holds a pause keeps the flag; one without it has none', () => {
+  expect(parsedQuestion('q-l1-aaaaaa', 1000, { pause: true, risk: 'high' }).pause).toBe(true)
+  expect(parsedQuestion('q-l1-aaaaaa', 1000).pause).toBeUndefined()
 })
 
 test('Dismiss on an ended card removes the question through prune --id, and sends no answer', async ($, on) => {
