@@ -1,7 +1,7 @@
 # AskAway User — question inbox spec (v1)
 
-Why: a question raised while the user is away (any run kind: main session, subagent, goal,
-/loop, background Bash, `codex exec`) is lost today; the work continues on a guess the user
+Why: a question raised while the user is away (any run kind: main session, subagent,
+/loop, background Bash, `codex exec`; a `/goal` session is the one kind not captured, see Goal sessions) is lost today; the work continues on a guess the user
 never sees. AskAway User queues the question with a recommended default, keeps the work going on
 that default, pauses only the risky ones, and delivers the user's answer back to the session
 that asked.
@@ -237,7 +237,10 @@ writes its document instead). Exit codes: 0 for a reply; 1 for a usage error (un
   the option keys as given (`[]` when they were not a list). The caller completes the named fields and files again. A missing `fit` is a gap (`by_option`); `fit` set to null is stored as null (no estimate); any other value that is not an integer 0 to 100 is refused in `error` as `option <key>: fit: must be an integer 0 to 100, or null`.
   A new ask whose session and question text (case and spacing ignored) match an open question of that session
   prints `{"id":<existing>,"recommended":<its>,"title":<its>,"action":"open","duplicate":true}` and files nothing. A question
-  with no session is never a duplicate. The duplicate check and the write run under the lock file `.ask.lock`, so asks from one session at the same time file one question. A duplicate of a paused question (`pause` true) prints `"action":"pause"` instead of `"open"`. A high-risk repeat prints `"action":"pause"` whatever the twin's risk; a high-risk repeat of an open low twin also sets the twin's `pause` to true and its `risk` to `high` in one atomic write, so the pause lookup holds the session for the twin.
+  with no session is never a duplicate.
+  A call from a `/goal` session (see Goal sessions) files nothing and writes no files: its reply is
+  `{"captured":false,"reason":"goal","action":"continue","recommended":<the input's recommended key if a string, else null>,"message":"This session runs under /goal and cannot stop: nothing was filed. Continue with the recommended option and ask in this window if you must."}`,
+  exit 0. The goal check runs before the entry is parsed or validated, so a goal session never gets a refile (an entry that does not parse gives `recommended` null), and the reply never says pause. The duplicate check and the write run under the lock file `.ask.lock`, so asks from one session at the same time file one question. A duplicate of a paused question (`pause` true) prints `"action":"pause"` instead of `"open"`. A high-risk repeat prints `"action":"pause"` whatever the twin's risk; a high-risk repeat of an open low twin also sets the twin's `pause` to true and its `risk` to `high` in one atomic write, so the pause lookup holds the session for the twin.
   Prints `{"id","recommended","title","action":"continue|pause"}`, where `title` is the validated title (the clipped question when no title was given). An internal error prints
   `{"action":"continue","recommended":<given or null>,"error":"internal error"}`, or
   `{"action":"pause",...}` when the entry asked for `risk` `high` (nothing was filed in either case). A high-risk question that fails to write is tried four times in all, with a 50 ms back-off (`HIGH_RISK_ATTEMPTS`, `store_high_risk`, `file_question`); when the fourth try fails, `ask` prints `{"action":"pause","error":"<OS error text>"}` and files nothing. A low or medium risk question that fails to write keeps `"action":"continue"` with `internal error`. A directory fsync that fails after `os.replace` is no failed attempt: the question is in place, the reply says it was filed, and a `{"warning": "directory sync failed after the replace", ...}` line goes to stderr (`write_atomic`, `_sync_published`, as `create_once` does after its link). A failure to take `.ask.lock` (a read-only state folder) is `internal error`, not retried.
@@ -295,6 +298,20 @@ writes its document instead). Exit codes: 0 for a reply; 1 for a usage error (un
   candidates, so `ASKAWAY_PRUNE_DAYS=0` prunes a delivered or expired item at once and nothing earlier.
   The `deliver` slow path uses the same window (at most once a day), one run at a time: it takes `.prune.lock` without waiting and skips the cleanup when another run holds it; it moves the `last_prune` stamp first, then sweeps; and an error in the cleanup is swallowed, so it never costs a delivery (`_daily_cleanup`, `_maybe_prune`). It runs before the deliver run claims any marker, so a hook timeout during the cleanup costs no claimed line; only after a clock jump does it run after the deliveries (see `deliver`). When the `last_prune` stamp is older than 7 days (`CLOCK_JUMP_S`), the daily prune skips its closed-item sweep, its orphan sweep and its stale-temp removal for that cycle and moves the stamp (`_clock_jumped`, `_maybe_prune`). The daily prune also removes orphan replies, an `a/` or `d/` file whose `q/` file is absent (`_orphan_ids`). The daily stamp moves only in cycles with unread replies (`hook_deliver` runs the cleanup only when one waits), so a machine idle for more than 7 days looks like a clock jump: in that first cycle an unread reply older than the window is delivered once instead of expiring, and `status` says answered while the pane draws expired from the clock (`answer_lapsed`, `answerStatusOf`, `hooks/model.ts`). Accepted (owner reply M53, option B); no second time reference is kept.
 
+## Goal sessions
+
+A Claude Code session running `/goal` has a session-scoped Stop hook that keeps it working. It cannot stop to wait for the user, so the inbox must not capture its questions. `goal_active(session, project)` (`scripts/askaway.py`) reads the session's transcript `<projects root>/<project folder>/<session>.jsonl` (`_session_file`; `ASKAWAY_PROJECTS` overrides the root) and streams it forward (`_goal_state`):
+
+- A record counts only when it is a JSON object at top level and its `sessionId` equals the session id, or, before the session's own first record, names another session: a forked or resumed transcript starts with the parent's copied lines, and the parent's goal goes on in the child (its Stop hook is restored) until the child's own records decide. After the session's first own record, another session's lines never count. It counts when `type` is `attachment` and `attachment.type` is `goal_status`, or when it has a top-level `commandRun` with `command` `goal` and `args` `clear`. Tool results that mention `goal_status`, and lines that are not JSON, never count.
+- A `goal_status` record with `attachment.met` exactly `false` makes the goal active: `/goal <condition>`, and each check that is not met. `met` true (the goal is reached) or `/goal clear` makes it inactive. The last counting record decides.
+- No transcript, an unreadable one, a session id that is not text, or any other error: not a goal session, so the normal capture stays. The function never raises.
+
+The rule is read in three places only, and each reads it through `goal_active`:
+
+- `ask-guard`: while away, a goal session's AskUserQuestion is not denied, so the question stays in its own window.
+- `ask`: a goal session files nothing (see `ask`), so it never waits on a pause.
+- `pause-guard`: a session under `/goal` is not denied for an inbox pause. The tamper check (`_tamper_denial`) still applies. The transcript is read only on the path that would deny.
+
 ## Hook modes
 
 `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" hook <mode>` reads the hook JSON from stdin.
@@ -318,8 +335,8 @@ It fails open: any error exits 0 with no output (below Python 3.12 the version l
   path comes from `Path(__file__)`. The JSON after `--json` is shell-quoted with `shlex.quote`, so a
   quote or `$(...)` inside a question or label is data, never a shell token. A recommended marker
   is any mark `ask` strips from a label (see `ask`: "(Recommended)", "(Recomendado)", "(Recomendada)", "[Recommended]", "Keep - Recommended", "Keep: recomendada" and the like, any case; `RECOMMENDED_MARKER`, `_recommended_key`). Not away, or any error
-  → no output (the real question shows).
-- `pause-guard` — PreToolUse, matcher `.*` (every tool; Claude Code tests it with `RegExp.test`). The hook holds every tool call by default: a call passes only when `_exempt_call` lets it through, and the rule is that list, not the matcher. Before the heavy imports, the hook exits with no output when no q/ file is a pause (`_nothing_to_hold`: a missing q/ folder is clear; every other q/ file must read as an object named after its own id, with an integer `ts` and no `pause: true`) and the tool is not Bash, Monitor, Edit, Write, NotebookEdit or MultiEdit, which the tamper check reads; any doubt or error takes the slow path, which denies what it cannot read. If an entry with
+  → no output (the real question shows). A `/goal` session (see Goal sessions) gets no deny: its question stays in its own window.
+- `pause-guard` — PreToolUse, matcher `.*` (every tool; Claude Code tests it with `RegExp.test`). The hook holds every tool call by default: a call passes only when `_exempt_call` lets it through, and the rule is that list, not the matcher. A session under `/goal` (see Goal sessions) is not denied for a pause; the tamper check still applies. Before the heavy imports, the hook exits with no output when no q/ file is a pause (`_nothing_to_hold`: a missing q/ folder is clear; every other q/ file must read as an object named after its own id, with an integer `ts` and no `pause: true`) and the tool is not Bash, Monitor, Edit, Write, NotebookEdit or MultiEdit, which the tamper check reads; any doubt or error takes the slow path, which denies what it cannot read. If an entry with
   `pause:true` (risk `high` only) whose pause still holds (`_pause_holds`: for a pause with asker `main` or with no asker, its status is not closed, `open` or `answered`, that is, not yet
   delivered nor expired; for a subagent's pause, its answer has not lapsed and that subagent has no `s/` copy yet, nor a `d/` marker that closes every copy: the main session's copy never ends it, although `status` then reads `delivered`) has `session == input.session_id`, it denies with the reason "Paused: AskAway User question
   <id> ("<title>") needs the user's answer. It holds this call: end the turn now instead of retrying or polling, because the answer
