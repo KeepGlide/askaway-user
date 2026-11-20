@@ -4474,10 +4474,10 @@ def _maybe_prune() -> None:
             return
         with contextlib.suppress(OSError):
             _remove_stale_temps()
-            entries = load_questions()[0]  # never a damaged file: the user clears those
-            _remove_all(_closed_ids(prune_days(), entries))
+            _remove_all(_closed_ids(prune_days(), load_questions()[0]))  # never a damaged file: the user clears those
             _remove_all(_orphan_ids())
-            _remove_withdrawn(_withdrawn_ids(entries))
+        with contextlib.suppress(OSError):  # its own block: a failed sweep above must not keep the withdrawn questions
+            _remove_withdrawn(_withdrawn_ids(load_questions()[0]))
 
 
 def _foreign_recheck_due() -> bool:
