@@ -2037,6 +2037,30 @@ def _orphan_ids() -> list[str]:
     return [item_id for item_id in sorted(ids) if not os.path.lexists(item_path("q", item_id))]
 
 
+def _withdrawn_unpaused(entry: Mapping[str, Any]) -> bool:
+    """A withdrawn question that holds no pause: answered in chat, and nothing waits on it."""
+    item_id = entry["id"]
+    return entry.get("pause") is not True and withdrawn(item_id) and item_status(item_id)[0] == "open"
+
+
+def _withdrawn_ids(entries: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The withdrawn questions prune may remove whatever the window, read only (_remove_withdrawn checks them again)."""
+    return [entry["id"] for entry in entries if _withdrawn_unpaused(entry)]
+
+
+def _remove_withdrawn(item_ids: Sequence[str]) -> list[str]:
+    """Remove each withdrawn question that still holds no pause, under the ask lock: a high-risk repeat that pauses one
+    between the listing and the removal keeps it. Returns the ids removed."""
+    with _ask_lock():
+        removed: list[str] = []
+        for item_id in dict.fromkeys(item_ids):
+            entry = read_json(item_path("q", item_id))
+            if (entry is not None and _question_matches(item_id, entry) and _withdrawn_unpaused(entry)
+                    and _remove_item(item_id)):
+                removed.append(item_id)
+        return removed
+
+
 def _closed_ids(days: int, entries: Sequence[Mapping[str, Any]]) -> list[str]:
     """The closed items whose closing time is older than the window."""
     cutoff = now_ms() - days * DAY_MS
@@ -2071,9 +2095,10 @@ def cmd_prune(days: int, dry_run: bool) -> dict[str, Any]:
     entries, damaged = load_questions()
     # Damaged files are cleared whatever the window: the user's way out of a pause.
     candidates = [*sorted({*damaged, *_unreadable_answers()}), *_orphan_ids(), *_closed_ids(days, entries)]
+    withdrawn_ids = _withdrawn_ids(entries)
     if dry_run:
-        return {"dry_run": True, "would_remove_ids": _would_remove(candidates)}
-    removed = _remove_all(candidates)
+        return {"dry_run": True, "would_remove_ids": _would_remove([*candidates, *withdrawn_ids])}
+    removed = [*_remove_all(candidates), *_remove_withdrawn(withdrawn_ids)]
     return {"removed": len(removed), "removed_ids": removed}
 
 
@@ -4449,8 +4474,10 @@ def _maybe_prune() -> None:
             return
         with contextlib.suppress(OSError):
             _remove_stale_temps()
-            _remove_all(_closed_ids(prune_days(), load_questions()[0]))  # never a damaged file: the user clears those
+            entries = load_questions()[0]  # never a damaged file: the user clears those
+            _remove_all(_closed_ids(prune_days(), entries))
             _remove_all(_orphan_ids())
+            _remove_withdrawn(_withdrawn_ids(entries))
 
 
 def _foreign_recheck_due() -> bool:

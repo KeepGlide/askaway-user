@@ -7614,3 +7614,60 @@ def test_pause_guard_keeps_denying_the_answer_command_of_a_goal_session(home, ca
     command = f"python3 {askaway.SCRIPT_PATH} answer {item} A"
     out = hook_json(capsys, monkeypatch, "pause-guard", edit_event(tool="Bash", command=command))
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+# ---- withdrawn questions without a pause are pruned whatever the window ----
+
+@pytest.mark.parametrize("days", ["0", "999"])
+def test_prune_sweeps_a_withdrawn_question_that_holds_no_pause_whatever_the_window(home, capsys, monkeypatch, days):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "prune", "--days", days) == {"removed": 1, "removed_ids": [item]}
+    assert not (home / "q" / f"{item}.json").exists()
+    assert not (home / "w" / f"{item}.json").exists()
+
+
+def test_prune_dry_run_lists_a_withdrawn_question_and_removes_nothing(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    assert cli(capsys, "prune", "--days", "999", "--dry-run") == {"dry_run": True, "would_remove_ids": [item]}
+    assert (home / "q" / f"{item}.json").exists() and (home / "w" / f"{item}.json").exists()
+
+
+def test_prune_keeps_a_withdrawn_question_that_holds_a_pause(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    # Written directly: no ask path pauses a withdrawn question today, so the pause is the state under test.
+    paused = {**stored(home, "q", item), "pause": True, "risk": "high"}
+    (home / "q" / f"{item}.json").write_text(json.dumps(paused), encoding="utf-8")
+    assert cli(capsys, "prune", "--days", "0") == {"removed": 0, "removed_ids": []}
+    assert (home / "q" / f"{item}.json").exists() and (home / "w" / f"{item}.json").exists()
+
+
+def test_prune_rechecks_the_pause_under_the_lock_before_it_removes(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    listed = askaway._withdrawn_ids
+
+    def list_then_pause(entries):
+        ids = listed(entries)
+        paused = {**stored(home, "q", item), "pause": True, "risk": "high"}
+        (home / "q" / f"{item}.json").write_text(json.dumps(paused), encoding="utf-8")
+        return ids
+
+    monkeypatch.setattr(askaway, "_withdrawn_ids", list_then_pause)
+    assert cli(capsys, "prune", "--days", "0") == {"removed": 0, "removed_ids": []}
+    assert (home / "q" / f"{item}.json").exists()
+
+
+def test_the_daily_cleanup_sweeps_a_withdrawn_question_without_a_pause(home, capsys, monkeypatch):
+    item = ask_from(capsys, monkeypatch, SESSION)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    cli(capsys, "withdraw", "--id", item)
+    askaway._maybe_prune()
+    assert not (home / "q" / f"{item}.json").exists()
+    assert not (home / "w" / f"{item}.json").exists()
