@@ -167,8 +167,9 @@ let panelFolderMade = false
 const questionCache = new Map<string, Question>()
 const answerCache = new Map<string, Answer>()
 const deliveryCache = new Map<string, Delivery>()
-// The ids the w/ markers named at the last listing that worked: a failed listing keeps them (readWithdrawn).
-let withdrawnFolder: string[] = []
+// The ids the w/ markers named at the last listing of a folder that worked: a failed listing of that folder keeps them
+// (readWithdrawn); another folder starts with none.
+let withdrawnFolder: { home: string; ids: string[] } = { home: '', ids: [] }
 // Question ids whose answer a press is writing now, answer ids being handed to the prompt now, and group keys whose
 // submit-all is in flight. Each is checked before the first await, so a second press or an overlapping poll does nothing.
 const pressing = new Set<string>()
@@ -363,8 +364,9 @@ async function readDesktopGroups($: EngineInterface): Promise<DesktopGroups> {
 // that fails keeps the last set, as the other readers do.
 async function readWithdrawn($: EngineInterface, home: string): Promise<string[]> {
   const listed = await jsonIds($, `${home}/w`)
-  if (listed !== undefined) withdrawnFolder = listed.filter(isItemId)
-  return withdrawnFolder
+  if (listed !== undefined) withdrawnFolder = { home, ids: listed.filter(isItemId) }
+  else if (withdrawnFolder.home !== home) withdrawnFolder = { home, ids: [] }
+  return withdrawnFolder.ids
 }
 
 // The board, and the ids of the reply files listed in a/ (an unreadable one included), so a poll lists that folder once.
@@ -373,8 +375,8 @@ async function readBoard($: EngineInterface, home: string): Promise<{ board: Boa
   const answers = await readCached($, `${home}/a`, answerCache, parseAnswer)
   const delivered = await readCached($, `${home}/d`, deliveryCache, parseDelivery)
   const groups = await readDesktopGroups($)
-  // The markers' ids and the chat-ended ids of the last list run; the board hides the withdrawn ones (boardQuestions).
-  const withdrawn = [...new Set([...(await readWithdrawn($, home)), ...(await read($, endedChatAtom))])]
+  // The w/ markers are the source of `ended_reason` "chat" too, so they alone say which questions are withdrawn (boardQuestions).
+  const withdrawn = await readWithdrawn($, home)
   return {
     board: {
       questions: questions.found.map(question => withDesktopGroup(question, groups)),
@@ -566,12 +568,7 @@ async function mergeEnded($: EngineInterface, ended: EndedQuestion[]): Promise<s
   const ids = ended.map(item => item.id)
   const chatIds = ended.filter(item => item.reason === 'chat').map(item => item.id)
   if (JSON.stringify(ids) !== JSON.stringify(await read($, endedAtom))) await update($, endedAtom, () => ids)
-  if (JSON.stringify(chatIds) !== JSON.stringify(await read($, endedChatAtom))) {
-    await update($, endedChatAtom, () => chatIds)
-    // A question answered in the chat is withdrawn now, not at the next poll: the board hides it from this write on.
-    const current = await read($, board)
-    await mergeBoard($, { ...current, withdrawn: [...new Set([...(current.withdrawn ?? []), ...chatIds])] })
-  }
+  if (JSON.stringify(chatIds) !== JSON.stringify(await read($, endedChatAtom))) await update($, endedChatAtom, () => chatIds)
   return ids
 }
 
