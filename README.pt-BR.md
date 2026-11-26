@@ -80,17 +80,18 @@ O AskAway User não:
 
 - responde por você: os agentes são orientados a não responder perguntas. A CLI tem um comando `answer`, e a skill orienta os agentes a não chamá-lo. O hook `pause-guard` nega uma chamada de Bash, no shell do próprio agente, que o rode. É um freio, não uma garantia: o painel chama a CLI diretamente, o que não é uma chamada de ferramenta, então o hook não a vê;
 - faz chamadas de rede: perguntas e respostas são arquivos na sua máquina;
-- para o trabalho a cada pergunta: só uma pergunta arriscada pausa uma sessão, e só o agente que perguntou (a sessão inteira quando a pergunta ainda não tem autor).
+- para o trabalho a cada pergunta: no modo padrão `auto`, só uma pergunta arriscada pausa uma sessão (no `strict`, toda pergunta pausa), e só o agente que perguntou (a sessão inteira quando a pergunta ainda não tem autor).
 
 ### Termos usados nesta página
 
 | Termo | Significado |
 |---|---|
 | **Ausente** (*away*) | A sessão está ausente quando o modo de permissão é `bypassPermissions`, o modo ausente está ligado (`/askaway away`) ou `CLAUDE_CODE_SESSION_ATTENDED=0`. Um agente ausente registra perguntas em vez de esperar. |
+| **Modo de captura** (*capture mode*) | A configuração global que diz como uma pergunta NOVA é capturada: `strict`, `auto` (o padrão) ou `off`. Veja [Modo de captura](#modo-de-captura). |
 | **Sessão** (*session*) | Uma sessão do Claude Code. Cada pergunta registra a sessão que perguntou, e a resposta volta para essa sessão. |
 | **Recomendada** (*recommended*) | A opção que o agente marca como padrão. Ele segue trabalhando nela até você responder, e a sua resposta a substitui. |
-| **Risco** (*risk*) | Quão arriscado é aceitar a opção recomendada: `low`, `medium` ou `high`. Só `high` pausa. |
-| **Pausa** (*pause*) | Uma retenção do agente que perguntou uma pergunta `high` (a thread principal ou um subagente): as chamadas de ferramenta dele ficam bloqueadas, exceto as só de leitura, até a resposta ser entregue à sessão dele. |
+| **Risco** (*risk*) | Quão arriscado é aceitar a opção recomendada: `low`, `medium` ou `high`. No `auto`, só `high` pausa; no `strict`, toda pergunta pausa. |
+| **Pausa** (*pause*) | Uma retenção do agente que perguntou uma pergunta que pausa (uma `high` no `auto`, qualquer uma no `strict`; a thread principal ou um subagente): as chamadas de ferramenta dele ficam bloqueadas, exceto as só de leitura, até a resposta ser entregue à sessão dele. |
 | **Aderência** (*fit*) | A estimativa do próprio agente, de 0 a 100, de quão bem uma opção serve à tarefa. O AskAway User não mede nem verifica essa nota. |
 
 ## 🎁 O que entrega
@@ -101,8 +102,9 @@ O AskAway User não:
 - **Enviar tudo por grupo.** **Enviar tudo** manda todas as respostas do grupo às sessões que perguntaram, e **Enviar resposta** manda uma resposta por vez (`answer <id> <key> --by panel`).
 - **Teclas de atalho.** As letras das opções, Voltar e Próxima funcionam pelo teclado, no terminal e no Desktop; Enviar tudo não tem tecla de atalho, então vá até ele com Tab e aperte Enter (veja [Teclas](#teclas)).
 - **Alternador do modo ausente.** `/askaway away` liga ou desliga o modo ausente e informa o estado (`away.json`).
+- **Modo de captura.** Uma configuração para todas as sessões: `strict` segura cada sessão em toda pergunta nova, `auto` (o padrão) segue com a opção recomendada, a não ser que a pergunta seja de risco alto, e `off` não captura nada novo. Troque no painel ou com `/askaway mode` ([Modo de captura](#modo-de-captura)).
 - **Primeiro clique no desktop.** Cada botão mantém o seu identificador de clique entre as redesenhas (`hooks/held.ts`), que era a causa do primeiro clique que o desktop perdia.
-- **Pausa conforme o risco.** Uma pergunta com `risk` alto pausa o agente que perguntou (a thread principal ou um subagente) na sessão cujo id ela traz, até a resposta ser entregue a essa sessão. Os outros agentes seguem trabalhando; uma pergunta sem autor registrado pausa a sessão inteira. Uma pergunta do Codex não tem id de sessão: ela responde `"action": "pause"`, mas nada segura uma execução do Codex, então o script dela espera a resposta sozinho ([Pelo Codex](#-pelo-codex)). Perguntas de risco baixo e médio nunca pausam.
+- **Pausa conforme o risco.** Uma pergunta com `risk` alto pausa o agente que perguntou (a thread principal ou um subagente) na sessão cujo id ela traz, até a resposta ser entregue a essa sessão. Os outros agentes seguem trabalhando; uma pergunta sem autor registrado pausa a sessão inteira. Uma pergunta do Codex não tem id de sessão: ela responde `"action": "pause"`, mas nada segura uma execução do Codex, então o script dela espera a resposta sozinho ([Pelo Codex](#-pelo-codex)). No `auto`, perguntas de risco baixo e médio nunca pausam; no `strict`, toda pergunta pausa.
 - **Dois idiomas.** Inglês e português do Brasil, pelo seu locale ou com `/askaway lang`. Uma pergunta pode trazer as próprias `translations`, e `/askaway lang` troca o cartão inteiro.
 - **Uma CLI para agentes e scripts.** `scripts/askaway.py` tem oito comandos (`ask`, `answer`, `status`, `list`, `wait`, `export`, `away`, `prune`), cada um imprimindo uma linha JSON ([Comandos da CLI](#comandos-da-cli)).
 
@@ -176,16 +178,16 @@ sequenceDiagram
     Agent->>Agent: a pausa termina e o agente segue com a resposta
 ```
 
-Uma pergunta `low` ou `medium` faz o mesmo caminho sem a pausa: a CLI responde `continue`, e o agente trabalha na opção recomendada até a resposta chegar.
+No `auto`, uma pergunta `low` ou `medium` faz o mesmo caminho sem a pausa: a CLI responde `continue`, e o agente trabalha na opção recomendada até a resposta chegar. No `strict`, toda pergunta segue o caminho da pausa, qualquer que seja o risco. No `off`, nada é registrado ([Modo de captura](#modo-de-captura)).
 
 Passo a passo:
 
-1. **Teste de ausência.** Uma sessão está ausente com `bypassPermissions`, com o modo ausente ligado ou com `CLAUDE_CODE_SESSION_ATTENDED=0`. Enquanto ausente, `hook ask-guard` nega `AskUserQuestion` e devolve um esqueleto de `ask` por pergunta; nada é guardado. Uma sessão rodando `/goal` não é negada: ela não pode parar para esperar, então a pergunta dela fica na própria janela.
+1. **Teste de ausência.** Uma sessão está ausente com `bypassPermissions`, com o modo ausente ligado ou com `CLAUDE_CODE_SESSION_ATTENDED=0`. Enquanto ausente, e a não ser que o modo de captura seja `off`, `hook ask-guard` nega `AskUserQuestion` e devolve um esqueleto de `ask` por pergunta; nada é guardado. Uma sessão rodando `/goal` não é negada: ela não pode parar para esperar, então a pergunta dela fica na própria janela.
 2. **Registro.** `ask --json` confere cada campo e cita todas as lacunas num só `refile`. Lê o título da sessão e a família do Desktop e então, sob `.ask.lock`, procura uma duplicata aberta, grava `q/<id>.json` e responde `continue`, `pause`, `open` ou `refile`.
 3. **Marca de autor.** Depois da chamada de `ask`, `hook stamp-asker` grava `asker` (o `agent_id` de quem chamou, ou `main`) na pausa nova, sob `.ask.lock`. Uma pausa sem `asker` segura a sessão inteira.
 4. **Guarda e retenção.** `hook pause-guard` roda antes de toda chamada de ferramenta (matcher `.*`), com timeout de 5 s e `"onFailure": "block"`. Ele tem duas funções:
    - **O guarda de Bash e de arquivos**, em toda sessão, ausente ou não: o leitor decide. Um comando que responde uma pergunta, troca o modo ausente, força uma poda ou grava na pasta de estado é negado. Um erro no leitor nega, um comando com mais de 64K caracteres é negado, um evento que o gancho não consegue ler é negado, e com o diretório de trabalho apagado todo alvo relativo de gravação é recusado.
-   - **A retenção:** enquanto uma pergunta `high` desta sessão espera a entrega a quem perguntou, as chamadas de ferramenta desse agente são negadas, exceto uma chamada simples de `ask`, `status`, `list`, `wait` ou `export`, as ferramentas de `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, as de lista de tarefas e de plano) e as ferramentas MCP só de leitura. Toda outra ferramenta é retida, incluindo `Skill`, `WebFetch` e `WebSearch`, e também uma ferramenta que o Claude Code adicionar depois, até ser listada em `READ_ONLY_TOOLS`. Sem pausa em arquivo, o gancho sai antes dos imports pesados. Uma sessão rodando `/goal` não é retida por uma pausa, já que não pode parar para esperar; o guarda de Bash e de arquivos acima continua valendo.
+   - **A retenção:** enquanto uma pergunta desta sessão que pausa (uma `high` no `auto`, qualquer uma no `strict`) espera a entrega a quem perguntou, as chamadas de ferramenta desse agente são negadas, exceto uma chamada simples de `ask`, `status`, `list`, `wait` ou `export`, as ferramentas de `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, as de lista de tarefas e de plano) e as ferramentas MCP só de leitura. Toda outra ferramenta é retida, incluindo `Skill`, `WebFetch` e `WebSearch`, e também uma ferramenta que o Claude Code adicionar depois, até ser listada em `READ_ONLY_TOOLS`. Sem pausa em arquivo, o gancho sai antes dos imports pesados. Uma sessão rodando `/goal` não é retida por uma pausa, já que não pode parar para esperar; o guarda de Bash e de arquivos acima continua valendo.
 5. **Resposta.** As escolhas são compartilhadas pelo `draft.json`. No Enviar tudo ou no Enviar resposta de uma linha, o painel gera um token de uso único em `panel-tokens/` (32 caracteres hex, modo 600, válido por 120 s) e roda `answer <id> <key> --by panel --strict` com ele em `ASKAWAY_PANEL_TOKEN`. A CLI publica `a/<id>.json` com um link exclusivo, então vale a primeira resposta, e o cartão fica esmaecido até a resposta ser gravada.
 6. **Entrega, uma cópia por destinatário.** O gancho `deliver` (SessionStart, UserPromptSubmit e PostToolUse) lê e julga todas as respostas primeiro, depois reivindica cada cópia devida com um link que não sobrescreve e imprime a linha da resposta, em inglês, como contexto do gancho. A thread principal reivindica `d/<id>.json` (`"recipient": "main"`); um subagente reivindica só as respostas das perguntas que o próprio `ask` registrou, em `s/<id>.json`, e a pausa dele só termina com essa cópia ou um vencimento. Uma sessão ociosa recebe as respostas pelo painel: ele grava as marcas `d/` (`via: "prompt"`) e envia um prompt por sessão que perguntou. Uma execução do Codex lê a resposta com `wait --strict` ([Pelo Codex](#-pelo-codex)).
 7. **Liberação.** Uma resposta não lida vence quando o Claude Desktop liberou a sessão dela (`session-ended`) ou depois de 7 dias (`ttl`). No máximo uma vez por dia, o gancho deliver remove itens fechados mais antigos que `ASKAWAY_PRUNE_DAYS` (30 dias), e uma pergunta retirada que não tem pausa, seja qual for a janela.
@@ -314,7 +316,7 @@ rm -r ~/.claude/state/askaway-user
 
 Os agentes registram perguntas em vez de parar. Você responde no painel, um cartão por vez, e envia as respostas de cada grupo de uma vez.
 
-Enquanto há perguntas abertas, uma faixa fica acima do prompt: `2 perguntas aguardando · 1 grupo`, com um botão **Responder** na tecla `1`. Quando uma pergunta de alto risco aberta pausa a sessão, a faixa ganha um trecho `N pausada(s)` entre os dois: `2 perguntas aguardando · 1 pausada · 1 grupo`. Um aviso anuncia cada pergunta nova que chega com a sessão aberta; as perguntas já abertas quando ela começa não geram aviso.
+Enquanto há perguntas abertas, uma faixa fica acima do prompt: `2 perguntas aguardando · 1 grupo`, com um botão **Responder** na tecla `1`. Quando uma pergunta aberta pausa a sessão (uma de alto risco no `auto`, qualquer uma no `strict`), a faixa ganha um trecho `N pausada(s)` entre os dois: `2 perguntas aguardando · 1 pausada · 1 grupo`. Um aviso anuncia cada pergunta nova que chega com a sessão aberta; as perguntas já abertas quando ela começa não geram aviso.
 
 ### Responder uma pergunta
 
@@ -344,7 +346,7 @@ O cartão abre com o título, a Urgência (na cor do seu grau, quando `urgency_l
 2. **Urgência:** logo abaixo do título, uma linha **⏱️ Urgência** (`urgency`), quando estiver preenchida, com o texto na cor do grau de `urgency_level` (`low`, `medium`, `high`). Sem o grau, o texto não tem grau: é desenhado na cor padrão, sob o título simples, e nenhuma palavra-chave adivinha um grau. Com o grau, o título diz qual é, **⏱️ Urgência (alta)**, então a cor nunca é o único sinal.
 3. **Explicação antes da pergunta:** as seções preenchidas, como parágrafos simples sem título: o texto de **O que é** (`what`) e depois o de **O problema** (`problem`). Depois, o bloco **Detalhes do AskAway User:** (com o logo), recolhido por padrão atrás do seu botão: **🔁 Analogia** (`analogy`), **💡 Por que A** (`why`; a letra é a chave recomendada), **↩️ Como desfazer** (`undo`), **🛠️ Como** (`how`), **🎁 O que ganhamos** (`gains`), **⚖️ O que perdemos** (`losses`) e **🧭 Contexto e origem** (`context`) por último. O bloco não tem borda: fica sobre o preenchimento de mensagem do usuário do próprio tema (`userMessageBackground`), então segue os temas claro, escuro e automático. Os títulos das seções vão em negrito.
 4. **A pergunta:** o texto da pergunta, em negrito. Sempre presente.
-5. **Linha de estado:** discreta, logo abaixo da pergunta: o que o agente faz agora e o que acontece se ninguém responder: `Na opção A desde 14:05. Escolha outra opção para trocar; sem resposta, fica a opção A.`, ou `Pausado desde 14:05, esperando a sua resposta.` para uma pergunta de risco `high`. A hora leva também a data, como em `Na opção A desde 17/10 14:05`, quando a pergunta foi feita em um dia anterior.
+5. **Linha de estado:** discreta, logo abaixo da pergunta: o que o agente faz agora e o que acontece se ninguém responder: `Na opção A desde 14:05. Escolha outra opção para trocar; sem resposta, fica a opção A.`, ou `Pausado desde 14:05, esperando a sua resposta.` para uma pergunta que pausa (risco `high` no `auto`, qualquer uma no `strict`). A hora leva também a data, como em `Na opção A desde 17/10 14:05`, quando a pergunta foi feita em um dia anterior.
 6. **As opções:** cada uma é um botão de largura total, `A · Rótulo`, com `(Recomendada)` depois do rótulo da recomendada. Embaixo, uma linha `└ troca · aderência 88` (a aderência é a estimativa do agente), depois **O que acontece** (`does`), **Prós** (`pros`) e **Contras** (`cons`), que aparecem de uma vez. A opção escolhida é o botão preenchido; a recomendada fica em negrito até ser escolhida. A última é **Outra…**, com a letra depois da última opção (`C · Outra…` com duas opções).
 7. **A linha de navegação:** um separador, depois **← Voltar** (apagado na primeira pergunta), **Próxima →** (em todas, menos na última), ou na última **Enviar tudo (N)** (veja o passo 6 acima).
 
@@ -358,7 +360,19 @@ O rótulo de risco é o risco de aceitar a opção recomendada, como o agente av
 
 - **✅ risco baixo:** seguro de aceitar e fácil de mudar depois.
 - **⚠️ risco médio:** reversível, mas mudar custa retrabalho.
-- **🛑 risco alto:** irreversível, ou toca arquivos reais, credenciais ou dinheiro. Uma pergunta de risco alto pausa o agente que perguntou (a thread principal ou um subagente; uma pergunta sem autor registrado pausa a sessão inteira): as chamadas de ferramenta dele ficam bloqueadas, exceto as só de leitura, até a resposta ser entregue a essa sessão, no próximo disparo de hook dela. O agente ainda pode ler e encerrar o turno.
+- **🛑 risco alto:** irreversível, ou toca arquivos reais, credenciais ou dinheiro. Uma pergunta de risco alto pausa o agente que perguntou (a thread principal ou um subagente; uma pergunta sem autor registrado pausa a sessão inteira): as chamadas de ferramenta dele ficam bloqueadas, exceto as só de leitura, até a resposta ser entregue a essa sessão, no próximo disparo de hook dela. O agente ainda pode ler e encerrar o turno. No `strict`, toda pergunta pausa, qualquer que seja o risco; o rótulo não muda.
+
+### Modo de captura
+
+Uma configuração, comum a todas as sessões desta máquina, diz o que acontece com uma pergunta nova. Troque no painel, no bloco **Novas perguntas**, ou com `/askaway mode strict|auto|off`. A troca não muda nenhuma pergunta aberta: as abertas continuam no painel com o comportamento com que foram registradas, e uma pergunta pausada antes de uma troca para `off` continua pausada até você responder. Trocar o modo não remove nada da lista.
+
+| Modo | O que acontece com uma pergunta nova | Quando usar |
+|---|---|---|
+| `strict` (Rígida) | A sessão espera a sua resposta, qualquer que seja o risco. O rótulo de risco no cartão não muda. | Toda pergunta deve esperar por você. |
+| `auto` (Automática, padrão) | A sessão segue com a opção recomendada. Só uma pergunta de risco `high` a pausa. | Os projetos seguem sozinhos, e você responde quando voltar. |
+| `off` (Desativada) | Nada novo é capturado. O agente é avisado para perguntar na própria janela ou seguir com a opção recomendada. O diálogo nativo de perguntas não é interceptado, também no modo ausente e sob `bypassPermissions`. | Você vai dormir e quer a captura parada. |
+
+`off` vale mais que o modo ausente. Uma sessão rodando `/goal` nunca é capturada, em qualquer modo.
 
 ### Teclas
 
@@ -381,6 +395,8 @@ No desktop, a marca da KeepGlide fica ao lado do contador e ao lado de **Enviar 
 | `/askaway lang en` | Mostra em inglês. |
 | `/askaway lang auto` | Volta a seguir o seu locale. |
 | `/askaway away` | Liga ou desliga o modo ausente e informa o novo estado. |
+| `/askaway mode` | Mostra o modo de captura: `strict`, `auto` ou `off` ([Modo de captura](#modo-de-captura)). |
+| `/askaway mode strict`, `auto` ou `off` | Define o modo de captura para todas as sessões da máquina (sem diferenciar maiúsculas). Outro valor responde `Digite /askaway mode strict, auto ou off.`. |
 | `/askaway quiet on` ou `off` | Modo silencioso: sem aviso (*toast*) para pergunta nova e sem esmaecer depois de uma resposta. Sem valor, informa o estado. Desligado por padrão. |
 | `/askaway who <nome>` | Define o nome com que as respostas do painel são assinadas; sem nome, mostra o atual. O painel pergunta uma vez, na primeira vez que há uma pergunta aberta. |
 
@@ -390,6 +406,7 @@ No desktop, a marca da KeepGlide fica ao lado do contador e ao lado de **Enviar 
 | Grupos do Desktop | `~/.config/Claude/claude_desktop_config.json` | Variável de ambiente `ASKAWAY_DESKTOP_CONFIG`; o painel relê o arquivo quando a data de modificação muda, e mantém os últimos grupos lidos quando uma leitura falha |
 | Idioma | `auto`: o locale. Decide a primeira variável definida entre `LC_ALL`, `LC_MESSAGES`, `LANG`, `LANGUAGE`; um valor que começa com `pt` é português, qualquer outro é inglês | `/askaway lang pt-BR`, `/askaway lang en` ou `/askaway lang auto` |
 | Modo ausente | Desligado | `/askaway away` (guardado em `away.json` na pasta de estado) |
+| Modo de captura | `auto` | `/askaway mode strict`, `auto` ou `off`, ou o bloco **Novas perguntas** do painel (guardado em `mode.json` na pasta de estado) |
 | Quem respondeu | O painel assina com o nome que você deu; a CLI usa `ASKAWAY_WHO` quando tem um nome, senão o nome do usuário do sistema, senão `unknown` | `/askaway who <nome>` (painel), variável de ambiente `ASKAWAY_WHO` (CLI). Cada resposta grava isso em `who`, e `status`, `list` e `export` mostram o campo. O nome é **declarado**, não verificado: quem digita um nome assina com ele |
 | Janela de limpeza | 30 dias | Variável de ambiente `ASKAWAY_PRUNE_DAYS`, em dias inteiros; `0` remove de uma vez os itens entregues e expirados |
 
@@ -403,7 +420,9 @@ Cada agente lê a skill `askaway-user:askaway-user-question-playbook` (`plugins/
 - o modo ausente está ligado (`away.json` tem `"on": true`);
 - a variável de ambiente `CLAUDE_CODE_SESSION_ATTENDED` é `0`.
 
-O gancho `ask-guard` roda antes de toda chamada de `AskUserQuestion`. Quando uma dessas condições vale, ele recusa a chamada e entrega ao agente um esqueleto JSON de cada pergunta, com os campos a preencher, para registrar com a CLI. Nada é guardado até o agente registrar. Uma sessão rodando `/goal` nunca é negada por este gancho (veja o teste de ausência acima).
+O gancho `ask-guard` roda antes de toda chamada de `AskUserQuestion`. Quando uma dessas condições vale e o modo de captura não é `off`, ele recusa a chamada e entrega ao agente um esqueleto JSON de cada pergunta, com os campos a preencher, para registrar com a CLI. Nada é guardado até o agente registrar. Uma sessão rodando `/goal` nunca é negada por este gancho (veja o teste de ausência acima).
+
+O modo de captura muda o que a CLI faz com a pergunta registrada ([Modo de captura](#modo-de-captura)). No `strict`, ela responde `"action": "pause"` para toda pergunta. No `off`, não registra nada e responde `{"captured": false, "reason": "off", "action": "continue", "recommended": "A", "message": "…"}`, que manda o agente perguntar na própria janela ou seguir com a opção recomendada. O gancho `ask-guard` fica em silêncio nesse modo, então o diálogo nativo de perguntas passa, também no modo ausente e sob `bypassPermissions`.
 
 Fora disso, a pergunta é feita no Claude Code como de costume. A CLI imprime uma linha JSON:
 
@@ -430,8 +449,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `gains` | sim | Uma ou duas frases sobre o que o usuário ganha com ela. Até 300 caracteres. |
 | `losses` | sim | Uma ou duas frases sobre o que o usuário abre mão ou arrisca com ela. Até 300 caracteres. |
 | `analogy`, `urgency`, `undo` | sim | `analogy` é uma comparação que deixa a troca clara; `urgency` é o prazo, como `Can wait` ou `Blocks in ~8 min`; `undo` é o custo de reverter a escolha, como `changing later ≈ 10 min`. Até 300 caracteres cada. |
-| `risk` | sim | O risco de aceitar a opção recomendada: `low` é seguro de aceitar e fácil de mudar depois; `medium` é reversível, mas mudar custa retrabalho; `high` é irreversível, ou toca arquivos reais, credenciais ou dinheiro, e pausa o agente que perguntou até a resposta ser entregue a ele (a sessão inteira quando a pergunta não tem autor). Não há padrão: um `risk` faltando faz a entrada voltar como `refile`. |
-| `pause` | não | Só é verificado quanto ao tipo; não pausa nada. Uma pergunta pausa o agente que perguntou quando `risk` é `high` (a sessão inteira quando ainda não tem autor), e nunca em outro caso. |
+| `risk` | sim | O risco de aceitar a opção recomendada: `low` é seguro de aceitar e fácil de mudar depois; `medium` é reversível, mas mudar custa retrabalho; `high` é irreversível, ou toca arquivos reais, credenciais ou dinheiro, e pausa o agente que perguntou até a resposta ser entregue a ele (a sessão inteira quando a pergunta não tem autor). No `strict`, toda pergunta pausa, qualquer que seja o risco. Não há padrão: um `risk` faltando faz a entrada voltar como `refile`. |
+| `pause` | não | Só é verificado quanto ao tipo; não pausa nada. Uma pergunta pausa o agente que perguntou quando `risk` é `high` ou quando o modo de captura é `strict` (a sessão inteira quando ainda não tem autor). No modo padrão `auto`, nunca em outro caso. |
 | `urgency_level` | não | `low`, `medium` ou `high` (qualquer caixa): o grau pelo qual o painel colore a urgência. Sem ele, o texto da urgência não tem grau: é desenhado na cor padrão. Qualquer outro valor volta como `refile`. |
 | `translations` | não | O texto da pergunta no outro idioma do painel, com a chave `en` ou `pt-BR` (nunca o `lang` da própria entrada; outra chave volta como `refile`), para que `/askaway lang` troque o cartão inteiro. Um idioma vem completo ou não vem: todos os campos de texto obrigatórios, e `label`, `does`, `pros`, `cons` e `tradeoff` de cada opção; uma falta volta como `translations.<chave>: missing <nomes>`. |
 | `run_kind` | não | `main`, `subagent`, `goal`, `loop`, `bash` ou `codex`. |
@@ -450,7 +469,7 @@ Todo comando imprime uma linha JSON, exceto `export`, que imprime o seu document
 
 | Comando | O que faz |
 |---|---|
-| `ask --json '<entry>'` | Registra uma pergunta com os campos acima. `--strict` sai com 1 numa recusa (refile) ou num erro. Uma repetição de pergunta aberta (mesma sessão, mesma pergunta) devolve o id da aberta. Uma sessão rodando `/goal` não registra nada: a resposta é `{"captured":false,"reason":"goal","action":"continue"}`. |
+| `ask --json '<entry>'` | Registra uma pergunta com os campos acima. `--strict` sai com 1 numa recusa (refile) ou num erro. Uma repetição de pergunta aberta (mesma sessão, mesma pergunta) devolve o id da aberta. Uma sessão rodando `/goal` não registra nada: a resposta é `{"captured":false,"reason":"goal","action":"continue"}`. Sob o modo de captura `off`, também não registra nada, e a resposta é `{"captured":false,"reason":"off","action":"continue",...}`. |
 | `answer <id> <key> [--by <source>] [--text <text>]` | Registra uma resposta (agentes não devem chamá-lo). `--strict` sai com 1 quando a resposta é recusada ou inválida; uma pergunta retirada recusa toda resposta. |
 | `withdraw --id <id>` | A sessão que perguntou declara que você respondeu a pergunta aberta na janela do chat, então o cartão sai da caixa de entrada na hora. Não grava resposta; o `status` passa a trazer `"withdrawn": true`. Recusado para pergunta de outra sessão, pergunta sem sessão, pergunta com pausa (você responde essas no painel) e pergunta que não está aberta. `--strict` sai com 1 numa recusa. |
 | `status <id>` | Imprime o estado (`open`, `answered`, `delivered`, `expired`, `damaged` ou `damaged answer`), a chave e, quando houver, `who` e `by`, e `text` numa resposta Other. `--table` imprime uma tabela alinhada. `--strict` como em `ask`. |
@@ -469,7 +488,7 @@ O estado `damaged` quer dizer que o arquivo da pergunta não lê como objeto JSO
 Uma execução do Codex não tem id de sessão do Claude Code, então nenhum gancho a alcança. O script dela busca a resposta por conta própria.
 
 1. Registre a pergunta com a mesma entrada `ask --json` de cima, mais `--strict`. Código 0 quer dizer que foi registrada. Código 1 quer dizer que foi recusada: a saída traz `"action": "refile"` ou um `error`, então complete a entrada e registre de novo.
-2. Para uma pergunta de risco `high`, a saída traz `"action": "pause"`. Nada segura uma execução do Codex, então o script precisa esperar a resposta antes de agir na opção recomendada:
+2. Para uma pergunta de risco `high`, ou qualquer pergunta no modo `strict`, a saída traz `"action": "pause"`. Nada segura uma execução do Codex, então o script precisa esperar a resposta antes de agir na opção recomendada:
 
 ```bash
 python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
@@ -488,6 +507,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ├── s/<id>.json   a marca de entrega da cópia do próprio subagente que perguntou
 ├── w/<id>.json   a retirada de uma pergunta respondida no chat, feita pela sessão que perguntou (`withdraw --id`)
 ├── away.json     modo ausente: {"on": true, "ts": ...}
+├── mode.json     modo de captura: {"mode": "strict", "auto" ou "off", "ts": ...}; arquivo ausente ou danificado vale como auto
 ├── draft.json    as escolhas do assistente, compartilhadas por todas as sessões da pasta
 ├── cleared.json  as linhas do Histórico que um Limpar histórico ocultou, compartilhadas por todas as sessões da pasta
 ├── foreign_check quando as respostas não lidas de outras sessões foram conferidas por último (a data de modificação), no máximo uma vez por minuto
@@ -506,13 +526,13 @@ A pasta de estado pertence a um usuário, e todas as sessões do Claude Code que
 
 - **Ganchos** (`plugins/askaway-user/hooks/command-hooks.json`) leem a entrada do hook pela entrada padrão: id da sessão, modo de permissão, diretório de trabalho, nome e entrada da ferramenta.
   - `SessionStart` (em `startup`, `resume`, `clear` ou `compact`), `UserPromptSubmit` e `PostToolUse` rodam `hook deliver`: ele lê `q/`, `a/`, `d/` e `s/`, grava uma marca de entrega para cada resposta que entrega (em `d/` para a sessão principal, em `s/` para o subagente cujo próprio `ask` registrou a pergunta), e coloca o texto da resposta no contexto daquela sessão. No `UserPromptSubmit` da sessão principal, acrescenta também uma linha com até 5 perguntas abertas da sessão e seus comandos `withdraw --id`.
-  - `PreToolUse` em `AskUserQuestion` roda `hook ask-guard`: lê o estado ausente e não grava nada.
+  - `PreToolUse` em `AskUserQuestion` roda `hook ask-guard`: lê o estado ausente e o modo de captura, e não grava nada.
   - `PreToolUse` em `.*` (toda ferramenta) roda `hook pause-guard`: sai logo quando não há pausa em arquivo; senão lê `q/`, `a/`, `d/` e `s/`; a única gravação dele é a marca `clock_mark` na pasta de estado, quando uma pausa tem uma resposta ainda sem marca.
   - `PostToolUse` em `Bash` roda `hook stamp-asker`: depois de uma chamada de `ask`, grava `asker` (o `agent_id` de quem chamou, ou `main`) na pausa que a chamada registrou, e não altera outro campo.
 - **Títulos de sessão:** ao registrar uma pergunta, `ask` procura o transcrito da sessão que perguntou, `<sessão>.jsonl`, em qualquer pasta de projeto sob `~/.claude/projects/`, e guarda só as suas entradas de título (`custom-title`, `agent-name`, `ai-title`). Não lê prompts nem respostas. O título dá nome à sessão no cartão.
 - **Registros de sessão do Claude Desktop:** a cada `ask`, lê os registros `$XDG_CONFIG_HOME/Claude/claude-code-sessions/*/*/local_*.json` (`~/.config` quando `XDG_CONFIG_HOME` não está definido; no macOS, em `~/Library/Application Support`) para achar a sessão e a família do Desktop da sessão que perguntou.
 - **Marcadores de liberação do Claude Desktop:** `deliver` procura `<sessão>.desktop-released.json` em qualquer pasta de projeto (uma varredura por execução de `deliver`), para fechar as respostas de uma sessão que o Claude Desktop liberou.
-- **Painel (mod):** lê `q/`, `a/` e `d/`; grava respostas só pela CLI (`answer --by panel`); na pasta de estado grava o alternador do modo ausente (`away.json`), `draft.json` e `cleared.json` (com uma pasta `draft.lock` em volta de cada gravação do rascunho), uma marca de entrega `d/<id>.json` com `via: "prompt"` para cada resposta que entrega a uma sessão, e um arquivo em `panel-tokens/` para cada token do painel que emite; as chaves do armazenamento dele são `lang`, `who`, `quiet` e `cleared`.
+- **Painel (mod):** lê `q/`, `a/` e `d/`; grava respostas só pela CLI (`answer --by panel`); na pasta de estado grava o alternador do modo ausente (`away.json`) e o modo de captura (`mode.json`, pelos botões do painel ou pelo `/askaway mode`), `draft.json` e `cleared.json` (com uma pasta `draft.lock` em volta de cada gravação do rascunho), uma marca de entrega `d/<id>.json` com `via: "prompt"` para cada resposta que entrega a uma sessão, e um arquivo em `panel-tokens/` para cada token do painel que emite; as chaves do armazenamento dele são `lang`, `who`, `quiet` e `cleared`.
 - **Limpeza:** no máximo uma vez por dia, `deliver` remove itens fechados (entregues ou expirados) resolvidos há mais de `ASKAWAY_PRUNE_DAYS` dias (padrão 30), uma pergunta retirada sem pausa seja qual for a janela, e arquivos temporários antigos.
 - **A CLI e os ganchos gravam só dentro da pasta de estado.** Cada arquivo é gravado primeiro num arquivo temporário e depois renomeado. Nada é enviado pela rede, e nada é gravado nos seus projetos ou transcrições.
 
@@ -565,7 +585,7 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 </details>
 
 <details>
-<summary>Painel e interface (20)</summary>
+<summary>Painel e interface (24)</summary>
 
 | Decisão | Em vez de | Por quê | Desde |
 |---|---|---|---|
@@ -592,6 +612,7 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 | O painel nunca corta um título, e desenha o título de reserva de 60 caracteres da CLI como a pergunta inteira. | Cortes de 24 e 40 caracteres | Uma pergunta cortada não dava para ler. | [beta.35](CHANGELOG.md#040-beta35---2026-10-21) |
 | O cartão de uma sessão encerrada mostra um aviso cujo Dispensar roda `prune --force`; o aviso de uma pausa danificada roda `prune --id --strict` sem `--force`. | `--force` em tudo | O clique do usuário precisa liberar uma pausa, e uma pergunta legível não pode ser apagada. | [beta.11](CHANGELOG.md#040-beta11---2026-10-18), [beta.31](CHANGELOG.md#040-beta31---2026-10-21) |
 | Cada botão mantém o identificador de clique entre as redesenhas (`hooks/held.ts`). | Um botão novo a cada desenho | O primeiro clique no desktop se perdia. | 0.3.4 |
+| O modo de captura é uma frase, `Novas perguntas: Automática`, com um botão de verbo para cada outro modo sob `Mudar para:`; os botões de modo não têm tecla de atalho. | Um controle segmentado (Rígida, Automática, Desativada) | Um controle segmentado parece um filtro da lista, mas esta configuração vale a partir de agora e não remove nada. Uma frase com botões de verbo diz o que um clique faz. Um clique muda todas as sessões de uma vez, então nenhuma letra o faz, como em **Enviar tudo**. | [Unreleased](CHANGELOG.md#unreleased) |
 
 </details>
 
@@ -689,6 +710,10 @@ Cada linha nomeia o valor que o AskAway User escolheu e o que ele abriu mão.
 
 O que o AskAway User não faz ou não consegue garantir. As limitações que têm contorno estão em [Problemas conhecidos](#-problemas-conhecidos), e os limites de segurança também estão no [SECURITY.md](SECURITY.md#known-limits).
 
+**Modo de captura**
+
+- **Uma configuração para a máquina inteira.** `strict`, `auto` e `off` valem para todas as sessões; nenhuma sessão ou projeto tem a sua. Um quarto modo, que só espelha as perguntas nativas, está planejado, e o seu token está reservado.
+
 **Ambiente e plataforma**
 
 - **Python 3.12 ou mais novo.** Abaixo dele, toda chamada e todo gancho imprimem um erro de versão no stderr e saem com 0, então a pausa e o guarda de Bash e de arquivos não seguram nada.
@@ -779,10 +804,10 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 
 | Categoria | Testes |
 |---|---|
-| Mod (TypeScript), `plugins/askaway-user/tests/` | 625 |
-| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2194 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 654 |
+| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2222 |
 
-Contagem Python de `python3 -m pytest --collect-only -q` em `plugins/askaway-user/scripts`, no commit accdbc9 (último commit de funcionalidade da 2.3.0), em 2026-11-20. A contagem do mod vem de uma execução nova de `claude plugin test plugins/askaway-user` no mesmo commit (o runner não tem modo de coleta).
+As contagens vêm de uma execução de `claude plugin test plugins/askaway-user` (654 passaram) e de `python3 -m pytest tests -q` em `plugins/askaway-user/scripts` (2222 passaram), ambas em 2026-11-26 sobre a mudança de modos de captura, no commit e435a6e (`feat(pane)`).
 
 ## 🔧 Desenvolvimento
 
@@ -857,6 +882,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 2.2.0 | 2026-11-17 | Uma pergunta respondida na janela do chat pode ser retirada com `withdraw --id`, para o cartão deixar de esperar na caixa de entrada; o cartão diz que foi respondida no chat e oferece só Dispensar. |
 | 2.3.1 | 2026-11-20 | A limpeza diária sempre remove as perguntas retiradas, e o painel lê as retiradas de uma só fonte por pasta. |
 | 2.3.0 | 2026-11-20 | Uma sessão rodando `/goal` nunca é capturada: o `ask` não registra nada e o `AskUserQuestion` não é negado. Uma pergunta respondida na janela do chat sai da caixa de entrada na hora, a não ser que tenha pausa, e o `prune` a remove. A árvore do Desktop desenha uma linha contínua para as sessões derivadas. |
+| Não lançada | ainda não lançada | Modo de captura: `strict`, `auto` (o padrão) ou `off` para perguntas novas, definido pelo painel ou com `/askaway mode`. O `off` não registra nada, e o diálogo nativo de perguntas passa. |
 
 ## 🤝 Contribuição
 
