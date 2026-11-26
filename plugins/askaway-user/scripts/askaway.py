@@ -5,7 +5,7 @@ State lives in one JSON file per item under ASKAWAY_HOME (default
 ~/.claude/state/askaway-user; the legacy ~/.claude/state/askaway is moved there once):
 q/ questions, a/ answers (first writer wins),
 d/ delivery markers (the main session's copy), s/ the asking subagent's own delivery markers, w/ withdrawals
-(the asking session's "answered in chat" declarations), and away.json.
+(the asking session's "answered in chat" declarations).
 Contract: SPEC.md next to this plugin.
 Hook modes fail open: any error exits 0 with no output, except the pause guard, which denies the call.
 """
@@ -388,9 +388,8 @@ PRUNE_LOCK: Final = ".prune.lock"  # taken without waiting by the daily cleanup:
 RECIPIENT_KEY: Final = "recipient"  # who a delivery marker gave the reply to: MAIN_ASKER in d/, the subagent's agent_id in s/
 ANSWER_DENIED: Final = ("Denied: an AskAway User question is answered only by the user, in the AskAway User panel, never "
                         "from a shell command. Keep working on the recommended option or end the turn.")
-AWAY_DENIED: Final = ("Denied: the AskAway User away mode is switched only by the user, in the AskAway User panel or the user's "
-                      "own shell, never by a shell command of the agent. Questions keep going to the inbox meanwhile.")
-AWAY_SWITCHES: Final = frozenset({"on", "off"})
+MODE_DENIED: Final = ("Denied: the AskAway User capture mode is switched only by the user, in the AskAway User panel or "
+                      "with /askaway mode.")
 STATE_DENIED: Final = ("Denied: the AskAway User state folder is written only by askaway.py itself. The user answers "
                        "in the AskAway User panel, so a shell command or a file edit must not write into that folder.")
 UNREADABLE_DENIED: Final = ("Denied: the AskAway User guard could not read this command (an internal error). Split it into "
@@ -555,8 +554,7 @@ CODE_PATH_VALUE: Final = re.compile(
     r"""['"][^'"\s]*[/~][^'"\s]*?state[^'"\s\w]*askaway|['"]state['"]\s*[,/+]\s*['"]askaway""")
 CODE_TEXT_EDIT: Final = re.compile(r"\.replace\(|\bsub\(|\.format\(|\.read")  # the line edits or reads text: its value is no path
 ANSWER_CODE: Final = re.compile(r"cmd_answer|answer\(|['\"]answer['\"]")
-AWAY_CODE: Final = re.compile(r"['\"]away['\"]|\baway\w*")  # the away switch as a string or as an identifier such as away_path
-AWAY_SWITCH_TEXT: Final = re.compile(r"\baway\s+(?:on|off)\b")
+MODE_CODE: Final = re.compile(r"mode_path|state_home|write_atomic|['\"][^'\"\n]*mode\.json")  # code that reaches the capture mode: the module helpers, or the file name inside a quoted literal (prose is no code)
 ASKAWAY_CODE: Final = re.compile(r"import\s+askaway|from\s+askaway\s+import|askaway\.py")
 RUNS_CODE: Final = re.compile(r"subprocess|os\.(?:system|popen|exec\w*|spawn\w*)|\bpty\b|\.main\(|cmd_\w+"
                               r"|\brunpy\b|\bexec\(")
@@ -581,10 +579,6 @@ def item_path(folder: str, item_id: str) -> Path:
     if not ID_PATTERN.fullmatch(item_id):
         raise ValueError("invalid inbox id")
     return state_home() / folder / f"{item_id}.json"
-
-
-def away_path() -> Path:
-    return state_home() / "away.json"
 
 
 def mode_path() -> Path:
@@ -826,18 +820,6 @@ def other_text(answer: Mapping[str, Any] | None) -> str | None:
     if not answer or answer.get("key") != OTHER_KEY or not isinstance(answer.get("text"), str):
         return None
     return _other_clean(answer["text"]) or None
-
-
-def away_on() -> bool:
-    data = read_json(away_path())
-    return data is not None and data.get("on") is True
-
-
-def is_away(permission_mode: object) -> bool:
-    """Whether the user is away. A bypassPermissions run always counts as away, whatever away.json says:
-    nobody is there to answer, so an "away off" flag must never let a question skip the inbox."""
-    return (permission_mode == "bypassPermissions" or away_on()
-            or os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "0")
 
 
 CAPTURE_MODES: Final = ("strict", "auto", "off")  # mode.json's "mode"; the mod writes it, this script only reads it
@@ -2012,14 +1994,6 @@ def cmd_answered(since: str | None) -> dict[str, Any]:
     return {"items": items}
 
 
-def cmd_away(state: str) -> dict[str, Any]:
-    if state == "status":
-        return {"away": away_on()}
-    on = state == "on"
-    write_atomic(away_path(), {"on": on, "ts": now_ms()})
-    return {"away": on}
-
-
 def _present_files(item_id: str) -> list[Path]:
     return [item_path(folder, item_id) for folder in ("q", "a", "d", "s", "w")
             if os.path.lexists(item_path(folder, item_id))]
@@ -2422,10 +2396,6 @@ def build_parser() -> argparse.ArgumentParser:
     listing.add_argument("--table", action="store_true")
     listing.set_defaults(run=_list_command)
 
-    away = commands.add_parser("away")
-    away.add_argument("state", choices=("on", "off", "status"))
-    away.set_defaults(run=lambda a: cmd_away(a.state))
-
     prune = commands.add_parser("prune")
     prune.add_argument("--days", type=int, default=prune_days())
     prune.add_argument("--id", dest="item_id")
@@ -2500,17 +2470,15 @@ def askuser_reason(skeletons: Sequence[Mapping[str, Any]], multi_selects: Sequen
             lines.append(f"Question {number}: {MULTI_SELECT_NOTE}")
         lines.append(f"{number}. python3 \"{SCRIPT_PATH}\" ask --json "
                      + shlex.quote(json.dumps(skeleton, ensure_ascii=False, separators=(',', ':'))))
-    return ("The user is away, so these AskUserQuestion calls are NOT in the AskAway User inbox yet. "
-            "Before you continue, fill every empty field (\"\" or null) of each skeleton, then file "
+    return ("AskAway User captures questions for the user's panel, so these AskUserQuestion calls are NOT "
+            "in the AskAway User inbox yet. Before you continue, fill every empty field (\"\" or null) of each skeleton, then file "
             "it with its command: one command per question, keeping the single quotes (write a ' "
             "inside a value as '\\''). Continue on the recommended option unless the reply says "
             "pause.\n" + "\n".join(lines))
 
 
 def hook_ask_guard(event: Mapping[str, Any]) -> HookOutput:
-    if not is_away(event.get("permission_mode")):
-        return None
-    if capture_mode() == "off":  # off holds nothing: the question shows in its own window, even while away
+    if capture_mode() == "off":  # off holds nothing: the question shows in its own window
         return None
     questions = (event.get("tool_input") or {}).get("questions") or []
     skeletons = [askuser_skeleton(question) for question in questions]
@@ -3148,17 +3116,6 @@ def _answer_reason(argv: Sequence[str], sandboxed: bool) -> str | None:
     return None
 
 
-def _away_reason(argv: Sequence[str], sandboxed: bool) -> str | None:
-    """An away switch typed in a shell, or one a variable could make: the user switches away mode, not the agent."""
-    args = _askaway_args(argv)
-    if args is None or sandboxed:
-        return None
-    words = [word for word in args if not _unquote(word).startswith("-")]
-    if len(words) < 2 or _unquote(words[0]) != "away":
-        return None
-    return AWAY_DENIED if _unquote(words[1]) in AWAY_SWITCHES or _has_expansion(words[1]) else None
-
-
 def _forced_prune_reason(argv: Sequence[str]) -> str | None:
     """A prune with --force, which removes a question whose session has not ended: the user's own terminal only."""
     words = [_unquote(word) for word in _askaway_args(argv) or []]
@@ -3212,10 +3169,10 @@ def _directory_operand(operand: str) -> str | None:
 
 
 def _askaway_code_reason(code: str) -> str | None:
-    """Code that names the askaway module or script and either answers a question or switches away mode."""
+    """Code that names the askaway module or script and either answers a question or switches the capture mode."""
     if ANSWER_CODE.search(code):
         return ANSWER_DENIED
-    return AWAY_DENIED if AWAY_CODE.search(code) else None  # the away switch is the user's, as _away_reason holds it
+    return MODE_DENIED if MODE_CODE.search(code) else None
 
 
 def _code_reason(code: str, *, sandboxed: bool) -> str | None:
@@ -3544,13 +3501,13 @@ def _sandbox_value(value: str, cwd: str, written: Sequence[str]) -> bool:
 
 
 def _unreadable_reason(command: str) -> str | None:
-    """A command that does not read (an open quote): refused when it names the state folder in any piece, an answer or an away switch."""
+    """A command that does not read (an open quote): refused when it names the state folder in any piece, an answer or the capture mode."""
     names_state = STATE_MENTION.search(command) or STATE_PIECES.search(command)
     if names_state or ("askaway" in command and STATE_FOLDER_PATH.search(command)):
         return STATE_DENIED
     if "askaway" in command and "answer" in command:
         return ANSWER_DENIED
-    return AWAY_DENIED if "askaway" in command and AWAY_SWITCH_TEXT.search(command) else None
+    return MODE_DENIED if "askaway" in command and MODE_CODE.search(command) else None
 
 
 class _FedTexts:
@@ -3825,7 +3782,7 @@ class _ShellScan:
     def _checks(self, simple: _Simple, argv: Sequence[str], env: Mapping[str, str], home: str) -> str | None:
         sandboxed = bool(home) and (self.cwd_known or os.path.isabs(home)) and _sandbox_value(home, self.cwd, self.written)
         askaway_home = home if sandboxed else str(DEFAULT_HOME)
-        checks = [_answer_reason(argv, sandboxed), _away_reason(argv, sandboxed), _forced_prune_reason(argv),
+        checks = [_answer_reason(argv, sandboxed), _forced_prune_reason(argv),
                   self._write_reason(simple, argv, askaway_home), self._nested(simple, env, argv),
                   self._find_reason(env, argv)]
         code = _inline_code(argv)
@@ -4237,7 +4194,7 @@ def _ask_form_hint(tool: object, command: str) -> str:
 
 
 def hook_pause_guard(event: Mapping[str, Any]) -> HookOutput:
-    tampering = _tamper_denial(event)  # runs in every session, away or not; fails closed on its own
+    tampering = _tamper_denial(event)  # runs in every session; fails closed on its own
     if tampering is not None:
         return tampering
     try:
