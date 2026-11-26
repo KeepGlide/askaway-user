@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AskAway User · capture mode control · round 2</title>
+<!--
+Wireframe, page level (top to bottom):
+ =====================================================================
+ | HERO: kicker, h1, lede, the one rule, reading order, nav pills    |
+ =====================================================================
+ | MOCK A panel: kicker, h2, summary                                  |
+ |   F1 main pane: host tab, head, status row, hairline, tree, card   |
+ |   F1b none   F2 KEY: same pane with Desativada, tree identical,    |
+ |       toast beside it                                              |
+ |   F3 stacked control-only panes   F4 light empty                   |
+ |   F5 away counter   F6 narrow 360 px   F7 terminal pre + picker    |
+ |   F8 elements table                                                |
+ =====================================================================
+ | MOCK B panel: same frame order, sentence + verb buttons            |
+ =====================================================================
+ | MOCK C panel: same frame order, header Select, F1b open approx.    |
+ =====================================================================
+ | SHARED panel: command transcript, band row                         |
+ =====================================================================
+-->
+<style>
+:root {
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 12px; --text-sm: 13px; --text-md: 14px; --text-lg: 16px;
+  --text-xl: 20px; --text-2xl: 28px; --text-3xl: 40px;
+  --line-body: 1.5; --line-tight: 1.2;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px;
+  --radius-card: 20px; --radius-pane: 12px; --radius-control: 8px; --radius-chip: 5px; --radius-pill: 999px;
+  --motion-quick: 150ms;
+  --motion-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --mode-strict: #DC2626; --mode-auto: #3566C8; --mode-mirror: #8B5CF6; --mode-off: #6B7280;
+  --logo-violet: #8B5CF6;
+  --hairline: #D1D5DB;
+  --page-bg: #F3F4F6; --panel-bg: #FFFFFF; --panel-edge: #E5E7EB;
+  --page-text: #111827; --page-muted: #4B5563;
+  --accent: #6D28D9; --accent-soft: #EDE9FE; --focus-ring: #6D28D9;
+  --hero-start: #FFFFFF; --hero-end: #EDE9FE;
+  --shadow-1: 0 1px 2px rgba(17, 24, 39, 0.06), 0 1px 1px rgba(17, 24, 39, 0.04);
+  --shadow-2: 0 2px 4px rgba(17, 24, 39, 0.06), 0 8px 16px rgba(17, 24, 39, 0.08);
+  --shadow-3: 0 4px 8px rgba(17, 24, 39, 0.06), 0 16px 32px rgba(17, 24, 39, 0.10);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-bg: #0E1017; --panel-bg: #171A23; --panel-edge: #2A2F3D;
+    --page-text: #F3F4F6; --page-muted: #A7AEBD;
+    --accent: #A78BFA; --accent-soft: #2A2352; --focus-ring: #A78BFA;
+    --hero-start: #1A1D29; --hero-end: #2A2352;
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.50);
+    --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.40), 0 8px 16px rgba(0, 0, 0, 0.35);
+    --shadow-3: 0 4px 8px rgba(0, 0, 0, 0.40), 0 16px 32px rgba(0, 0, 0, 0.40);
+  }
+}
+
+/* Pane tokens: each pane keeps its own theme whatever the page scheme is. */
+.pane--dark {
+  --pane-bg: #0b0b0b; --pane-text: #FFFFFF; --pane-edge: #2A2F3D; --pane-hair: #D1D5DB;
+  --pane-primary-bg: #FFFFFF; --pane-primary-text: #0b0b0b;
+  --pane-primary-chip-bg: #D4D4D8; --pane-primary-chip-text: #0b0b0b;
+  --pane-secondary-bg: #1F2023; --pane-secondary-text: #FFFFFF; --pane-secondary-edge: #3F4147;
+  --pane-chip-bg: #3F4147; --pane-chip-text: #FFFFFF;
+  --pane-list-bg: #17181C;
+  --pane-user-bg: #F3F4F6; --pane-user-text: #0b0b0b;
+  --pane-success: #4ADE80; --pane-warning: #FBBF24; --pane-error: #F87171;
+}
+
+.pane--light {
+  --pane-bg: #FFFFFF; --pane-text: #0b0b0b; --pane-edge: #E5E7EB; --pane-hair: #D1D5DB;
+  --pane-primary-bg: #0b0b0b; --pane-primary-text: #FFFFFF;
+  --pane-primary-chip-bg: #374151; --pane-primary-chip-text: #FFFFFF;
+  --pane-secondary-bg: #F3F4F6; --pane-secondary-text: #0b0b0b; --pane-secondary-edge: #D1D5DB;
+  --pane-chip-bg: #E5E7EB; --pane-chip-text: #0b0b0b;
+  --pane-list-bg: #FFFFFF;
+  --pane-user-bg: #F3F4F6; --pane-user-text: #0b0b0b;
+  --pane-success: #15803D; --pane-warning: #B45309; --pane-error: #B91C1C;
+}
+
+html {
+  scroll-padding-top: var(--space-5);
+  background: var(--page-bg);
+}
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--page-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-lg);
+  line-height: var(--line-body);
+}
+
+p { margin: 0; }
+h1, h2, h3 { margin: 0; line-height: var(--line-tight); }
+h1 { font-size: var(--text-3xl); font-weight: 700; }
+h2 { font-size: var(--text-2xl); font-weight: 700; }
+h3 { font-size: var(--text-xl); font-weight: 700; }
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+  display: grid;
+  gap: var(--space-6);
+}
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.hero {
+  background: linear-gradient(135deg, var(--hero-start), var(--hero-end));
+  box-shadow: var(--shadow-3);
+}
+
+.kicker {
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.muted { color: var(--page-muted); }
+.bold { font-weight: 700; }
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.nav-link {
+  display: inline-flex;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-pill);
+  background: var(--panel-bg);
+  color: var(--page-text);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-1);
+  transition: background-color var(--motion-quick) var(--motion-ease-smooth-out),
+              border-color var(--motion-quick) var(--motion-ease-smooth-out);
+}
+
+@media (hover: hover) {
+  .nav-link:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.frames {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.frame {
+  margin: 0;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-2);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.frame-caption {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--page-muted);
+}
+
+.host-tab {
+  justify-self: start;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--panel-edge);
+  border-radius: 6px 6px 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--page-text);
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.stack-item {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.item-caption {
+  font-size: var(--text-sm);
+  color: var(--page-muted);
+}
+
+/* The pane: the engine's desktop surface, drawn with its allowed elements only. */
+.pane {
+  box-sizing: border-box;
+  width: min(780px, 100%);
+  max-width: 100%;
+  min-width: 0;
+  background: var(--pane-bg);
+  color: var(--pane-text);
+  border: 1px solid var(--pane-edge);
+  border-radius: var(--radius-pane);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  line-height: 1.4;
+}
+
+.pane--narrow { width: min(360px, 100%); }
+.pane--compact { width: min(560px, 100%); }
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.head-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+}
+
+.counter {
+  margin-left: auto;
+  font-size: var(--text-sm);
+}
+
+.logo { flex: none; display: block; }
+.logo-stroke {
+  fill: none;
+  stroke: var(--logo-violet);
+  stroke-width: 22;
+  stroke-linejoin: round;
+}
+
+.hair {
+  display: block;
+  width: 100%;
+  height: 1px;
+  flex: none;
+}
+.hair-fill { fill: var(--pane-hair); }
+
+.dim { opacity: 0.6; }
+.success { color: var(--pane-success); }
+.warning { color: var(--pane-warning); }
+.error { color: var(--pane-error); }
+
+.mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mode-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.button--primary {
+  background: var(--pane-primary-bg);
+  color: var(--pane-primary-text);
+}
+
+.button--secondary {
+  background: var(--pane-secondary-bg);
+  color: var(--pane-secondary-text);
+  border-color: var(--pane-secondary-edge);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-chip);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  background: var(--pane-chip-bg);
+  color: var(--pane-chip-text);
+}
+
+.button--primary .chip {
+  background: var(--pane-primary-chip-bg);
+  color: var(--pane-primary-chip-text);
+}
+
+.select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 12px;
+  border: 1px solid var(--pane-secondary-edge);
+  border-radius: var(--radius-control);
+  background: var(--pane-secondary-bg);
+  color: var(--pane-secondary-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.select-label { font-weight: 400; }
+
+.select-open {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.select-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: var(--space-1);
+  border: 1px solid var(--pane-secondary-edge);
+  border-radius: var(--radius-control);
+  background: var(--pane-list-bg);
+}
+
+.select-option {
+  display: flex;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: var(--text-sm);
+}
+
+.select-option--current {
+  font-weight: 700;
+  background: var(--pane-secondary-bg);
+}
+
+.select-mark { width: 12px; flex: none; }
+
+.user {
+  background: var(--pane-user-bg);
+  color: var(--pane-user-text);
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+}
+
+.strip-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.dot {
+  flex: none;
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+.dot--strict { fill: var(--mode-strict); }
+.dot--auto { fill: var(--mode-auto); }
+.dot--mirror { fill: var(--mode-mirror); }
+.dot--off { fill: var(--mode-off); }
+
+.tree {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-sm);
+  min-width: 0;
+}
+
+.group { margin-top: var(--space-1); }
+
+.tree-row {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.glyph {
+  flex: 0 0 3.2em;
+  font-family: var(--font-mono);
+  white-space: pre;
+  opacity: 0.6;
+}
+
+.card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--pane-edge);
+  border-radius: var(--radius-pane);
+  min-width: 0;
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.details {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
+}
+
+.option-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.option {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: stretch;
+  min-width: 0;
+}
+
+.option .button {
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+
+.option-note {
+  font-size: var(--text-sm);
+  padding-left: var(--space-2);
+}
+
+.band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.toast-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.toast {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--pane-secondary-edge);
+  border-radius: var(--radius-control);
+  background: var(--pane-secondary-bg);
+  font-size: var(--text-sm);
+}
+
+.term {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--pane-text);
+}
+
+.transcript {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--page-bg);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.prompt-mark { font-weight: 700; }
+
+.elements {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.elements th,
+.elements td {
+  text-align: left;
+  vertical-align: top;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--panel-edge);
+  overflow-wrap: anywhere;
+}
+
+.elements code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .page { padding: var(--space-4) var(--space-2); gap: var(--space-5); }
+  .panel { padding: var(--space-4); }
+  .frame { padding: var(--space-3); }
+  h1 { font-size: var(--text-2xl); }
+  h2 { font-size: var(--text-xl); }
+  .elements thead { display: none; }
+  .elements tr {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--panel-edge);
+  }
+  .elements td { padding: 0; border: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-link { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .panel, .frame, .pane, .card, .nav-link { border: 1px solid CanvasText; }
+  .nav-link:focus-visible { outline-color: Highlight; }
+}
+
+.key-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.key-row > .pane { flex: 0 1 780px; }
+
+.toast-wrap {
+  display: grid;
+  gap: var(--space-2);
+  width: min(240px, 100%);
+  min-width: 0;
+}
+
+.toast-note {
+  font-size: var(--text-xs);
+  color: var(--page-muted);
+}
+
+.toast-pane { width: min(240px, 100%); }
+
+.control {
+  display: grid;
+  gap: var(--space-2);
+}
+</style>
+</head>
+<body>
+<main class="page">
+<header class="panel hero"><p class="kicker">AskAway User · pane · capture mode · round 2</p><h1>Capture mode control: round 2</h1><p class="lede">Pick A, B or C. Every frame draws only the elements the desktop pane engine can draw. Pane strings are pt-BR; annotations are English.</p><p><span class="bold">The rule, for all three:</span> changing the mode affects only questions captured from that moment on. It never hides, closes, re-files or re-sorts an open question. A question keeps the behaviour it was captured with; a session already paused stays paused until its question is answered.</p><p class="muted">Reading order: the header title and counter, then the mode control above the hairline, then the question tree below it. Mock only: nothing here is clickable.</p><nav class="nav" aria-label="Mock proposals"><a class="nav-link" href="#mock-strip-select">A · Status strip + Select</a><a class="nav-link" href="#mock-sentence">B · Sentence + verb buttons</a><a class="nav-link" href="#mock-header-select">C · Header Select</a></nav></header><section class="panel mock" id="mock-strip-select"><p class="kicker">Proposal A</p><h2>Mock A — Status strip + Select</h2><p class="muted">A full-width status row under the header, above the hairline, with a native Select at its right end. It reads as a setting valid from now on. Two clicks: open the Select, pick any mode.</p><div class="frames"><figure class="frame"><figcaption class="frame-caption">Frame 1 · Main, dark, pane about 780 px: control with Automática, hairline, tree, card top</figcaption><div class="host-tab">Askaway</div><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="strip user"><div class="strip-main"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">A partir de agora:</span><span class="bold">Automática</span><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">em vigor há 12 min</span></div><span class="select"><span class="select-label dim">Mudar:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg><div class="tree"><p class="group bold">Keepglide</p><div class="tree-row"><span class="glyph">├</span><span class="">Windows Packaging Spike Completion</span></div><div class="tree-row"><span class="glyph">│ ●</span><span class="bold">Installer format for Windows</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Code signing for the Windows build</span></div><div class="tree-row"><span class="glyph">└</span><span class="">Run the E2E Suite in 8 Parallel Shards</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Shard count for the e2e suite</span></div><p class="group bold">Master Jev Hook</p><div class="tree-row"><span class="glyph">├</span><span class="">Align Bash-gate Timeout with Gateway JEV Timeout</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Bash gate timeout</span></div><div class="tree-row"><span class="glyph">└</span><span class="">JEv Nova Versão Upgrades</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Gateway upgrade window</span></div></div><div class="card"><div class="card-head"><span class="bold">Installer format for Windows</span><span class="success">● baixo risco</span><span class="dim">· há 30 min</span></div><p class="bold">Qual formato de instalador o build do Windows deve enviar?</p><div class="details user"><p><span class="bold">Contexto e origem:</span> O spike de empacotamento gerou um backend congelado e uma casca Electron. A release precisa de um instalador que um usuário sem administrador consiga executar.</p><p><span class="bold">Por que A:</span> os primeiros usuários instalam em notebooks próprios, sem direitos de administrador, e o NSIS é o que o builder já gera.</p></div><div class="option-list"><div class="option"><span class="button button--secondary">Instalador NSIS, por usuário (recomendado) <span class="chip">a</span></span><p class="option-note dim">└ Seguro de aceitar e padrão do builder Electron; sem prompt de administrador.</p></div><div class="option"><span class="button button--secondary">Pacote MSI <span class="chip">b</span></span><p class="option-note dim">└ Serve às ferramentas de implantação corporativa, mas exige administrador e um projeto WiX.</p></div><p class="dim">…</p></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 2 · Right after switching to Desativada with 5 questions open: nothing leaves the list</figcaption><div class="key-row"><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="strip user"><div class="strip-main"><svg class="dot dot--off" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">A partir de agora:</span><span class="bold">Desativada</span><span>Não captura perguntas novas.</span><span class="dim">em vigor agora</span></div><span class="select"><span class="select-label dim">Mudar:</span> <span class="select-value">Desativada</span> <span class="select-caret">▾</span></span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg><div class="tree"><p class="group bold">Keepglide</p><div class="tree-row"><span class="glyph">├</span><span class="">Windows Packaging Spike Completion</span></div><div class="tree-row"><span class="glyph">│ ●</span><span class="bold">Installer format for Windows</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Code signing for the Windows build</span></div><div class="tree-row"><span class="glyph">└</span><span class="">Run the E2E Suite in 8 Parallel Shards</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Shard count for the e2e suite</span></div><p class="group bold">Master Jev Hook</p><div class="tree-row"><span class="glyph">├</span><span class="">Align Bash-gate Timeout with Gateway JEV Timeout</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Bash gate timeout</span></div><div class="tree-row"><span class="glyph">└</span><span class="">JEv Nova Versão Upgrades</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Gateway upgrade window</span></div></div><div class="card"><div class="card-head"><span class="bold">Installer format for Windows</span><span class="success">● baixo risco</span><span class="dim">· há 30 min</span></div><p class="bold">Qual formato de instalador o build do Windows deve enviar?</p><div class="details user"><p><span class="bold">Contexto e origem:</span> O spike de empacotamento gerou um backend congelado e uma casca Electron. A release precisa de um instalador que um usuário sem administrador consiga executar.</p><p><span class="bold">Por que A:</span> os primeiros usuários instalam em notebooks próprios, sem direitos de administrador, e o NSIS é o que o builder já gera.</p></div><div class="option-list"><div class="option"><span class="button button--secondary">Instalador NSIS, por usuário (recomendado) <span class="chip">a</span></span><p class="option-note dim">└ Seguro de aceitar e padrão do builder Electron; sem prompt de administrador.</p></div><div class="option"><span class="button button--secondary">Pacote MSI <span class="chip">b</span></span><p class="option-note dim">└ Serve às ferramentas de implantação corporativa, mas exige administrador e um projeto WiX.</p></div><p class="dim">…</p></div></div></div><div class="toast-wrap"><p class="toast-note dim">engine toast, over the transcript</p><div class="pane pane--dark toast-pane"><div class="toast">Captura desativada a partir de agora. As 5 perguntas abertas continuam aqui.</div></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 3 · Rígida and Espelho, control area only, stacked small</figcaption><div class="stack"><div class="stack-item"><p class="item-caption">Rígida (strict)</p><div class="pane pane--dark pane--compact"><div class="strip user"><div class="strip-main"><svg class="dot dot--strict" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">A partir de agora:</span><span class="bold">Rígida</span><span>Bloqueia a sessão até você responder.</span><span class="dim">em vigor há 12 min</span></div><span class="select"><span class="select-label dim">Mudar:</span> <span class="select-value">Rígida</span> <span class="select-caret">▾</span></span></div></div></div><div class="stack-item"><p class="item-caption">Espelho (mirror)</p><div class="pane pane--dark pane--compact"><div class="strip user"><div class="strip-main"><svg class="dot dot--mirror" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">A partir de agora:</span><span class="bold">Espelho</span><span>Só reproduz a pergunta aqui; a sessão segue como sempre.</span><span class="dim">em vigor há 12 min</span></div><span class="select"><span class="select-label dim">Mudar:</span> <span class="select-value">Espelho</span> <span class="select-caret">▾</span></span></div></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 4 · Empty state, light theme, no tree</figcaption><div class="pane pane--light"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">Nenhuma pendente</span></div><div class="strip user"><div class="strip-main"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">A partir de agora:</span><span class="bold">Automática</span><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">em vigor há 12 min</span></div><span class="select"><span class="select-label dim">Mudar:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 5 · Away coexistence, dark</figcaption><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos, modo ausente ligado</span></div><div class="strip user"><div class="strip-main"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">A partir de agora:</span><span class="bold">Automática</span><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">em vigor há 12 min</span></div><span class="select"><span class="select-label dim">Mudar:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 6 · Narrow pane, about 360 px, dark: how the control wraps</figcaption><div class="pane pane--dark pane--narrow"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="strip user"><div class="strip-main"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">A partir de agora:</span><span class="bold">Automática</span><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">em vigor há 12 min</span></div><span class="select"><span class="select-label dim">Mudar:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 7 · Terminal fallback, monospace: no Svg, no chips, hotkey in the label; Select as the terminal's list picker</figcaption><div class="pane pane--dark"><pre class="term">Perguntas aguardando    5 pendentes · 2 grupos
+<span class="dim">────────────────────────────────────────────</span>
+A partir de agora: Automática · em vigor há 12 min
+A sessão segue na opção recomendada; só risco alto pausa.
+Mudar: Automática ▾</pre></div><div class="pane pane--dark"><pre class="term">  Rígida
+&gt; Automática
+  Espelho
+  Desativada</pre></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 8 · Elements</figcaption><h3>Elements</h3><table class="elements"><thead><tr><th scope="col">Drawn part</th><th scope="col">Engine element and props</th></tr></thead><tbody><tr><td>Host tab “Askaway”</td><td>Host app chrome above the pane; static text only, not an engine element.</td></tr><tr><td>Logo, heading, counter</td><td><code>Svg</code> logo; <code>Text bold</code> heading; <code>Text dim</code> counter.</td></tr><tr><td>Status row (full width, user-message background)</td><td><code>Box</code> row, wrapping, with the user-message background; sits above the hairline.</td></tr><tr><td>Mode dot</td><td><code>Svg</code> 10 px circle; fill per mode: strict #DC2626, auto #3566C8, mirror #8B5CF6, off #6B7280.</td></tr><tr><td>“A partir de agora:”</td><td><code>Text dim</code>.</td></tr><tr><td>Mode name, description, age stamp</td><td><code>Text bold</code> name; <code>Text</code> description; <code>Text dim</code> "em vigor há 12 min" or "em vigor agora".</td></tr><tr><td>Mode Select</td><td><code>Select key="capture-mode" label="Mudar:" value="auto" options=[{value:"strict",label:"Rígida"}, {value:"auto",label:"Automática"}, {value:"mirror",label:"Espelho"}, {value:"off",label:"Desativada"}] onSelect</code>; the surface's native dropdown at the right end of the row.</td></tr><tr><td>Hairline</td><td><code>Svg</code>, 1 px tall, full width; separates the setting above from the list below.</td></tr><tr><td>Tree and question card</td><td>As in the other mocks: <code>Text</code> rows, <code>Box</code> card with details block.</td></tr><tr><td>Toast (frame 2 only)</td><td>Engine <code>$.ui.toast(text)</code>; not a pane element.</td></tr></tbody></table><p><span class="bold">Clicks to change:</span> two (open the Select, then pick any of the four values).</p><p><span class="bold">Trade-off:</span> the Select reaches any mode in two clicks and keeps the row short, but its choices stay hidden until it opens.</p></figure></div></section><section class="panel mock" id="mock-sentence"><p class="kicker">Proposal B</p><h2>Mock B — Sentence + verb buttons</h2><p class="muted">A three-line sentence above the hairline, with one verb button for each other mode. The current mode is never a button. One click reaches any other mode. The mode buttons carry no hotkey chip: a digit beside a mode name reads as a count of questions (owner, round 2).</p><div class="frames"><figure class="frame"><figcaption class="frame-caption">Frame 1 · Main, dark, pane about 780 px: control with Automática, hairline, tree, card top</figcaption><div class="host-tab">Askaway</div><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="control"><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">Novas perguntas:</span><span class="bold">Automática</span><span class="dim">· em vigor há 12 min</span></div><p>A sessão segue na opção recomendada; só risco alto pausa.</p><div class="mode-row"><span class="dim">Mudar para:</span><span class="button button--secondary">Rígida</span><span class="button button--secondary">Espelho</span><span class="button button--secondary">Desativar</span></div></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg><div class="tree"><p class="group bold">Keepglide</p><div class="tree-row"><span class="glyph">├</span><span class="">Windows Packaging Spike Completion</span></div><div class="tree-row"><span class="glyph">│ ●</span><span class="bold">Installer format for Windows</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Code signing for the Windows build</span></div><div class="tree-row"><span class="glyph">└</span><span class="">Run the E2E Suite in 8 Parallel Shards</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Shard count for the e2e suite</span></div><p class="group bold">Master Jev Hook</p><div class="tree-row"><span class="glyph">├</span><span class="">Align Bash-gate Timeout with Gateway JEV Timeout</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Bash gate timeout</span></div><div class="tree-row"><span class="glyph">└</span><span class="">JEv Nova Versão Upgrades</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Gateway upgrade window</span></div></div><div class="card"><div class="card-head"><span class="bold">Installer format for Windows</span><span class="success">● baixo risco</span><span class="dim">· há 30 min</span></div><p class="bold">Qual formato de instalador o build do Windows deve enviar?</p><div class="details user"><p><span class="bold">Contexto e origem:</span> O spike de empacotamento gerou um backend congelado e uma casca Electron. A release precisa de um instalador que um usuário sem administrador consiga executar.</p><p><span class="bold">Por que A:</span> os primeiros usuários instalam em notebooks próprios, sem direitos de administrador, e o NSIS é o que o builder já gera.</p></div><div class="option-list"><div class="option"><span class="button button--secondary">Instalador NSIS, por usuário (recomendado) <span class="chip">a</span></span><p class="option-note dim">└ Seguro de aceitar e padrão do builder Electron; sem prompt de administrador.</p></div><div class="option"><span class="button button--secondary">Pacote MSI <span class="chip">b</span></span><p class="option-note dim">└ Serve às ferramentas de implantação corporativa, mas exige administrador e um projeto WiX.</p></div><p class="dim">…</p></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 2 · Right after switching to Desativada with 5 questions open: nothing leaves the list</figcaption><div class="key-row"><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="control"><div class="mode-line"><svg class="dot dot--off" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">Novas perguntas:</span><span class="bold">Desativada</span><span class="dim">· em vigor agora</span></div><p>Não captura perguntas novas.</p><div class="mode-row"><span class="dim">Mudar para:</span><span class="button button--secondary">Rígida</span><span class="button button--secondary">Automática</span><span class="button button--secondary">Espelho</span></div></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg><div class="tree"><p class="group bold">Keepglide</p><div class="tree-row"><span class="glyph">├</span><span class="">Windows Packaging Spike Completion</span></div><div class="tree-row"><span class="glyph">│ ●</span><span class="bold">Installer format for Windows</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Code signing for the Windows build</span></div><div class="tree-row"><span class="glyph">└</span><span class="">Run the E2E Suite in 8 Parallel Shards</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Shard count for the e2e suite</span></div><p class="group bold">Master Jev Hook</p><div class="tree-row"><span class="glyph">├</span><span class="">Align Bash-gate Timeout with Gateway JEV Timeout</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Bash gate timeout</span></div><div class="tree-row"><span class="glyph">└</span><span class="">JEv Nova Versão Upgrades</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Gateway upgrade window</span></div></div><div class="card"><div class="card-head"><span class="bold">Installer format for Windows</span><span class="success">● baixo risco</span><span class="dim">· há 30 min</span></div><p class="bold">Qual formato de instalador o build do Windows deve enviar?</p><div class="details user"><p><span class="bold">Contexto e origem:</span> O spike de empacotamento gerou um backend congelado e uma casca Electron. A release precisa de um instalador que um usuário sem administrador consiga executar.</p><p><span class="bold">Por que A:</span> os primeiros usuários instalam em notebooks próprios, sem direitos de administrador, e o NSIS é o que o builder já gera.</p></div><div class="option-list"><div class="option"><span class="button button--secondary">Instalador NSIS, por usuário (recomendado) <span class="chip">a</span></span><p class="option-note dim">└ Seguro de aceitar e padrão do builder Electron; sem prompt de administrador.</p></div><div class="option"><span class="button button--secondary">Pacote MSI <span class="chip">b</span></span><p class="option-note dim">└ Serve às ferramentas de implantação corporativa, mas exige administrador e um projeto WiX.</p></div><p class="dim">…</p></div></div></div><div class="toast-wrap"><p class="toast-note dim">engine toast, over the transcript</p><div class="pane pane--dark toast-pane"><div class="toast">Captura desativada a partir de agora. As 5 perguntas abertas continuam aqui.</div></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 3 · Rígida and Espelho, control area only, stacked small</figcaption><div class="stack"><div class="stack-item"><p class="item-caption">Rígida (strict)</p><div class="pane pane--dark pane--compact"><div class="control"><div class="mode-line"><svg class="dot dot--strict" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">Novas perguntas:</span><span class="bold">Rígida</span><span class="dim">· em vigor há 12 min</span></div><p>Bloqueia a sessão até você responder.</p><div class="mode-row"><span class="dim">Mudar para:</span><span class="button button--secondary">Automática</span><span class="button button--secondary">Espelho</span><span class="button button--secondary">Desativar</span></div></div></div></div><div class="stack-item"><p class="item-caption">Espelho (mirror)</p><div class="pane pane--dark pane--compact"><div class="control"><div class="mode-line"><svg class="dot dot--mirror" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">Novas perguntas:</span><span class="bold">Espelho</span><span class="dim">· em vigor há 12 min</span></div><p>Só reproduz a pergunta aqui; a sessão segue como sempre.</p><div class="mode-row"><span class="dim">Mudar para:</span><span class="button button--secondary">Rígida</span><span class="button button--secondary">Automática</span><span class="button button--secondary">Desativar</span></div></div></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 4 · Empty state, light theme, no tree</figcaption><div class="pane pane--light"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">Nenhuma pendente</span></div><div class="control"><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">Novas perguntas:</span><span class="bold">Automática</span><span class="dim">· em vigor há 12 min</span></div><p>A sessão segue na opção recomendada; só risco alto pausa.</p><div class="mode-row"><span class="dim">Mudar para:</span><span class="button button--secondary">Rígida</span><span class="button button--secondary">Espelho</span><span class="button button--secondary">Desativar</span></div></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 5 · Away coexistence, dark</figcaption><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos, modo ausente ligado</span></div><div class="control"><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">Novas perguntas:</span><span class="bold">Automática</span><span class="dim">· em vigor há 12 min</span></div><p>A sessão segue na opção recomendada; só risco alto pausa.</p><div class="mode-row"><span class="dim">Mudar para:</span><span class="button button--secondary">Rígida</span><span class="button button--secondary">Espelho</span><span class="button button--secondary">Desativar</span></div></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 6 · Narrow pane, about 360 px, dark: how the control wraps</figcaption><div class="pane pane--dark pane--narrow"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="control"><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span class="dim">Novas perguntas:</span><span class="bold">Automática</span><span class="dim">· em vigor há 12 min</span></div><p>A sessão segue na opção recomendada; só risco alto pausa.</p><div class="mode-row"><span class="dim">Mudar para:</span><span class="button button--secondary">Rígida</span><span class="button button--secondary">Espelho</span><span class="button button--secondary">Desativar</span></div></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 7 · Terminal fallback, monospace: no Svg, no chips, hotkey in the label; Select as the terminal's list picker</figcaption><div class="pane pane--dark"><pre class="term">Perguntas aguardando    5 pendentes · 2 grupos
+<span class="dim">────────────────────────────────────────────</span>
+Novas perguntas: Automática · em vigor há 12 min
+A sessão segue na opção recomendada; só risco alto pausa.
+Mudar para: Rígida  Espelho  Desativar</pre></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 8 · Elements</figcaption><h3>Elements</h3><table class="elements"><thead><tr><th scope="col">Drawn part</th><th scope="col">Engine element and props</th></tr></thead><tbody><tr><td>Host tab “Askaway”</td><td>Host app chrome above the pane; static text only, not an engine element.</td></tr><tr><td>Logo, heading, counter</td><td><code>Svg</code> logo; <code>Text bold</code> heading; <code>Text dim</code> counter.</td></tr><tr><td>Mode dot</td><td><code>Svg</code> 10 px circle; fill per mode, as in Mock A.</td></tr><tr><td>“Novas perguntas:” and “Mudar para:”</td><td><code>Text dim</code> labels.</td></tr><tr><td>Mode name and age stamp</td><td><code>Text bold</code> name; <code>Text dim</code> "· em vigor há 12 min".</td></tr><tr><td>Description line</td><td><code>Text</code> (normal, not dim), one line.</td></tr><tr><td>Verb buttons, other modes only</td><td><code>Button key="mode-strict" variant="secondary" label="Rígida"</code>, <code>Button key="mode-auto" variant="secondary" label="Automática"</code>, <code>Button key="mode-mirror" variant="secondary" label="Espelho"</code>, <code>Button key="mode-off" variant="secondary" label="Desativar"</code>; no <code>hotkey</code>, so no chip is drawn. The current mode is never a button. The keyboard reaches them through the pane's focus ring (Tab, then Enter).</td></tr><tr><td>Hairline</td><td><code>Svg</code>, 1 px tall, full width.</td></tr><tr><td>Tree and question card</td><td>As in the other mocks.</td></tr><tr><td>Toast (frame 2 only)</td><td>Engine <code>$.ui.toast(text)</code>; not a pane element.</td></tr></tbody></table><p><span class="bold">Clicks to change:</span> one (press the verb button of the mode you want).</p><p><span class="bold">Trade-off:</span> every other mode is one click away and visible, but three buttons and three text lines take more height above the hairline.</p></figure></div></section><section class="panel mock" id="mock-header-select"><p class="kicker">Proposal C</p><h2>Mock C — Header Select</h2><p class="muted">A Select in the header row, labelled Novas perguntas, with the description and the age stamp on one line above the hairline. The most compact option; two clicks.</p><div class="frames"><figure class="frame"><figcaption class="frame-caption">Frame 1 · Main, dark, pane about 780 px: control with Automática, hairline, tree, card top</figcaption><div class="host-tab">Askaway</div><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">· em vigor há 12 min</span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg><div class="tree"><p class="group bold">Keepglide</p><div class="tree-row"><span class="glyph">├</span><span class="">Windows Packaging Spike Completion</span></div><div class="tree-row"><span class="glyph">│ ●</span><span class="bold">Installer format for Windows</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Code signing for the Windows build</span></div><div class="tree-row"><span class="glyph">└</span><span class="">Run the E2E Suite in 8 Parallel Shards</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Shard count for the e2e suite</span></div><p class="group bold">Master Jev Hook</p><div class="tree-row"><span class="glyph">├</span><span class="">Align Bash-gate Timeout with Gateway JEV Timeout</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Bash gate timeout</span></div><div class="tree-row"><span class="glyph">└</span><span class="">JEv Nova Versão Upgrades</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Gateway upgrade window</span></div></div><div class="card"><div class="card-head"><span class="bold">Installer format for Windows</span><span class="success">● baixo risco</span><span class="dim">· há 30 min</span></div><p class="bold">Qual formato de instalador o build do Windows deve enviar?</p><div class="details user"><p><span class="bold">Contexto e origem:</span> O spike de empacotamento gerou um backend congelado e uma casca Electron. A release precisa de um instalador que um usuário sem administrador consiga executar.</p><p><span class="bold">Por que A:</span> os primeiros usuários instalam em notebooks próprios, sem direitos de administrador, e o NSIS é o que o builder já gera.</p></div><div class="option-list"><div class="option"><span class="button button--secondary">Instalador NSIS, por usuário (recomendado) <span class="chip">a</span></span><p class="option-note dim">└ Seguro de aceitar e padrão do builder Electron; sem prompt de administrador.</p></div><div class="option"><span class="button button--secondary">Pacote MSI <span class="chip">b</span></span><p class="option-note dim">└ Serve às ferramentas de implantação corporativa, mas exige administrador e um projeto WiX.</p></div><p class="dim">…</p></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 1b · Select open: an approximation of the surface's own list, not drawn by the engine</figcaption><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><div class="select-open"><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Automática</span> <span class="select-caret">▴</span></span><div class="select-list"><span class="select-option"><span class="select-mark"></span>Rígida</span><span class="select-option select-option--current"><span class="select-mark">✓</span>Automática</span><span class="select-option"><span class="select-mark"></span>Espelho</span><span class="select-option"><span class="select-mark"></span>Desativada</span></div></div><span class="counter dim">5 pendentes · 2 grupos</span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">· em vigor há 12 min</span></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 2 · Right after switching to Desativada with 5 questions open: nothing leaves the list</figcaption><div class="key-row"><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Desativada</span> <span class="select-caret">▾</span></span><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="mode-line"><svg class="dot dot--off" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>Não captura perguntas novas.</span><span class="dim">· em vigor agora</span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg><div class="tree"><p class="group bold">Keepglide</p><div class="tree-row"><span class="glyph">├</span><span class="">Windows Packaging Spike Completion</span></div><div class="tree-row"><span class="glyph">│ ●</span><span class="bold">Installer format for Windows</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Code signing for the Windows build</span></div><div class="tree-row"><span class="glyph">└</span><span class="">Run the E2E Suite in 8 Parallel Shards</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Shard count for the e2e suite</span></div><p class="group bold">Master Jev Hook</p><div class="tree-row"><span class="glyph">├</span><span class="">Align Bash-gate Timeout with Gateway JEV Timeout</span></div><div class="tree-row"><span class="glyph">│ ○</span><span class="">Bash gate timeout</span></div><div class="tree-row"><span class="glyph">└</span><span class="">JEv Nova Versão Upgrades</span></div><div class="tree-row"><span class="glyph">  ○</span><span class="">Gateway upgrade window</span></div></div><div class="card"><div class="card-head"><span class="bold">Installer format for Windows</span><span class="success">● baixo risco</span><span class="dim">· há 30 min</span></div><p class="bold">Qual formato de instalador o build do Windows deve enviar?</p><div class="details user"><p><span class="bold">Contexto e origem:</span> O spike de empacotamento gerou um backend congelado e uma casca Electron. A release precisa de um instalador que um usuário sem administrador consiga executar.</p><p><span class="bold">Por que A:</span> os primeiros usuários instalam em notebooks próprios, sem direitos de administrador, e o NSIS é o que o builder já gera.</p></div><div class="option-list"><div class="option"><span class="button button--secondary">Instalador NSIS, por usuário (recomendado) <span class="chip">a</span></span><p class="option-note dim">└ Seguro de aceitar e padrão do builder Electron; sem prompt de administrador.</p></div><div class="option"><span class="button button--secondary">Pacote MSI <span class="chip">b</span></span><p class="option-note dim">└ Serve às ferramentas de implantação corporativa, mas exige administrador e um projeto WiX.</p></div><p class="dim">…</p></div></div></div><div class="toast-wrap"><p class="toast-note dim">engine toast, over the transcript</p><div class="pane pane--dark toast-pane"><div class="toast">Captura desativada a partir de agora. As 5 perguntas abertas continuam aqui.</div></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 3 · Rígida and Espelho, control area only, stacked small</figcaption><div class="stack"><div class="stack-item"><p class="item-caption">Rígida (strict)</p><div class="pane pane--dark pane--compact"><div class="mode-row"><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Rígida</span> <span class="select-caret">▾</span></span></div><div class="mode-line"><svg class="dot dot--strict" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>Bloqueia a sessão até você responder.</span><span class="dim">· em vigor há 12 min</span></div></div></div><div class="stack-item"><p class="item-caption">Espelho (mirror)</p><div class="pane pane--dark pane--compact"><div class="mode-row"><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Espelho</span> <span class="select-caret">▾</span></span></div><div class="mode-line"><svg class="dot dot--mirror" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>Só reproduz a pergunta aqui; a sessão segue como sempre.</span><span class="dim">· em vigor há 12 min</span></div></div></div></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 4 · Empty state, light theme, no tree</figcaption><div class="pane pane--light"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span><span class="counter dim">Nenhuma pendente</span></div><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">· em vigor há 12 min</span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 5 · Away coexistence, dark</figcaption><div class="pane pane--dark"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span><span class="counter dim">5 pendentes · 2 grupos, modo ausente ligado</span></div><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">· em vigor há 12 min</span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 6 · Narrow pane, about 360 px, dark: how the control wraps</figcaption><div class="pane pane--dark pane--narrow"><div class="head"><div class="head-title"><svg class="logo" viewBox="0 0 256 256" width="16" height="16" aria-hidden="true"><path class="logo-stroke" d="M60 60 h136 a20 20 0 0 1 20 20 v88 a20 20 0 0 1 -20 20 h-84 l-40 32 v-32 h-12 a20 20 0 0 1 -20 -20 v-88 a20 20 0 0 1 20 -20 z"/></svg><span class="bold">Perguntas aguardando</span></div><span class="select"><span class="select-label dim">Novas perguntas:</span> <span class="select-value">Automática</span> <span class="select-caret">▾</span></span><span class="counter dim">5 pendentes · 2 grupos</span></div><div class="mode-line"><svg class="dot dot--auto" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg><span>A sessão segue na opção recomendada; só risco alto pausa.</span><span class="dim">· em vigor há 12 min</span></div><svg class="hair" viewBox="0 0 10 1" preserveAspectRatio="none" aria-hidden="true"><rect width="10" height="1" class="hair-fill"/></svg></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 7 · Terminal fallback, monospace: no Svg, no chips, hotkey in the label; Select as the terminal's list picker</figcaption><div class="pane pane--dark"><pre class="term">Perguntas aguardando    Novas perguntas: Automática ▾    5 pendentes · 2 grupos
+<span class="dim">────────────────────────────────────────────</span>
+A sessão segue na opção recomendada; só risco alto pausa. · em vigor há 12 min</pre></div><div class="pane pane--dark"><pre class="term">  Rígida
+&gt; Automática
+  Espelho
+  Desativada</pre></div></figure><figure class="frame"><figcaption class="frame-caption">Frame 8 · Elements</figcaption><h3>Elements</h3><table class="elements"><thead><tr><th scope="col">Drawn part</th><th scope="col">Engine element and props</th></tr></thead><tbody><tr><td>Host tab “Askaway”</td><td>Host app chrome above the pane; static text only, not an engine element.</td></tr><tr><td>Logo, heading, counter</td><td><code>Svg</code> logo; <code>Text bold</code> heading; <code>Text dim</code> counter.</td></tr><tr><td>Mode Select in the header row</td><td><code>Select key="capture-mode" label="Novas perguntas:" value="auto" options=[{value:"strict",label:"Rígida"}, {value:"auto",label:"Automática"}, {value:"mirror",label:"Espelho"}, {value:"off",label:"Desativada"}] onSelect</code>; sits between the heading and the counter.</td></tr><tr><td>Mode dot</td><td><code>Svg</code> 10 px circle; fill per mode, as in Mock A.</td></tr><tr><td>Description line</td><td><code>Text</code> description, then <code>Text dim</code> "· em vigor há 12 min".</td></tr><tr><td>Hairline</td><td><code>Svg</code>, 1 px tall, full width; the description line sits above it.</td></tr><tr><td>Tree and question card</td><td>As in the other mocks.</td></tr><tr><td>Toast (frame 2 only)</td><td>Engine <code>$.ui.toast(text)</code>; not a pane element.</td></tr></tbody></table><p><span class="bold">Clicks to change:</span> two (open the Select, then pick a value).</p><p><span class="bold">Trade-off:</span> the most compact layout, since the control shares the header row, but the choices stay hidden until the list opens.</p></figure></div></section><section class="panel mock" id="mock-shared"><p class="kicker">Shared</p><h2>Command frame and band row</h2><p class="muted">Drawn once for A, B and C. The band row sits above the prompt and stays unchanged while the mode is off.</p><div class="frames"><figure class="frame"><figcaption class="frame-caption">Command frame · plain transcript text, not a pane element</figcaption><div class="transcript"><p><span class="prompt-mark">&gt;</span> /askaway mode off</p><p>Captura do AskAway User desativada a partir de agora. As 5 perguntas abertas continuam no painel.</p></div></figure><figure class="frame"><figcaption class="frame-caption">Band row above the prompt, dark, unchanged</figcaption><div class="pane pane--dark"><div class="band"><span>5 perguntas aguardando · 2 grupos</span><span class="button button--primary">Responder <span class="chip">1</span></span></div></div></figure></div></section>
+</main>
+</body>
+</html>
