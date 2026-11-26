@@ -39,8 +39,6 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("ASKAWAY_PROJECTS", str(tmp_path / "projects"))
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED", raising=False)
-    for name in [n for n in os.environ if n.startswith("CODEX_")]:
-        monkeypatch.delenv(name)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(askaway, "projects_root", lambda: tmp_path / "projects", raising=False)
     return state
@@ -245,15 +243,13 @@ def test_ask_without_urgency_level_stores_no_such_key(over, home, capsys):
     assert "urgency_level" not in stored(home, "q", out["id"])
 
 
-def test_ask_defaults_to_codex_run_kind_without_session(home, capsys, monkeypatch):
-    monkeypatch.setenv("CODEX_THREAD_ID", "thread-1")
+def test_ask_without_session_defaults_to_main_run_kind(home, capsys):
     out = cli(capsys, "ask", "--json", json.dumps(base_entry()))
     entry = stored(home, "q", out["id"])
-    assert entry["run_kind"] == "codex" and entry["session"] is None
+    assert entry["run_kind"] == "main" and entry["session"] is None
 
 
-def test_ask_explicit_run_kind_wins_over_env(home, capsys, monkeypatch):
-    monkeypatch.setenv("CODEX_THREAD_ID", "thread-1")
+def test_ask_explicit_run_kind_wins_over_the_session_default(home, capsys, monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
     out = cli(capsys, "ask", "--json", json.dumps(base_entry(run_kind="subagent")))
     assert stored(home, "q", out["id"])["run_kind"] == "subagent"
@@ -482,7 +478,7 @@ def test_ask_ignores_session_and_project_sent_in_payload(home, capsys, monkeypat
     (lambda entry: entry["options"][0].update(fit=True), "option A: fit: must be an integer 0 to 100, or null"),
     (lambda entry: entry.pop("question"), "missing fields: question"),
     (lambda entry: entry.update(pause="yes"), "pause: must be true or false"),
-    (lambda entry: entry.update(run_kind="robot"), "run_kind: must be one of: bash, codex, goal, loop, main, subagent"),
+    (lambda entry: entry.update(run_kind="robot"), "run_kind: must be one of: bash, goal, loop, main, subagent"),
     (lambda entry: entry["options"][0].update(tradeoff="  "), "option A: tradeoff"),
     (lambda entry: entry["options"][0].pop("fit"), "option A: fit"),
     (lambda entry: entry.pop("undo"), "missing fields: undo"),
@@ -526,6 +522,17 @@ def test_entries_on_disk_with_other_keys_still_list_and_report_status(home, caps
     (home / "q" / f"{out['id']}.json").write_text(json.dumps(entry), encoding="utf-8")
     assert cli(capsys, "list")["items"][0]["recommended"] == "B"
     assert cli(capsys, "status", out["id"]) == {"id": out["id"], "status": "open", "key": None}
+
+
+def test_an_entry_filed_with_run_kind_codex_still_lists_and_can_be_withdrawn(home, capsys, monkeypatch):
+    # Entries filed while Codex was a run kind keep "codex" on disk: list and withdraw never re-check run_kind.
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", SESSION)
+    item = ask_item(capsys)
+    entry = stored(home, "q", item)
+    entry["run_kind"] = "codex"
+    (home / "q" / f"{item}.json").write_text(json.dumps(entry), encoding="utf-8")
+    assert [(row["id"], row["status"]) for row in cli(capsys, "list")["items"]] == [(item, "open")]
+    assert cli(capsys, "withdraw", "--id", item) == {"id": item, "withdrawn": True}
 
 
 @pytest.mark.parametrize("field", REQUIRED_TEXT)
@@ -5467,7 +5474,7 @@ def test_identical_asks_from_one_session_at_the_same_time_file_one_question(home
         item_id = f"q-filler-{number:06x}"
         (home / "q" / f"{item_id}.json").write_text(json.dumps({"id": item_id, "ts": 1, "session": "other"}),
                                                     encoding="utf-8")
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("CODEX_", "CLAUDE_CODE_"))}
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE_CODE_")}
     env |= {"ASKAWAY_HOME": str(home), "ASKAWAY_WHO": WHO, "CLAUDE_CODE_SESSION_ID": SESSION,
             "ASKAWAY_DESKTOP_SESSIONS": str(home.parent / "desktop"), "HOME": str(home.parent / "home")}
     entry_text = json.dumps(base_entry())

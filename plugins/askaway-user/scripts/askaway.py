@@ -235,7 +235,7 @@ SCRIPT_PATH: Final = Path(__file__).resolve()
 MIRROR_SCRIPT: Final = Path.home() / ".claude" / "mods" / "plugins" / "askaway-user" / "scripts" / "askaway.py"
 ID_PATTERN: Final = re.compile(r"q-[0-9a-z]+-[0-9a-f]{6}")
 BASE36: Final = string.digits + string.ascii_lowercase
-RUN_KINDS: Final = frozenset({"main", "subagent", "goal", "loop", "bash", "codex"})
+RUN_KINDS: Final = frozenset({"main", "subagent", "goal", "loop", "bash"})
 RISKS: Final = frozenset({"low", "medium", "high"})
 URGENCY_LEVELS: Final = frozenset({"low", "medium", "high"})  # the optional grade the pane colours Urgency by
 ANSWER_SOURCES: Final = frozenset({"panel", "accept_recommended", "accept_all", "cli"})
@@ -1282,10 +1282,7 @@ def caller_session() -> str | None:
 
 
 def cli_origin() -> Origin:
-    session = caller_session()
-    codex = session is None and any(name.startswith("CODEX_") for name in os.environ)
-    return Origin(session=session, project=os.getcwd(), run_kind="codex" if codex else "main",
-                  source="cli")
+    return Origin(session=caller_session(), project=os.getcwd(), run_kind="main", source="cli")
 
 
 def projects_root() -> Path:
