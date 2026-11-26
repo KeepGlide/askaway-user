@@ -136,7 +136,6 @@ declare module 'claude-code' {
   interface PluginState {
     'askaway-user': {
       board: Board
-      away: boolean
       tick: number
       seen: { isPrimed: boolean; ids: string[] }
       // Ids of answers whose History line the person cleared (delivered, ended or expired lines; the plugin's store keeps them under "cleared").

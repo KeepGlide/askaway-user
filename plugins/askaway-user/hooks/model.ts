@@ -297,10 +297,6 @@ export function parseDelivery(raw: unknown, id: string): Delivery | undefined {
   return { id, expired: raw.expired === true, reason, ts: timestamp }
 }
 
-export function parseAway(raw: unknown): boolean {
-  return isRecord(raw) && raw.on === true
-}
-
 // The picks and kept Other labels every session shares (draft.json): the ts they were written at, each question's pick and
 // each question's label. A file with no labels reads as none. Any other shape reads as no draft, so a malformed file changes nothing.
 type Draft = { ts: number; picks: Record<string, { key: string; text?: string }>; labels: Record<string, string> }
@@ -989,13 +985,12 @@ export function leadOf(lang: Lang, question: Question, now: number): string {
 }
 
 // The text the /askaway command answers when the pane waits undrawn.
-export function listText(lang: Lang, questions: readonly Question[], isAway: boolean): string {
+export function listText(lang: Lang, questions: readonly Question[]): string {
   const head = plural(lang, questions.length, 'list.head.one', 'list.head.many')
-  const away = isAway ? t(lang, 'list.awayOn') : ''
   const rows = questions.map(question =>
     t(lang, 'list.row', { id: question.id, title: questionLabel(localizedQuestion(question, lang)), rec: question.recommended }),
   )
-  return [`${head}${away}.`, ...rows].join('\n')
+  return [`${head}.`, ...rows].join('\n')
 }
 
 // The key prefix of the Other field.

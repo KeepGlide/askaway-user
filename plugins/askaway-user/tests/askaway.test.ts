@@ -37,7 +37,7 @@ import {
  desktopSessionOf, groupKeyOf, groupLabelOf, isRootSession, parseDesktopGroups, withDesktopGroup, otherRowsOf,
   boardQuestions, hiddenWithdrawnIds, isItemId, isOpenIn, openQuestions, pausedWithdrawnIds } from '../hooks/model'
 import { heldButtons } from '../hooks/held'
-import { placeUnder, renderPane, renderTreeQuestion } from '../hooks/pane'
+import { placeUnder, renderTreeQuestion } from '../hooks/pane'
 import { t } from '../hooks/i18n'
 import { resetDesktopConfigCache, writeAtomic } from '../hooks/register'
 import { ACCENT_COLOR, LINK_MARK, TEXT_CONTRAST, URGENCY_COLOR } from '../hooks/look'
@@ -1010,15 +1010,15 @@ test('model: the lead line names the recommended key and the local time, or says
   expect(leadOf('en', parsedQuestion('q-m-000010', early, {}), early)).toBe('On A since 09:05. Pick another option to switch; no answer keeps A.')
 })
 
-test('model: the list header and rows read in each language, with away mode when it is on', () => {
+test('model: the list header and rows read in each language', () => {
   const q = parsedQuestion('q-m-000001', 10)
-  expect(listText('en', [q], true)).toBe(
-    'AskAway User: 1 pending, away mode on.\npending · q-m-000001 · Title q-m-000001 (recommended A)',
+  expect(listText('en', [q])).toBe(
+    'AskAway User: 1 pending.\npending · q-m-000001 · Title q-m-000001 (recommended A)',
   )
-  expect(listText('pt', [q], true)).toBe(
-    'AskAway User: 1 pendente, modo ausente ligado.\npendente · q-m-000001 · Title q-m-000001 (recomendada A)',
+  expect(listText('pt', [q])).toBe(
+    'AskAway User: 1 pendente.\npendente · q-m-000001 · Title q-m-000001 (recomendada A)',
   )
-  expect(listText('pt', [], false)).toBe('AskAway User: 0 pendentes.')
+  expect(listText('pt', [])).toBe('AskAway User: 0 pendentes.')
 })
 
 // beta.34: the optional `translations` of a question (per language, per field and per option) and the overlay the pane draws.
@@ -1106,8 +1106,8 @@ test('model: the text list and the history rows draw the translated title in the
     lang: 'pt-BR',
     translations: { en: { title: 'Cache', question: 'Where?', why: 'Smaller.', options: { A: { label: 'Disk', tradeoff: 'cheap' }, B: { label: 'Rewrite', tradeoff: 'slow' } } } },
   })
-  expect(listText('en', [translatedQuestion], false)).toContain('Cache')
-  expect(listText('pt', [translatedQuestion], false)).toContain('Title q-t-000008')
+  expect(listText('en', [translatedQuestion])).toContain('Cache')
+  expect(listText('pt', [translatedQuestion])).toContain('Title q-t-000008')
   const board = { ...EMPTY_BOARD, questions: [translatedQuestion], answers: [answerOf(translatedQuestion.id, 'A', 5)] }
   const rows = JSON.stringify(historyOf('en', board, NO_STATUS))
   expect(rows).toContain('"title":"Cache"')
@@ -2997,18 +2997,6 @@ test('the new-question toast reads the title in the current language: the pt-BR 
   expect(toasts).toEqual(['Nova pergunta: Escolha um parser', 'New question: Pick a queue'])
 })
 
-test('/askaway away toggles away.json and reports the new state', async ($, on) => {
-  const files = new Map<string, string>()
-  stubHost(on, files)
-  await $.session.start(SESSION)
-  const first = await run($, 'away')
-  expect(first.text).toBe('Modo ausente do AskAway User ligado.')
-  expect(readJson(files, `${STATE}/away.json`)).toMatchObject({ on: true })
-  const second = await run($, 'away')
-  expect(second.text).toBe('Modo ausente do AskAway User desligado.')
-  expect(readJson(files, `${STATE}/away.json`)).toMatchObject({ on: false })
-})
-
 // One shell call the folder engine ran: its argv and the exit code it gave.
 type ShellCall = { argv: string[]; exitCode: number }
 
@@ -3062,12 +3050,12 @@ test('two windows write one target at once: both writes land, and each temp file
   const temps: string[] = []
   const calls: ShellCall[] = []
   const engine = folderEngine(files, temps, calls)
-  const target = `${STATE}/away.json`
+  const target = `${STATE}/mode.json`
   await Promise.all([writeAtomic(engine, target, 'first\n'), writeAtomic(engine, target, 'second\n')])
   expect(['first\n', 'second\n']).toContain(files.get(target))
   expect(temps).toEqual([
-    expect.stringMatching(/\/\.away\.json\.[0-9a-f]+\.tmp$/),
-    expect.stringMatching(/\/\.away\.json\.[0-9a-f]+\.tmp$/),
+    expect.stringMatching(/\/\.mode\.json\.[0-9a-f]+\.tmp$/),
+    expect.stringMatching(/\/\.mode\.json\.[0-9a-f]+\.tmp$/),
   ])
   expect(temps[0]).not.toBe(temps[1])
   // Both moves run as `mv -f temp target` and exit 0, so each write lands.
@@ -3092,7 +3080,7 @@ test('an atomic write refuses a folder at its target before any temp file: test 
   const files = new Map<string, string>()
   const temps: string[] = []
   const calls: ShellCall[] = []
-  const target = `${STATE}/away.json`
+  const target = `${STATE}/mode.json`
   const folders = new Set([target])
   const outcome = await writeAtomic(folderEngine(files, temps, calls, { folders }), target, 'text\n').then(
     () => 'written',
@@ -3109,7 +3097,7 @@ test('a failed move removes its own temp file, and the thrown message names the 
   const files = new Map<string, string>()
   const temps: string[] = []
   const calls: ShellCall[] = []
-  const target = `${STATE}/away.json`
+  const target = `${STATE}/mode.json`
   const outcome = await writeAtomic(folderEngine(files, temps, calls, { failMoves: true }), target, 'text\n').then(
     () => 'written',
     (error: unknown) => (error instanceof Error ? error.message : 'not an Error'),
@@ -3152,7 +3140,7 @@ test('a failed temp write removes its temp file, and the thrown message names th
   const files = new Map<string, string>()
   const temps: string[] = []
   const calls: ShellCall[] = []
-  const target = `${STATE}/away.json`
+  const target = `${STATE}/mode.json`
   const outcome = await writeAtomic(folderEngine(files, temps, calls, { failTempWrite: true }), target, 'text\n').then(
     () => 'written',
     (error: unknown) => (error instanceof Error ? error.message : 'not an Error'),
@@ -7069,18 +7057,6 @@ test('decorative images carry empty alt text on the desktop: the History icon an
   await pane.unmount()
 })
 
-test('away mode shows on the pane counter line: the counter text with the list away mark appended, and nothing when away is off', () => {
-  const pane = { Box: fakeElement('Box'), Text: fakeElement('Text'), Button: fakeElement('Button') }
-  const view = {
-    questions: [], history: [], now: 0, leaving: {}, groups: [], active: undefined, wizard: { picks: {} },
-    screen: undefined, surface: 'terminal', footer: undefined, ended: [], askWho: false,
-  }
-  const drawnWith = (away: boolean): string =>
-    JSON.stringify(renderPane(pane as never, { ...view, away } as never, {} as never, 'en', heldButtons()))
-  expect(drawnWith(true)).toContain('Nothing pending, away mode on')
-  expect(drawnWith(false)).not.toContain('away mode on')
-})
-
 test('a delivered line whose marker has no time reads "(read by the session)" in parentheses, as the timed line does', () => {
   const board: Board = {
     questions: [parsedQuestion('q-h-000001', 10)],
@@ -7513,12 +7489,12 @@ test('Gauntlet B2 H11: the ended check runs when the linked open questions chang
   expect(listings()).toBe(3)
 })
 
-test('Gauntlet B2 H13: with no state folder the pane footer says away mode is unavailable, on both surfaces', async ($, on) => {
+test('Gauntlet B2 H13: with no state folder the pane footer says the capture mode is unavailable, on both surfaces', async ($, on) => {
   stubHost(on, new Map(), true, {}, {}, { LANG: '', HOME: '' })
   await $.session.start(SESSION)
   for (const surface of SURFACES) {
     const pane = await mountPane($, surface)
-    expect(await textsOf(pane)).toContain('AskAway User away mode is unavailable: no state folder (HOME is unset).')
+    expect(await textsOf(pane)).toContain('AskAway User capture mode is unavailable: no state folder (HOME is unset).')
     await pane.unmount()
   }
 })
@@ -7535,17 +7511,6 @@ test('Gauntlet B2 H25: Clear all over a pending reply says the reply still reach
   expect(toasts).toEqual(['Cleared 1; waiting replies still reach their sessions.'])
   expect(clearings).toHaveLength(1)
   await pane.unmount()
-})
-
-test('Gauntlet B2 P12: the pane counter says away mode is on while away.json is on, on both surfaces', async ($, on) => {
-  const files = new Map([[`${STATE}/away.json`, '{"on":true,"ts":1}']])
-  stubHost(on, files, true, {}, {}, { LANG: '' })
-  await $.session.start(SESSION)
-  for (const surface of SURFACES) {
-    const pane = await mountPane($, surface)
-    expect(await textsOf(pane)).toContain('Nothing pending, away mode on')
-    await pane.unmount()
-  }
 })
 
 test('Gauntlet B2 leftover: the pick-not-saved toast comes from the i18n table, so pt-BR reads in pt-BR', async ($, on) => {
@@ -8075,23 +8040,6 @@ test('Gauntlet 5 B2 M47: a torn cleared.json write leaves the previous file whol
   await pane.unmount()
 })
 
-test('Gauntlet 4 B1 M24: a failed read of away.json keeps the away state the pane had, so a toggle flips what the person sees', async ($, on) => {
-  const files = new Map([
-    [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
-    [`${STATE}/away.json`, JSON.stringify({ on: true, ts: 1 })],
-  ])
-  const holds: Holds = {}
-  const { clock } = stubHost(on, files, true, {}, holds, { LANG: '' })
-  await $.session.start(SESSION)
-  const pane = await mountPane($)
-  holds.failReadOf = `${STATE}/away.json`
-  await clock.advance(5000)
-  expect(await pane.find({ type: 'Text', text: /away mode on/ })).toBeDefined()
-  expect(await run($, 'away')).toEqual({ text: 'AskAway User away mode is off.' })
-  expect(readJson(files, `${STATE}/away.json`)).toMatchObject({ on: false })
-  await pane.unmount()
-})
-
 test('Gauntlet 4 B1 M25: a failed listing of the question folder keeps the board and the picks', async ($, on) => {
   const files = new Map([
     [path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)],
@@ -8135,9 +8083,9 @@ test('Gauntlet 4 B1 M34: an unknown /askaway verb names the four verbs, in Engli
   const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
   stubHost(on, files, true, {}, {}, { LANG: '' })
   await $.session.start(SESSION)
-  expect((await run($, 'list')).text).toBe('Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name>, /askaway away or /askaway mode strict|auto|off.')
+  expect((await run($, 'list')).text).toBe('Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name> or /askaway mode strict|auto|off.')
   await run($, 'lang pt')
-  expect((await run($, 'list')).text).toBe('Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome>, /askaway away ou /askaway mode strict|auto|off.')
+  expect((await run($, 'list')).text).toBe('Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome> ou /askaway mode strict|auto|off.')
 })
 
 test('Gauntlet 4 B1 M35: in a round of three, a failed reply keeps its pick and a second Submit all writes the one left', async ($, on) => {
@@ -8820,7 +8768,7 @@ test('beta.35 review fix 6: a 20-character title ending in "…" that starts the
 
 test('beta.35 review M36: the tree list names a clipped question by its whole question, not by its clipped title', () => {
   const clipped = parsedQuestion('q-n4-000008', 1, { title: CLIPPED_TITLE, question: CLIPPED_TEXT })
-  const text = listText('en', [clipped], false)
+  const text = listText('en', [clipped])
   expect(text).toContain(CLIPPED_TEXT)
   expect(text).not.toContain(CLIPPED_TITLE)
 })

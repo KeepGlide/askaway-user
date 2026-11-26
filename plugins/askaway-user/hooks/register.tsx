@@ -29,7 +29,6 @@ import {
   parseAnswerWritten,
   parseEndedQuestions,
   whoText,
-  parseAway,
   parseDelivery,
   parseCleared,
   parseDraft,
@@ -113,7 +112,6 @@ const LANG_NAMES: Readonly<Record<Lang, string>> = { en: 'English', pt: 'Portugu
 // redraws the instances that read it. They are declared here because the engine reads atoms in the file that
 // reads them.
 const board = atom({ plugin: 'askaway-user', key: 'board' } as const, EMPTY_BOARD)
-const isAway = atom({ plugin: 'askaway-user', key: 'away' } as const, false)
 // The capture mode for new questions (mode file); `since` is the time it was set.
 const captureMode = atom({ plugin: 'askaway-user', key: 'mode' } as const, { mode: 'auto' } as CaptureModeState)
 const clockTick = atom({ plugin: 'askaway-user', key: 'tick' } as const, 0)
@@ -234,15 +232,6 @@ function parseJsonText(text: unknown): unknown {
   } catch {
     return undefined
   }
-}
-
-// The away file's state: off when the file is missing, the state kept when it exists but cannot be read (a failed read
-// is not a missing file, so it does not flip the pane).
-async function readAway($: EngineInterface, home: string, kept: boolean): Promise<boolean> {
-  const path = `${home}/away.json`
-  const text = await $.fs.read(path).catch(() => undefined)
-  if (text === undefined && (await $.fs.exists(path).catch(() => true))) return kept
-  return parseAway(parseJsonText(text))
 }
 
 // The mode file's state: auto when the file is missing, the state kept when it exists but cannot be read.
@@ -691,7 +680,6 @@ async function mergeDamagedPauses($: EngineInterface, damagedPauses: string[]): 
 // The interval poll of a session also hands its own answers to its prompt (handDue).
 async function pollInbox($: EngineInterface, home: string, ownSession?: string): Promise<void> {
   const { board: next, answerFileIds, damagedPauses } = await readBoard($, home)
-  const away = await readAway($, home, await read($, isAway))
   const now = await $.clock.now()
   await mergeBoard($, next)
   await mergeDamagedPauses($, damagedPauses)
@@ -699,7 +687,6 @@ async function pollInbox($: EngineInterface, home: string, ownSession?: string):
   await applyDraft($, home)
   await retryDraft($, home)
   await refreshEnded($, home, next, now)
-  if ((await read($, isAway)) !== away) await update($, isAway, () => away)
   // Read right before the compare, and not while a pane press is writing, so a press landing meanwhile is not shown reverted.
   const shownMode = await read($, captureMode)
   const mode = await readMode($, home, shownMode)
@@ -1102,14 +1089,6 @@ async function quietReply($: EngineInterface, lang: Lang, value: string): Promis
     await update($, quietAtom, () => choice === 'on')
   }
   return t(lang, (await read($, quietAtom)) ? 'command.quietOn' : 'command.quietOff')
-}
-
-// Flips away.json and returns the new state.
-async function toggleAway($: EngineInterface, home: string): Promise<boolean> {
-  const on = !(await readAway($, home, await read($, isAway)))
-  await writeAtomic($, `${home}/away.json`, `${JSON.stringify({ on, ts: await $.clock.now() })}\n`)
-  await update($, isAway, () => on)
-  return on
 }
 
 // Writes the mode file, then shows the mode: a failed write leaves the shown mode as it was.
@@ -1602,12 +1581,6 @@ async function setLang($: EngineInterface, value: string): Promise<string> {
   return t(chosen, 'command.langSet', { lang: choice === 'auto' ? choice : LANG_NAMES[chosen] })
 }
 
-async function awayText($: EngineInterface, lang: Lang): Promise<string> {
-  const isNowAway = await withFolder($, folder => toggleAway($, folder))
-  if (isNowAway === undefined) return t(lang, 'command.awayUnavailable')
-  return t(lang, isNowAway ? 'command.awayOn' : 'command.awayOff')
-}
-
 // Dismiss on an ended or a damaged card: a prune the CLI refuses leaves the question listed, and the person is told by a toast; the cause is logged.
 async function dismissOrSay($: EngineInterface, id: string, force: boolean): Promise<void> {
   await withFolder($, folder => dismissQuestion($, folder, id, force)).catch(async (error: unknown) => {
@@ -1726,8 +1699,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // /askaway opens the pane (or lists the questions when the pane waits undrawn), /askaway lang <v> sets the language,
-  // /askaway away toggles away mode.
+  // /askaway opens the pane (or lists the questions when the pane waits undrawn), /askaway lang <v> sets the language.
   on('command.run', { command: 'askaway' }, async ($, e) => {
     const [verb = '', value = ''] = e.args.trim().split(/\s+/)
     const rest = e.args.trim().slice(verb.length).trim()
@@ -1735,13 +1707,12 @@ export const register: Register = on => {
     if (verb === 'lang') return { text: await setLang($, value) }
     if (verb === 'quiet') return { text: await quietReply($, lang, value) }
     if (verb === 'who') return { text: await whoReply($, lang, rest) }
-    if (verb === 'away') return { text: await awayText($, lang) }
     if (verb === 'mode') return { text: await modeReply($, lang, value) }
     if (verb !== '') return { text: t(lang, 'command.verbsHelp') }
     const opened = await openPane($)
     if (opened.isPlaced) return { text: t(lang, 'command.opened') }
     const open = openQuestions(await read($, board), await read($, leaving))
-    return { text: listText(lang, open, await read($, isAway)) }
+    return { text: listText(lang, open) }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -1756,7 +1727,7 @@ export const register: Register = on => {
     const groups = flow.groupsOf(open)
     const active = flow.activeGroup(groups, wizard)
     const screen = active === undefined ? undefined : flow.screenOf(active, wizard)
-    // With no state folder nothing is polled, so the footer says why away mode cannot be read (H13).
+    // With no state folder nothing is polled, so the footer says why the capture mode cannot be read (H13).
     const folder = await folderOf($)
     const view: PaneView = {
       questions: open,
@@ -1767,8 +1738,7 @@ export const register: Register = on => {
       }),
       now,
       leaving: fading,
-      footer: folder === undefined ? t(lang, 'command.awayUnavailable') : footerText(lang, current, now, hidden),
-      away: await read($, isAway),
+      footer: folder === undefined ? t(lang, 'command.modeUnavailable') : footerText(lang, current, now, hidden),
       mode: await read($, captureMode),
       // A withdrawn question that holds a pause stays with its card: the chat notice and Dismiss, which lift the pause.
       ended: [...new Set([...(await read($, endedAtom)), ...pausedWithdrawnIds(current)])],
