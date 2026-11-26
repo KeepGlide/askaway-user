@@ -587,6 +587,10 @@ def away_path() -> Path:
     return state_home() / "away.json"
 
 
+def mode_path() -> Path:
+    return state_home() / "mode.json"
+
+
 def now_ms() -> int:
     return time.time_ns() // 1_000_000
 
@@ -836,6 +840,17 @@ def is_away(permission_mode: object) -> bool:
             or os.environ.get("CLAUDE_CODE_SESSION_ATTENDED") == "0")
 
 
+CAPTURE_MODES: Final = ("strict", "auto", "off")  # mode.json's "mode"; the mod writes it, this script only reads it
+DEFAULT_CAPTURE_MODE: Final = "auto"  # today's behaviour: any missing, unreadable or unknown value reads as this
+
+
+def capture_mode() -> str:
+    """The capture mode, read when a question is filed or intercepted. It never raises: a value that is not one of
+    CAPTURE_MODES, or a file that does not read as an object, is auto."""
+    mode = (read_json(mode_path()) or {}).get("mode")
+    return mode if mode in CAPTURE_MODES else DEFAULT_CAPTURE_MODE
+
+
 # ---- entry validation --------------------------------------------------
 
 OPTION_TEXT: Final = (("label", TEXT_MAX), ("tradeoff", TEXT_MAX), *((name, TEXT_MAX) for name in REQUIRED_OPTION_TEXT))
@@ -1016,7 +1031,7 @@ def _run_kind(raw: Mapping[str, Any], origin: Origin, gaps: Gaps) -> str:
 def _pause_gap(raw: Mapping[str, Any], gaps: Gaps) -> None:
     pause = raw.get("pause")
     if pause is not None and not isinstance(pause, bool):
-        gaps.top["pause"] = "must be true or false"  # type-checked; only risk "high" pauses (SPEC: ask)
+        gaps.top["pause"] = "must be true or false"  # type-checked only; build_entry sets the pause (SPEC: ask)
 
 
 def _option_key(raw: Mapping[str, Any]) -> str | None:
@@ -1229,7 +1244,8 @@ RETRY_BACK_OFF_S: Final = 0.05
 
 
 def store_high_risk(entry: Mapping[str, Any]) -> OSError | None:
-    """Write a high-risk question, retried with a short back-off: its last OS error when every attempt fails."""
+    """Write a paused question (high risk, or any question in strict), retried with a short back-off: its last OS error
+    when every attempt fails."""
     failure: OSError | None = None
     for attempt in range(HIGH_RISK_ATTEMPTS):
         if attempt:
@@ -1243,7 +1259,7 @@ def store_high_risk(entry: Mapping[str, Any]) -> OSError | None:
 
 
 def file_question(entry: Mapping[str, Any]) -> OSError | None:
-    """File a new question: a high-risk one through store_high_risk; any other is written once and its error propagates."""
+    """File a new question: a paused one through store_high_risk; any other is written once and its error propagates."""
     if entry["pause"] is not True:
         store_entry(entry)
         return None
@@ -1650,20 +1666,28 @@ def _ask_lock() -> Generator[None]:
 
 
 def _file_or_hold_twin(entry: Mapping[str, Any]) -> tuple[dict[str, Any] | None, OSError | None]:
-    """The open twin the entry repeats, else the entry filed, under the ask lock. A high-risk repeat also pauses the twin
-    (one atomic write), so the pause lookup holds the session for it."""
+    """The open twin the entry repeats, else the entry filed, under the ask lock. A repeat that pauses also pauses
+    the twin (one atomic write), so the pause lookup holds the session for it."""
     with _ask_lock():
         twin = open_twin(entry)
         if twin is None:
             return None, file_question(entry)
         if entry["pause"] is True:
-            twin = {**twin, "pause": True, "risk": "high"}  # pause == (risk == "high"), as build_entry keeps it
+            twin = _paused_twin(twin, entry)
             write_atomic(item_path("q", twin["id"]), twin)
         return twin, None
 
 
+def _paused_twin(twin: Mapping[str, Any], entry: Mapping[str, Any]) -> dict[str, Any]:
+    """The twin with its pause set. A high-risk repeat also takes risk high, as build_entry gives it;
+    a repeat that strict paused keeps the twin's own risk."""
+    if entry["risk"] == "high":
+        return {**twin, "pause": True, "risk": "high"}
+    return {**twin, "pause": True}
+
+
 def _duplicate_reply(twin: Mapping[str, Any]) -> dict[str, Any]:
-    """The reply to a repeated ask: the open twin's id. A paused twin, or a high-risk repeat, makes the agent stop."""
+    """The reply to a repeated ask: the open twin's id. A paused twin makes the agent stop."""
     action = "pause" if twin.get("pause") is True else "open"
     return {"id": twin["id"], "recommended": twin["recommended"], "title": twin.get("title"),
             "action": action, "duplicate": True}
@@ -1679,31 +1703,56 @@ def _goal_reply(raw: object) -> dict[str, Any]:
             "message": GOAL_MESSAGE}
 
 
+OFF_MESSAGE: Final = ("AskAway User capture is off: nothing was filed. Ask the user in this window if the decision "
+                      "needs them; otherwise continue with the recommended option.")
+
+
+def _off_reply(json_text: str | None) -> dict[str, Any]:
+    """The reply while capture is off: nothing is filed and the entry is not validated, as for a goal session."""
+    raw: object = None
+    with contextlib.suppress(Exception):  # an entry that does not parse still continues, with no recommended key
+        raw = _entry_json(json_text)
+    return {"captured": False, "reason": "off", "action": "continue", "recommended": _given_text(raw, "recommended"),
+            "message": OFF_MESSAGE}
+
+
 def cmd_ask(json_text: str | None) -> dict[str, Any]:
     raw: object = None
-    twin: dict[str, Any] | None = None
+    mode = DEFAULT_CAPTURE_MODE  # what an error before the mode read sees: auto, as it was before the modes
     try:
+        # Read once, for this question only: a later change of mode.json never touches it. Read first, so an error in
+        # the goal check below still holds a strict question.
+        mode = capture_mode()
         if goal_active(caller_session(), os.getcwd()):  # before parsing and validation: a goal session never gets a refile
             with contextlib.suppress(Exception):  # an entry that does not parse still continues, with no recommended key
                 raw = _entry_json(json_text)
             return _goal_reply(raw)
+        if mode == "off":
+            return _off_reply(json_text)
         raw = _entry_json(json_text)
         if not isinstance(raw, dict):
             raise ValueError("the entry must be a JSON object")  # noqa: TRY004 - CLI validation channel
         entry = build_entry(raw, cli_origin())
-        twin, failure = _file_or_hold_twin(entry)
-        if failure is not None:  # a high-risk question that would not write: nothing filed, the agent stops
-            return {"action": "pause", "error": _os_error_text(failure)}
-        if twin is not None:
-            return _duplicate_reply(twin)
+        if mode == "strict":  # strict pauses the session for this question at any risk; the record keeps its own risk
+            entry = {**entry, "pause": True}
+        return _filed_reply(entry)
     except EntryError as exc:  # the entry has gaps: the agent completes them and files again
         return _refile(raw, str(exc), exc.gaps)
     except ValueError as exc:  # the entry is unreadable or invalid: the agent files it again
         return _refile(raw, str(exc), Gaps())
-    except Exception:  # noqa: BLE001 - the agent always gets an answer; a high-risk one never continues
-        high = _given_text(raw, "risk") == "high"
-        return {"action": "pause" if high else "continue",
+    except Exception:  # noqa: BLE001 - the agent always gets an answer; a held question never continues
+        held = _given_text(raw, "risk") == "high" or mode == "strict"  # strict holds every question, as its filing would
+        return {"action": "pause" if held else "continue",
                 "recommended": _given_text(raw, "recommended"), "error": "internal error"}
+
+
+def _filed_reply(entry: Mapping[str, Any]) -> dict[str, Any]:
+    """The reply once the entry is filed, or repeats an open twin, or a paused question would not write."""
+    twin, failure = _file_or_hold_twin(entry)
+    if failure is not None:  # a paused question that would not write: nothing filed, the agent stops
+        return {"action": "pause", "error": _os_error_text(failure)}
+    if twin is not None:
+        return _duplicate_reply(twin)
     return {"id": entry["id"], "recommended": entry["recommended"], "title": entry["title"],
             "action": "pause" if entry["pause"] else "continue"}
 
@@ -2049,7 +2098,7 @@ def _withdrawn_ids(entries: Sequence[Mapping[str, Any]]) -> list[str]:
 
 
 def _remove_withdrawn(item_ids: Sequence[str]) -> list[str]:
-    """Remove each withdrawn question that still holds no pause, under the ask lock: a high-risk repeat that pauses one
+    """Remove each withdrawn question that still holds no pause, under the ask lock: a repeat that pauses one
     between the listing and the removal keeps it. Returns the ids removed."""
     with _ask_lock():
         removed: list[str] = []
@@ -2463,6 +2512,8 @@ def askuser_reason(skeletons: Sequence[Mapping[str, Any]], multi_selects: Sequen
 
 def hook_ask_guard(event: Mapping[str, Any]) -> HookOutput:
     if not is_away(event.get("permission_mode")):
+        return None
+    if capture_mode() == "off":  # off holds nothing: the question shows in its own window, even while away
         return None
     questions = (event.get("tool_input") or {}).get("questions") or []
     skeletons = [askuser_skeleton(question) for question in questions]
@@ -4125,8 +4176,8 @@ def _pause_holds(entry: Mapping[str, Any]) -> bool:
 def _holding_question(session: str, agent_id: str | None = None) -> tuple[str, str | None] | None:
     """The (id, title) of the question that pauses this call, or None; the title is None for a damaged file.
 
-    A high-risk question holds until its answer is delivered (or lapses). A damaged q/ file cannot show its risk,
-    so it holds the session its raw text names, while it is open: only `prune` clears it."""
+    A paused question (high risk, or filed in strict) holds until its answer is delivered (or lapses). A damaged q/ file
+    cannot show its pause, so it holds the session its raw text names, while it is open: only `prune` clears it."""
     entries, damaged = load_questions()
     for entry in entries:
         if (entry.get("pause") is True and entry.get("session") == session and _holds_caller(entry, agent_id)
