@@ -121,11 +121,33 @@ const EN = {
   // gauntlet 4, B1
   'toast.dismissFailed': 'Could not dismiss the question; it is still listed.',
   'toast.paneNarrow': 'The pane needs a wider window: widen it or run /askaway.',
-  'command.verbsHelp': 'Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name> or /askaway away.',
+  'command.verbsHelp': 'Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name>, /askaway away or /askaway mode strict|auto|off.',
   // gauntlet 4, package B2
   'urgency.grade.low': 'low',
   'urgency.grade.medium': 'medium',
   'urgency.grade.high': 'high',
+  // capture mode (mode.json): the pane's control and the /askaway mode command
+  'mode.label': 'New questions:',
+  'mode.name.strict': 'Strict',
+  'mode.name.auto': 'Auto',
+  'mode.name.off': 'Off',
+  'mode.describe.strict': 'Holds the session until you answer.',
+  'mode.describe.auto': 'The session goes on with the recommended option; only a high-risk question pauses it.',
+  'mode.describe.off': 'Captures no new questions.',
+  'mode.since': 'in effect since {age}',
+  'mode.sinceNow': 'in effect now',
+  'mode.changeTo': 'Change to:',
+  'mode.action.strict': 'Strict',
+  'mode.action.auto': 'Auto',
+  'mode.action.off': 'Turn off',
+  'mode.changed.strict': 'Strict capture from now on.',
+  'mode.changed.auto': 'Automatic capture from now on.',
+  'mode.changed.off': 'Capture is off from now on.',
+  'mode.openStay.one': 'The open question stays in the panel.',
+  'mode.openStay.many': 'The {n} open questions stay in the panel.',
+  'command.modeShow': 'AskAway User capture mode: {name}. {describe}',
+  'command.modeInvalid': 'Use /askaway mode strict, auto or off.',
+  'command.modeUnavailable': 'AskAway User capture mode is unavailable: no state folder (HOME is unset).',
 } as const
 
 export type MessageKey = keyof typeof EN
@@ -242,11 +264,33 @@ const PT: Record<MessageKey, string> = {
   // gauntlet 4, B1
   'toast.dismissFailed': 'Não foi possível dispensar a pergunta; ela continua na lista.',
   'toast.paneNarrow': 'O painel precisa de uma janela mais larga: alargue-a ou rode /askaway.',
-  'command.verbsHelp': 'Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome> ou /askaway away.',
+  'command.verbsHelp': 'Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome>, /askaway away ou /askaway mode strict|auto|off.',
   // gauntlet 4, package B2
   'urgency.grade.low': 'baixa',
   'urgency.grade.medium': 'média',
   'urgency.grade.high': 'alta',
+  // capture mode (mode.json): the pane's control and the /askaway mode command
+  'mode.label': 'Novas perguntas:',
+  'mode.name.strict': 'Rígida',
+  'mode.name.auto': 'Automática',
+  'mode.name.off': 'Desativada',
+  'mode.describe.strict': 'Bloqueia a sessão até você responder.',
+  'mode.describe.auto': 'A sessão segue na opção recomendada; só risco alto pausa.',
+  'mode.describe.off': 'Não captura perguntas novas.',
+  'mode.since': 'em vigor {age}',
+  'mode.sinceNow': 'em vigor agora',
+  'mode.changeTo': 'Mudar para:',
+  'mode.action.strict': 'Rígida',
+  'mode.action.auto': 'Automática',
+  'mode.action.off': 'Desativar',
+  'mode.changed.strict': 'Captura rígida a partir de agora.',
+  'mode.changed.auto': 'Captura automática a partir de agora.',
+  'mode.changed.off': 'Captura desativada a partir de agora.',
+  'mode.openStay.one': 'A pergunta aberta continua no painel.',
+  'mode.openStay.many': 'As {n} perguntas abertas continuam no painel.',
+  'command.modeShow': 'Modo de captura do AskAway User: {name}. {describe}',
+  'command.modeInvalid': 'Digite /askaway mode strict, auto ou off.',
+  'command.modeUnavailable': 'O modo de captura do AskAway User está indisponível: sem pasta de estado (HOME não definido).',
 }
 
 export const MESSAGES: Readonly<Record<Lang, Readonly<Record<MessageKey, string>>>> = { en: EN, pt: PT }

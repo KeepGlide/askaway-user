@@ -78,7 +78,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask <<'JSON'
 JSON
 ```
 
-Outside Claude Code, `${CLAUDE_PLUGIN_ROOT}` is not set: use the absolute path of `${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py` (the plugin root; the skill folder has no `scripts/`), and a Codex brief gives that path.
+Outside Claude Code, `${CLAUDE_PLUGIN_ROOT}` is not set: use the absolute path of `${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py` (the plugin root; the skill folder has no `scripts/`).
 
 The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","action":"continue"}`.
 
@@ -89,8 +89,8 @@ The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","ac
   Continue on the recommended option.
 - `"error":"internal error"` with `"action":"pause"` means nothing was filed either.
   Stop and report it; do not wait.
-- `"action":"pause"` with an `error` holding an OS error text means a high-risk question
-  was not written after four tries, and nothing was filed. Stop and report it; do not wait.
+- `"action":"pause"` with an `error` holding an OS error text means a question that had to pause
+  (`risk` `high`, or any question in `strict` mode) was not written after four tries, and nothing was filed. Stop and report it; do not wait.
 - While no pause holds your calls, pass the JSON on stdin with a quoted heredoc
   (`<<'JSON'`), as above. The shell expands nothing inside it, so apostrophes are
   safe. The stdin must be UTF-8 JSON: a leading byte order mark is dropped, and
@@ -110,21 +110,26 @@ The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","ac
 ## After filing
 
 - Continue on `recommended` unless `action` is `pause`.
-- `"action":"pause"` is printed for `risk` `high` and for a repeat of a paused
+- `"action":"pause"` is printed for `risk` `high`, for every new question in `strict` mode, and for a repeat of a paused
   question (see below). End the turn instead of retrying or polling, until the answer
   is delivered to your session. The pause ends at delivery, not when the user writes
   the answer.
   A `pause` on a question filed without a session holds no session's pause: no hook
   stops your calls, so you stop on your own and treat the `pause` reply as a stop.
-- `low` and `medium` never pause a new question; a repeat of a paused question does.
+- `low` and `medium` pause a new question only in `strict` mode, which the user sets; in the default `auto` mode only
+  `high` does. Follow `action`, not `risk`. A repeat of a paused question pauses whatever its own risk.
 - `"captured":false` with `"reason":"goal"` and `"action":"continue"`: this session runs under `/goal`, which
   cannot stop to wait, so nothing was filed. Continue on `recommended` (null when the entry had none) and ask in this
   window if you must. It never says pause.
+- `"captured":false` with `"reason":"off"` and `"action":"continue"`: the user turned capture off, so nothing was filed
+  and the native question dialog is not intercepted. Continue on `recommended` (null when the entry did not parse) and
+  ask in this window if the decision needs the user. It never says pause, and it never asks for a refile, even for an
+  invalid entry.
 - `"action":"open"` with `"duplicate":true`: the same question is already open.
   Do not file it again; continue on its `recommended` option.
 - `"action":"pause"` with `"duplicate":true`: the same question is already open and
-  paused. A high-risk repeat of an open question sets its pause and raises its risk to
-  `high`, and a repeat of a paused question gets `pause` whatever its own risk. Do not
+  paused. A repeat that pauses (`risk` `high`, or any repeat in `strict` mode) sets the open question's pause; only a
+  `high`-risk repeat raises its risk to `high`, and a repeat of a paused question gets `pause` whatever its own risk. Do not
   file it again; end the turn as for a pause (a subagent hands back instead, see the next rule).
 - A subagent that files a `pause` question hands back what it has and stops: its final
   report names the open question id and what remains. Like the main thread, it ends the

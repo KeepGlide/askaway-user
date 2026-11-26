@@ -8135,9 +8135,9 @@ test('Gauntlet 4 B1 M34: an unknown /askaway verb names the four verbs, in Engli
   const files = new Map([[path('q', 'q-l1-aaaaaa'), question('q-l1-aaaaaa', 1000)]])
   stubHost(on, files, true, {}, {}, { LANG: '' })
   await $.session.start(SESSION)
-  expect((await run($, 'list')).text).toBe('Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name> or /askaway away.')
+  expect((await run($, 'list')).text).toBe('Use /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <name>, /askaway away or /askaway mode strict|auto|off.')
   await run($, 'lang pt')
-  expect((await run($, 'list')).text).toBe('Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome> ou /askaway away.')
+  expect((await run($, 'list')).text).toBe('Digite /askaway, /askaway lang pt-BR|en|auto, /askaway quiet on|off, /askaway who <nome>, /askaway away ou /askaway mode strict|auto|off.')
 })
 
 test('Gauntlet 4 B1 M35: in a round of three, a failed reply keeps its pick and a second Submit all writes the one left', async ($, on) => {

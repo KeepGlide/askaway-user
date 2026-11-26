@@ -8,6 +8,22 @@ Commit hashes name the change in `git log`.
 
 ## [Unreleased]
 
+### Added
+- **Capture mode: one setting for new questions**: `strict`, `auto` (the default) or `off`, shared by every session on the machine. Set it from the panel's **New questions** block or with `/askaway mode strict|auto|off`; `/askaway mode` shows the current one. Switching changes no open question and removes nothing from the list.
+- **`strict` holds every session**: each new question holds its session until you answer it, whatever its risk; the risk label on the card is unchanged.
+- **`off` captures nothing new**: `askaway.py ask` files nothing and tells the agent to ask in its own window or continue with the recommended option. The native question dialog is no longer intercepted, also in away mode and under `bypassPermissions`; `off` overrides away mode. A `/goal` session is never captured, in any mode.
+
+### Changed
+- **A question's pause follows the capture mode too**: in `strict` the CLI replies `"action": "pause"` for every question, and the stored question has `pause: true` with its risk unchanged. In `auto`, only a `high` risk question pauses, as before.
+
+## [2.4.0] - 2026-11-25
+
+### Removed
+- **Codex support**: the `codex` run kind and the detection of Codex through the `CODEX_*` environment variables are removed. `RUN_KINDS` is now `main`, `subagent`, `goal`, `loop` and `bash`, and `ask` refuses `run_kind` `codex` with the usual run_kind error. Questions with no session still work: a script outside Claude Code files them with `ask`, and `wait <id> --timeout 110 --strict` still reads the answer. Nothing holds such a run, as before.
+
+### Changed
+- **`run_kind` defaults to `main` without a session**: an entry filed with no session id is recorded as `main`. Entries already stored with `run_kind` `codex` stay readable and can still be withdrawn.
+
 ## [2.3.1] - 2026-11-20
 
 ### Fixed
@@ -1084,7 +1100,8 @@ Third gauntlet round (40 personas over betas 14 to 25): 150 findings, 64 adopted
 - The README describes the away flow and what each card carries, matches every claim to the plugin, and adds a screenshot (150ad49, 6020300).
 - SPEC.md records the 0.4.0-beta.5 live check of the pane layout (0f43a9f).
 
-[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/KeepGlide/askaway-user/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/KeepGlide/askaway-user/compare/v2.3.1...v2.4.0
 [2.3.1]: https://github.com/KeepGlide/askaway-user/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/KeepGlide/askaway-user/compare/v2.2.0...v2.3.0
 [1.1.13]: https://github.com/KeepGlide/askaway-user/compare/v1.1.12...v1.1.13

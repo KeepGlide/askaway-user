@@ -33,7 +33,7 @@
 - [🧭 Usage](#-usage)
 - [🎛️ Configuration](#%EF%B8%8F-configuration)
 - [🧠 How agents file questions](#-how-agents-file-questions)
-- [🧩 From Codex](#-from-codex)
+- [🧩 From a script outside Claude Code](#-from-a-script-outside-claude-code)
 - [🗂️ State folder](#%EF%B8%8F-state-folder)
 - [🧾 Decisions](#-decisions)
 - [🔀 Trade-offs](#-trade-offs)
@@ -52,7 +52,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.8`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`2.4.0`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -80,17 +80,18 @@ AskAway User does not:
 
 - answer for you: agents are told not to answer a question. The CLI has an `answer` command, and the skill tells agents not to call it. The `pause-guard` hook denies a Bash call in the agent's own shell that runs it. That is a deterrent, not a guarantee: the panel calls the CLI itself, which is not a tool call, so the hook does not see it;
 - make network calls: questions and answers are files on your machine;
-- stop the work for every question: only a risky question pauses a session, and only the agent that asked it (the whole session when the question has no asker yet).
+- stop the work for every question: only a risky question pauses a session in the default `auto` mode (in `strict`, every question does), and only the agent that asked it (the whole session when the question has no asker yet).
 
 ### Terms used on this page
 
 | Term | Meaning |
 |---|---|
 | **Away** | The session is away when its permission mode is `bypassPermissions`, away mode is on (`/askaway away`), or `CLAUDE_CODE_SESSION_ATTENDED=0`. An agent that is away files questions instead of waiting. |
+| **Capture mode** | The one global setting that says how a NEW question is captured: `strict`, `auto` (the default) or `off`. See [Capture mode](#capture-mode). |
 | **Session** | One Claude Code session. Each question records the session that asked, and its answer goes back to that session. |
 | **Recommended** | The option the agent marks as its default. It keeps working on it until you answer, and your answer overrides it. |
-| **Risk** | How risky accepting the recommended option is: `low`, `medium` or `high`. Only `high` pauses. |
-| **Pause** | A hold on the agent that asked a `high` question (the main thread or one subagent): its tool calls are blocked, except the read-only ones, until the answer is delivered to its session. |
+| **Risk** | How risky accepting the recommended option is: `low`, `medium` or `high`. In `auto`, only `high` pauses; in `strict`, every question pauses. |
+| **Pause** | A hold on the agent that asked a question that pauses (a `high` one in `auto`, any in `strict`; the main thread or one subagent): its tool calls are blocked, except the read-only ones, until the answer is delivered to its session. |
 | **Fit** | The agent's own 0-100 estimate of how well an option suits the task. AskAway User does not measure or check it. |
 
 ## 🎁 What it delivers
@@ -101,8 +102,9 @@ AskAway User does not:
 - **Submit all per group.** Pressing **Submit all** sends every answer of the group to the sessions that asked, and **Submit Answer** sends one answer at once (`answer <id> <key> --by panel`).
 - **Hotkeys.** Option letters, Back and Next work from the keyboard, on the terminal and on the Desktop; Submit all has no hotkey, so Tab to it and press Enter (see [Hotkeys](#hotkeys)).
 - **Away mode switch.** `/askaway away` turns away mode on or off and reports the state (`away.json`).
+- **Capture mode.** One setting for every session: `strict` holds each session on every new question, `auto` (the default) goes on with the recommended option unless the question is high risk, and `off` captures nothing new. Switch it in the panel or with `/askaway mode` ([Capture mode](#capture-mode)).
 - **First click on the desktop.** Each button keeps its press handle across redraws (`hooks/held.ts`), which is the cause of the first click the desktop used to drop.
-- **Risk-aware pausing.** A question with `risk` high pauses the agent that asked it (the main thread, or one subagent) in the session whose id it carries, until the answer is delivered to that session. The other agents keep working; a question with no recorded asker pauses the whole session. A question from Codex has no session id: it replies `"action": "pause"`, but nothing holds a Codex run, so its script waits for the answer itself ([From Codex](#-from-codex)). Low and medium questions never pause.
+- **Risk-aware pausing.** A question with `risk` high pauses the agent that asked it (the main thread, or one subagent) in the session whose id it carries, until the answer is delivered to that session. The other agents keep working; a question with no recorded asker pauses the whole session. A question with no session (a script outside Claude Code) replies `"action": "pause"`, but nothing holds such a run, so its script waits for the answer itself ([From a script outside Claude Code](#-from-a-script-outside-claude-code)). In `auto`, low and medium questions never pause; in `strict`, every question pauses.
 - **Two languages.** English and Brazilian Portuguese, from your locale or with `/askaway lang`. A question may carry its own `translations`, so `/askaway lang` switches the whole card.
 - **A CLI for agents and scripts.** `scripts/askaway.py` has eight commands (`ask`, `answer`, `status`, `list`, `wait`, `export`, `away`, `prune`), each printing one JSON line ([CLI commands](#cli-commands)).
 
@@ -176,18 +178,18 @@ sequenceDiagram
     Agent->>Agent: the pause ends and the agent continues on the answer
 ```
 
-A `low` or `medium` question takes the same path without the pause: the CLI replies `continue`, and the agent works on the recommended option until the answer arrives.
+In `auto`, a `low` or `medium` question takes the same path without the pause: the CLI replies `continue`, and the agent works on the recommended option until the answer arrives. In `strict`, every question takes the pause path, whatever its risk. In `off`, nothing is filed ([Capture mode](#capture-mode)).
 
 Step by step:
 
-1. **Away test.** A session is away under `bypassPermissions`, with away mode on, or with `CLAUDE_CODE_SESSION_ATTENDED=0`. While away, `hook ask-guard` denies `AskUserQuestion` and hands back one `ask` skeleton per question; nothing is stored. A session running `/goal` is not denied: it cannot stop to wait, so its question stays in its own window.
+1. **Away test.** A session is away under `bypassPermissions`, with away mode on, or with `CLAUDE_CODE_SESSION_ATTENDED=0`. While away, and unless the capture mode is `off`, `hook ask-guard` denies `AskUserQuestion` and hands back one `ask` skeleton per question; nothing is stored. A session running `/goal` is not denied: it cannot stop to wait, so its question stays in its own window.
 2. **File.** `ask --json` checks every field and names every gap in one `refile`. It reads the session title and the Desktop family, then, under `.ask.lock`, checks for an open duplicate, writes `q/<id>.json` and replies `continue`, `pause`, `open` or `refile`.
 3. **Stamp.** After the `ask` call, `hook stamp-asker` writes `asker` (the caller's `agent_id`, or `main`) onto the new pause, under `.ask.lock`. A pause with no `asker` holds the whole session.
 4. **Guard and hold.** `hook pause-guard` runs before every tool call (matcher `.*`), with a 5 s timeout and `"onFailure": "block"`. It has two jobs:
    - **The Bash and file guard**, in every session, away or not: the scanner decides, so a command that answers a question, switches away mode, forces a prune or writes the state folder is denied. An error in the scanner denies, a command over 64K characters is denied, an event the hook cannot read is denied, and with a deleted working directory every relative write target is refused.
-   - **The hold:** while a `high` question of this session waits for delivery to its asker, the asker's tool calls are denied, except one simple `ask`, `status`, `list`, `wait` or `export` call, the tools of `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, the task-list and plan tools) and read-only MCP tools. Every other tool is held, `Skill`, `WebFetch` and `WebSearch` included, and so is a tool that Claude Code adds later until it is listed in `READ_ONLY_TOOLS`. With no pause on file, the hook exits before its heavy imports. A session running `/goal` is not held by a pause, since it cannot stop to wait; the Bash and file guard above still applies.
+   - **The hold:** while a question of this session that pauses (a `high` one in `auto`, any one in `strict`) waits for delivery to its asker, the asker's tool calls are denied, except one simple `ask`, `status`, `list`, `wait` or `export` call, the tools of `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, the task-list and plan tools) and read-only MCP tools. Every other tool is held, `Skill`, `WebFetch` and `WebSearch` included, and so is a tool that Claude Code adds later until it is listed in `READ_ONLY_TOOLS`. With no pause on file, the hook exits before its heavy imports. A session running `/goal` is not held by a pause, since it cannot stop to wait; the Bash and file guard above still applies.
 5. **Answer.** Picks are shared through `draft.json`. On Submit all or a row's Submit Answer, the pane mints a one-shot token in `panel-tokens/` (32 hex characters, mode 600, valid for 120 s) and runs `answer <id> <key> --by panel --strict` with it in `ASKAWAY_PANEL_TOKEN`. The CLI publishes `a/<id>.json` with an exclusive link, so the first answer wins, and the card stays dimmed until the reply is written.
-6. **Deliver, one copy per recipient.** The `deliver` hook (SessionStart, UserPromptSubmit and PostToolUse) reads and judges every answer first, then claims each due copy with a no-clobber link and prints the English answer line as hook context. The main thread claims `d/<id>.json` (`"recipient": "main"`); a subagent claims only the answers to the questions its own `ask` filed, in `s/<id>.json`, and its pause ends only on that copy or a lapse. An idle session gets its answers from the pane: it writes the `d/` markers (`via: "prompt"`) and submits one prompt per asking session. A Codex run reads its answer with `wait --strict` ([From Codex](#-from-codex)).
+6. **Deliver, one copy per recipient.** The `deliver` hook (SessionStart, UserPromptSubmit and PostToolUse) reads and judges every answer first, then claims each due copy with a no-clobber link and prints the English answer line as hook context. The main thread claims `d/<id>.json` (`"recipient": "main"`); a subagent claims only the answers to the questions its own `ask` filed, in `s/<id>.json`, and its pause ends only on that copy or a lapse. An idle session gets its answers from the pane: it writes the `d/` markers (`via: "prompt"`) and submits one prompt per asking session. A script with no session reads its answer with `wait --strict` ([From a script outside Claude Code](#-from-a-script-outside-claude-code)).
 7. **Release.** An unread answer lapses when Claude Desktop has released its session (`session-ended`) or after 7 days (`ttl`). At most once a day, the deliver hook removes closed items older than `ASKAWAY_PRUNE_DAYS` (30 days), and a withdrawn question that holds no pause, whatever the window.
 
 ## 📋 Prerequisites
@@ -314,7 +316,7 @@ rm -r ~/.claude/state/askaway-user
 
 Agents file questions instead of stopping. You answer them in the panel, one card at a time, and send each group's answers at once.
 
-While questions are open, a band sits above the prompt: `2 questions waiting · 1 group`, with an **Answer** button on hotkey `1`. When an open high-risk question pauses its session, the band adds a `N paused` segment between the two: `2 questions waiting · 1 paused · 1 group`. A toast announces each new question that arrives while the session is open; questions already open when it starts get no toast.
+While questions are open, a band sits above the prompt: `2 questions waiting · 1 group`, with an **Answer** button on hotkey `1`. When an open question pauses its session (a high-risk one in `auto`, any one in `strict`), the band adds a `N paused` segment between the two: `2 questions waiting · 1 paused · 1 group`. A toast announces each new question that arrives while the session is open; questions already open when it starts get no toast.
 
 ### Answering a question
 
@@ -344,7 +346,7 @@ The card opens with the title, the Urgency line (coloured by its grade when `urg
 2. **Urgency:** under the title, a line **⏱️ Urgency** (`urgency`) when it is set, its text coloured by the grade of `urgency_level` (`low`, `medium`, `high`). With no level the text has no grade: it is drawn in the default colour under the plain heading, and no keyword guesses a grade. With a level the heading names it, **⏱️ Urgency (high)**, so colour is never the only signal.
 3. **Explanation before the question:** the sections that are set, as plain paragraphs with no headings: the **What it is** text (`what`), then the **The problem** text (`problem`). Then the **AskAway User Details:** block (with the mark), folded by default behind its toggle: **🔁 Analogy** (`analogy`), **💡 Why A** (`why`; the letter is the recommended key), **↩️ Undo** (`undo`), **🛠️ How** (`how`), **🎁 What we gain** (`gains`), **⚖️ What we lose** (`losses`) and **🧭 Context and origin** (`context`) last. The block has no border: it sits on the theme's own user-message fill (`userMessageBackground`), so it follows light, dark and auto themes. Section titles are bold.
 4. **The question:** the question text, in bold. Always present.
-5. **Lead line:** dim, right under the question: what the agent does now and what happens if nobody answers: `On A since 14:05. Pick another option to switch; no answer keeps A.`, or `Paused since 14:05, waiting for your answer.` for a `high` risk question. The time carries the date too, as in `On A since 17/10 14:05`, when the question was asked on an earlier day.
+5. **Lead line:** dim, right under the question: what the agent does now and what happens if nobody answers: `On A since 14:05. Pick another option to switch; no answer keeps A.`, or `Paused since 14:05, waiting for your answer.` for a question that pauses (`high` risk in `auto`, any question in `strict`). The time carries the date too, as in `On A since 17/10 14:05`, when the question was asked on an earlier day.
 6. **The options:** each one a full-width button, `A · Label`, with `(Recommended)` after the label of the recommended one. Under it, a line `└ trade-off · fit 88` (the fit is the agent's estimate), then **What happens** (`does`), **Pros** (`pros`) and **Cons** (`cons`), which show at once. The picked option is the filled button; the recommended one is bold until it is picked. The last one is **Other…**, shown with the letter after the last option (`C · Other…` with two options).
 7. **The nav row:** a separator, then **← Back** (dim on the first question), **Next →** (every question but the last), or on the last question **Submit all (N)** (see step 6 above).
 
@@ -358,7 +360,19 @@ The risk label is the risk of accepting the recommended option, as the agent jud
 
 - **✅ low risk:** safe to accept and easy to change later.
 - **⚠️ medium risk:** reversible, but changing it costs rework.
-- **🛑 high risk:** irreversible, or it touches real files, credentials or money. A high-risk question pauses the agent that asked it (the main thread, or one subagent; a question with no recorded asker pauses the whole session): its tool calls are blocked, except the read-only ones, until the answer is delivered to that session, at its next hook run. The agent can still read and end its turn.
+- **🛑 high risk:** irreversible, or it touches real files, credentials or money. A high-risk question pauses the agent that asked it (the main thread, or one subagent; a question with no recorded asker pauses the whole session): its tool calls are blocked, except the read-only ones, until the answer is delivered to that session, at its next hook run. The agent can still read and end its turn. In `strict`, every question pauses whatever its risk; the label itself does not change.
+
+### Capture mode
+
+One setting, shared by every session on this machine, says what happens to a new question. Switch it in the panel, under **New questions**, or with `/askaway mode strict|auto|off`. A switch changes no open question: the open ones stay in the panel and keep the behaviour they were filed with, and a question paused before a switch to `off` stays paused until you answer it. Switching removes nothing from the list.
+
+| Mode | What happens to a new question | When to use it |
+|---|---|---|
+| `strict` | The session holds until you answer, whatever the risk. The risk label on the card is unchanged. | Every question should wait for you. |
+| `auto` (default) | The session goes on with the recommended option. Only a `high` risk question pauses it. | Projects should go on alone, and you answer when you are back. |
+| `off` | Nothing new is captured. The agent is told to ask in its own window or continue with the recommended option. The native question dialog is not intercepted, also in away mode and under `bypassPermissions`. | You are going to sleep and want capture stopped. |
+
+`off` overrides away mode. A session running `/goal` is never captured, whatever the mode.
 
 ### Hotkeys
 
@@ -381,6 +395,8 @@ On the desktop, the KeepGlide mark sits beside the counter and beside **Submit a
 | `/askaway lang en` | Shows them in English. |
 | `/askaway lang auto` | Follows your locale again. |
 | `/askaway away` | Turns away mode on or off and reports the new state. |
+| `/askaway mode` | Shows the capture mode: `strict`, `auto` or `off` ([Capture mode](#capture-mode)). |
+| `/askaway mode strict`, `auto` or `off` | Sets the capture mode for every session on the machine (case-insensitive). Any other value replies `Use /askaway mode strict, auto or off.`. |
 | `/askaway quiet on` or `off` | Quiet mode: no toast for a new question and no fade after an answer. Without a value it reports the state. Off by default. |
 | `/askaway who <name>` | Sets the name your panel answers are signed with; without a name it shows the current one. The panel asks for it once, the first time a question is open. |
 
@@ -390,6 +406,7 @@ On the desktop, the KeepGlide mark sits beside the counter and beside **Submit a
 | Desktop Groups | `~/.config/Claude/claude_desktop_config.json` | Environment variable `ASKAWAY_DESKTOP_CONFIG`; the pane re-reads the file when its modification time changes, and keeps the last Groups it read when a read fails |
 | Language | `auto`: the locale. The first set of `LC_ALL`, `LC_MESSAGES`, `LANG`, `LANGUAGE` decides; a value that starts with `pt` is Portuguese, anything else English | `/askaway lang pt-BR`, `/askaway lang en` or `/askaway lang auto` |
 | Away mode | Off | `/askaway away` (stored in `away.json` in the state folder) |
+| Capture mode | `auto` | `/askaway mode strict`, `auto` or `off`, or the panel's **New questions** block (stored in `mode.json` in the state folder) |
 | Who answered | The panel signs with the name you gave it; the CLI uses `ASKAWAY_WHO` when it holds a name, else the OS user name, else `unknown` | `/askaway who <name>` (panel), environment variable `ASKAWAY_WHO` (CLI). Each answer records it as `who`, and `status`, `list` and `export` show it. The name is **declared**, not verified: anyone who can type a name can sign with it |
 | Prune window | 30 days | Environment variable `ASKAWAY_PRUNE_DAYS`, in whole days; `0` prunes delivered and expired items at once |
 
@@ -403,7 +420,9 @@ Each agent reads the skill `askaway-user:askaway-user-question-playbook` (`plugi
 - away mode is on (`away.json` has `"on": true`);
 - the environment variable `CLAUDE_CODE_SESSION_ATTENDED` is `0`.
 
-The `ask-guard` hook runs before every `AskUserQuestion` call. When one of these conditions holds, it denies the call and gives the agent a JSON skeleton of each question, with the fields to fill, to file with the CLI. Nothing is stored until the agent files it. A session running `/goal` is never denied by this hook (see the away test above).
+The `ask-guard` hook runs before every `AskUserQuestion` call. When one of these conditions holds and the capture mode is not `off`, it denies the call and gives the agent a JSON skeleton of each question, with the fields to fill, to file with the CLI. Nothing is stored until the agent files it. A session running `/goal` is never denied by this hook (see the away test above).
+
+The capture mode changes what the CLI does with a filed question ([Capture mode](#capture-mode)). Under `strict` it replies `"action": "pause"` for every question. Under `off` it files nothing and replies `{"captured": false, "reason": "off", "action": "continue", "recommended": "A", "message": "…"}`, which tells the agent to ask in its own window or to continue with the recommended option. The `ask-guard` hook stays silent in that mode, so the native question dialog goes through, also in away mode and under `bypassPermissions`.
 
 Otherwise the question is asked in Claude Code as usual. The CLI prints one JSON line:
 
@@ -430,11 +449,11 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `gains` | yes | One or two sentences on what the user gains with it. Up to 300 characters. |
 | `losses` | yes | One or two sentences on what the user gives up or risks with it. Up to 300 characters. |
 | `analogy`, `urgency`, `undo` | yes | `analogy` is a comparison that makes the trade-off clear; `urgency` is the deadline, such as `Can wait` or `Blocks in ~8 min`; `undo` is the cost of reversing the choice, such as `changing later ≈ 10 min`. Up to 300 characters each. |
-| `risk` | yes | The risk of accepting the recommended option: `low` is safe to accept and easy to change later; `medium` is reversible but costs rework; `high` is irreversible, or touches real files, credentials or money, and pauses the agent that asked until the answer is delivered to it (the whole session when the question has no asker yet). There is no default: a missing `risk` is refiled. |
-| `pause` | no | Type-checked only; it does not pause anything. A question pauses the agent that asked when `risk` is `high` (the whole session when it has no asker yet), and never otherwise. |
+| `risk` | yes | The risk of accepting the recommended option: `low` is safe to accept and easy to change later; `medium` is reversible but costs rework; `high` is irreversible, or touches real files, credentials or money, and pauses the agent that asked until the answer is delivered to it (the whole session when the question has no asker yet). In `strict` mode every question pauses, whatever its risk. There is no default: a missing `risk` is refiled. |
+| `pause` | no | Type-checked only; it does not pause anything. A question pauses the agent that asked when `risk` is `high`, or in every case when the capture mode is `strict` (the whole session when it has no asker yet). In the default `auto` mode, never otherwise. |
 | `urgency_level` | no | `low`, `medium` or `high` (any case): the grade the panel colours the urgency by. Without it the urgency text has no grade: it is drawn in the default colour. Any other value is refiled. |
 | `translations` | no | The question's text in the other panel language, keyed by `en` or `pt-BR` (never the entry's own `lang`; another key is refiled), so `/askaway lang` switches the whole card. A language is complete or absent: every required text field, and `label`, `does`, `pros`, `cons` and `tradeoff` for every option; a gap is refiled as `translations.<key>: missing <names>`. |
-| `run_kind` | no | `main`, `subagent`, `goal`, `loop`, `bash` or `codex`. |
+| `run_kind` | no | `main`, `subagent`, `goal`, `loop` or `bash`. |
 
 Do not pass `session` or `project`: the CLI fills them from the environment and the working directory. Text longer than its limit is refused, not cut: the refile reply carries `too long (n/limit)`, so shorten the text and file the entry again.
 
@@ -450,7 +469,7 @@ Every command prints one JSON line, except `export`, which prints its document. 
 
 | Command | What it does |
 |---|---|
-| `ask --json '<entry>'` | Files a question with the fields above. `--strict` exits 1 on a refile or an error. A repeat of an open question (same session, same question) returns the id of the open one. A session running `/goal` files nothing: the reply is `{"captured":false,"reason":"goal","action":"continue"}`. |
+| `ask --json '<entry>'` | Files a question with the fields above. `--strict` exits 1 on a refile or an error. A repeat of an open question (same session, same question) returns the id of the open one. A session running `/goal` files nothing: the reply is `{"captured":false,"reason":"goal","action":"continue"}`. Under capture mode `off` it files nothing either, and the reply is `{"captured":false,"reason":"off","action":"continue",...}`. |
 | `answer <id> <key> [--by <source>] [--text <text>]` | Records an answer (agents must not call it). `--strict` exits 1 when the answer is refused or invalid; a withdrawn question refuses every answer. |
 | `withdraw --id <id>` | The asking session declares that you answered its open question in the chat window, so its card leaves the inbox at once. Writes no answer; `status` then adds `"withdrawn": true`. Refused for a question of another session, a question with no session, a paused question (you answer those in the panel) and a question that is not open. `--strict` exits 1 on a refusal. |
 | `status <id>` | Prints the status (`open`, `answered`, `delivered`, `expired`, `damaged` or `damaged answer`), the key and, when set, `who` and `by`, and `text` for an Other reply. `--table` prints an aligned table. `--strict` as for `ask`. |
@@ -464,12 +483,12 @@ The `damaged` status means the question file does not read as a JSON object; `da
 
 `<when>` is a duration such as `30m`, `12h` or `7d`, or an ISO time (without a zone it is UTC). The pause guard lets `ask`, `status`, `list`, `wait` and `export` through, so a paused session can wait for its answer.
 
-## 🧩 From Codex
+## 🧩 From a script outside Claude Code
 
-A Codex run has no Claude Code session id, so no hook reaches it. Its script fetches the answer itself.
+A script that runs outside Claude Code has no Claude Code session id, so no hook reaches it, and nothing holds such a run. The script fetches the answer itself.
 
 1. File the question with the same `ask --json` entry as above, plus `--strict`. Exit 0 means it is filed. Exit 1 means it was refused: the output has `"action": "refile"` or an `error`, so complete the entry and file it again.
-2. For a `high` risk question, the output has `"action": "pause"`. Nothing holds a Codex run, so the script must wait for the answer before it acts on the recommended option:
+2. For a `high` risk question, or any question in `strict` mode, the output has `"action": "pause"`. Nothing holds such a run, so the script must wait for the answer before it acts on the recommended option:
 
 ```bash
 python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
@@ -488,6 +507,7 @@ python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
 ├── s/<id>.json   the delivery marker of the asking subagent's own copy
 ├── w/<id>.json   the asking session's withdrawal of a question answered in the chat (`withdraw --id`)
 ├── away.json     away mode: {"on": true, "ts": ...}
+├── mode.json     capture mode: {"mode": "strict", "auto" or "off", "ts": ...}; a missing or damaged file reads as auto
 ├── draft.json    the wizard's picks, shared by every session of the folder
 ├── cleared.json  the History lines a Clear history hid, shared by every session of the folder
 ├── foreign_check when unread answers of other sessions were last re-checked (its mtime), at most once a minute
@@ -506,13 +526,13 @@ The state folder belongs to one user, and every Claude Code session that runs as
 
 - **Hooks** (`plugins/askaway-user/hooks/command-hooks.json`) read the hook input from stdin: session id, permission mode, working directory, tool name and tool input.
   - `SessionStart` (on `startup`, `resume`, `clear` or `compact`), `UserPromptSubmit` and `PostToolUse` run `hook deliver`: it reads `q/`, `a/`, `d/` and `s/`, writes a delivery marker for each answer it hands over (to `d/` for the main session, to `s/` for the subagent whose own `ask` filed the question), and puts the answer text into that session's context. On the main session's `UserPromptSubmit` it also adds one line naming up to 5 of the session's open questions with their `withdraw --id` commands.
-  - `PreToolUse` on `AskUserQuestion` runs `hook ask-guard`: it reads the away state and writes nothing.
+  - `PreToolUse` on `AskUserQuestion` runs `hook ask-guard`: it reads the away state and the capture mode, and writes nothing.
   - `PreToolUse` on `.*` (every tool) runs `hook pause-guard`: it exits at once when no pause is on file; otherwise it reads `q/`, `a/`, `d/` and `s/`; its only write is the `clock_mark` stamp in the state folder, when a pause has an answer that is not marked yet.
   - `PostToolUse` on `Bash` runs `hook stamp-asker`: after an `ask` call it writes `asker` (the caller's `agent_id`, or `main`) onto the pause that call filed, and changes no other field.
 - **Session titles:** when a question is filed, `ask` finds the asking session's transcript, `<session>.jsonl`, in any project folder under `~/.claude/projects/`, and keeps only its title entries (`custom-title`, `agent-name`, `ai-title`). It does not read prompts or replies. The title labels the session on the card.
 - **Claude Desktop session records:** every `ask` reads the records `$XDG_CONFIG_HOME/Claude/claude-code-sessions/*/*/local_*.json` (`~/.config` when `XDG_CONFIG_HOME` is unset; on macOS, under `~/Library/Application Support`) to find the Desktop session and family of the asking session.
 - **Claude Desktop release markers:** `deliver` looks for `<session>.desktop-released.json` in any project folder (one scan per deliver run), to close the answers of a session that Claude Desktop has released.
-- **Panel (mod):** reads `q/`, `a/` and `d/`; it writes answers only through the CLI (`answer --by panel`); in the state folder it writes the away toggle (`away.json`), `draft.json` and `cleared.json` (with a `draft.lock` folder around each draft write), a delivery marker `d/<id>.json` with `via: "prompt"` for each answer it hands to a session, and a file in `panel-tokens/` for each panel token it mints; its store keys are `lang`, `who`, `quiet` and `cleared`.
+- **Panel (mod):** reads `q/`, `a/` and `d/`; it writes answers only through the CLI (`answer --by panel`); in the state folder it writes the away toggle (`away.json`) and the capture mode (`mode.json`, through the panel's buttons or `/askaway mode`), `draft.json` and `cleared.json` (with a `draft.lock` folder around each draft write), a delivery marker `d/<id>.json` with `via: "prompt"` for each answer it hands to a session, and a file in `panel-tokens/` for each panel token it mints; its store keys are `lang`, `who`, `quiet` and `cleared`.
 - **Prune:** at most once a day, `deliver` removes closed items (delivered or expired) settled more than `ASKAWAY_PRUNE_DAYS` days ago (default 30), a withdrawn question that holds no pause whatever the window, and stale temporary files.
 - **The CLI and the hooks write only inside the state folder.** Each file is written to a temporary file first and then renamed. Nothing is sent over the network, and nothing is written to your projects or transcripts.
 
@@ -565,7 +585,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 </details>
 
 <details>
-<summary>Pane and UI (20)</summary>
+<summary>Pane and UI (24)</summary>
 
 | Decision | Over | Why | Since |
 |---|---|---|---|
@@ -592,6 +612,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | The pane never cuts a title, and draws the CLI's 60-character fallback as the whole question. | 24- and 40-character cuts | A cut question could not be read. | [beta.35](CHANGELOG.md#040-beta35---2026-10-21) |
 | An ended session's card shows a notice whose Dismiss runs `prune --force`; a damaged pause's notice runs `prune --id --strict` without `--force`. | `--force` everywhere | The user's press must lift a pause, and a readable question must not be deleted. | [beta.11](CHANGELOG.md#040-beta11---2026-10-18), [beta.31](CHANGELOG.md#040-beta31---2026-10-21) |
 | Every button keeps its press handle across redraws (`hooks/held.ts`). | A fresh button per draw | The first click on the desktop was dropped. | 0.3.4 |
+| The capture mode is a sentence, `New questions: Auto`, with one verb button per other mode under `Change to:`; the mode buttons have no hotkey. | A segmented control (Strict, Auto, Off) | A segmented control reads as a filter on the list, but this setting applies from now on and removes nothing. A sentence with verb buttons says what a press does. A press changes every session at once, so no letter does it, as with Submit all. | [Unreleased](CHANGELOG.md#unreleased) |
 
 </details>
 
@@ -619,7 +640,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | Decision | Over | Why | Since |
 |---|---|---|---|
 | Answers record their session, and a `cli` answer from another session is refused. | A trusted local command | Scripts keep working, and cross-session answers stop. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
-| A shell answer to a question with no session (Codex) stays accepted. | Requiring the panel token | Keeps the scripting path. | 2026-10-19 |
+| A shell answer to a question with no session stays accepted. | Requiring the panel token | Keeps the scripting path. | 2026-10-19 |
 | An own-session `cli` answer is stamped `by: agent`, and the delivery line names who answered, in five wordings. | Documenting the limit | An agent's answer must not read as the user's. | [beta.10](CHANGELOG.md#040-beta10---2026-10-18) |
 | A one-shot panel token guards `--by panel`, `accept_all` and `accept_recommended`, as a second layer, not isolation. | No token | A bare `--by panel` call should fail. | [beta.11](CHANGELOG.md#040-beta11---2026-10-18) |
 | A pause lasts until the answer is delivered, not written. | Ending at the write | An agent acted on A before it read B. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
@@ -628,7 +649,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | A copy is claimed before its line is printed: a line can be lost once, never sent twice. | Printing first | A duplicate answer later is worse than a lost line. | [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
 | The delivery line quotes `who`, the title and the labels as JSON, and marks Other text as data, not instructions. | Raw text | Stops prompt injection and forged lines. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18) |
 | Model-facing lines are always English, identical in Python and TypeScript (one shared fixture). | Translated lines | A stable contract for agents. | [beta.29](CHANGELOG.md#040-beta29---2026-10-20) |
-| Codex: no hook reaches it, so its script runs `wait --strict` on a `pause`. | No rule | Nothing holds a Codex run. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
+| A question with no session: no hook reaches it, so its script runs `wait --strict` on a `pause`. | No rule | Nothing holds such a run. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
 
 </details>
 
@@ -689,6 +710,10 @@ Each line names the value AskAway User chose and the one it gave up.
 
 What AskAway User does not do or cannot guarantee. The limitations that have a workaround are in [Known issues](#-known-issues), and the security limits are also in [SECURITY.md](SECURITY.md#known-limits).
 
+**Capture mode**
+
+- **One setting for the whole machine.** `strict`, `auto` and `off` apply to every session; no session or project has its own. A fourth mode that only mirrors native questions is planned, and its token is reserved.
+
 **Runtime and platform**
 
 - **Python 3.12 or newer.** Below it, every call and every hook prints a version error on stderr and exits 0, so the pause and the Bash and file guard hold nothing.
@@ -727,7 +752,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 - **The guard is a deterrent, not a guarantee.** It does not model `env -S`, `uv run`, `unset ASKAWAY_HOME`, a copy of the script at another path, a PowerShell command or an MCP tool that writes files outside a pause, a command word held in a variable, a write target held in a variable that an earlier command set, a list of names read from a file (`xargs -a`, `tar -T`), a script file's own code, a script name built at run time, a `~user` path, a brace list, `eval "$X"`, or a recursive copy, `chmod`, `chown` or `setfacl` on an ancestor of the state folder. The user's own shell is not guarded.
 - **The panel token is not isolation.** Any process of the same user that can write the state folder can mint one.
 - **Away detection.** `CLAUDE_CODE_SESSION_ATTENDED=0` is an unofficial signal; a host that sets it makes every session count as away.
-- **Who is held.** A main-thread pause does not hold subagents already running, and a high-risk question with no session (Codex) holds no session: the agent must stop on its own.
+- **Who is held.** A main-thread pause does not hold subagents already running, and a high-risk question with no session holds no session: the agent must stop on its own.
 - **Engine limits.** The Other field has no accessible name, and no window-hide event exists to record Other text on hide.
 
 **Accepted residuals**
@@ -767,7 +792,7 @@ No open issue carries the `bug` label as of 2026-11-20 (`gh issue list -R KeepGl
 - **Desktop Groups on macOS may need the config path set.** The default config path is `~/.config/Claude/claude_desktop_config.json` on every platform (`desktopConfigPathOf`, `hooks/register.tsx`). If Desktop Groups are missing on macOS, set `ASKAWAY_DESKTOP_CONFIG` to the config file's path. Questions still group by family or project.
 - **The panel on macOS is not checked by hand.** Since 1.1.3 its state writes and stale-lock check use POSIX or BSD-documented options, and the tests fake the shell on Linux. A lock that a window left behind is removed after about one minute on macOS and two minutes on Linux, so draft saves can wait that long; picks stay pending until then. Workaround: none.
 - **Early access API.** The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows. Workaround: stay on the tested Claude Code 2.1.296, or roll back to a tagged version ([Pin and roll back](#pin-and-roll-back)).
-- **A Codex run cannot be paused.** Nothing holds a Codex run, so its script must wait for the answer itself. Workaround: [From Codex](#-from-codex).
+- **A script with no session cannot be paused.** Nothing holds such a run, so its script must wait for the answer itself. Workaround: [From a script outside Claude Code](#-from-a-script-outside-claude-code).
 - **The Bash guard is a deterrent.** It denies `askaway.py answer` in an agent's own Bash call, but the panel's CLI call is not a tool call and the hook does not see it. The CLI also trusts `CLAUDE_CODE_SESSION_ID`, and a process of the same user that can write the state folder can mint a panel token ([SECURITY.md](SECURITY.md#known-limits)). Workaround: one login per state folder.
 - **The `who` name is declared, not verified.** Anyone who can type a name can sign an answer with it ([Configuration](#%EF%B8%8F-configuration)). Workaround: give each person their own login.
 - **Writes after `cd "$VAR"` are refused by design.** The Bash guard refuses a relative or `$VAR` write target after `cd "$VAR"` in a command that names askaway (`cd "$SRC" && cp $P/askaway.py $P/b/`); this stays by design ([#9](https://github.com/KeepGlide/askaway-user/issues/9)). Workaround: write files with the Write or Edit tool, `cd` to a literal path, or pass a commit message with `git commit -F - <<'EOF'` or from a file (`git commit -F msg.txt`).
@@ -779,10 +804,10 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 
 | Category | Tests |
 |---|---|
-| Mod (TypeScript), `plugins/askaway-user/tests/` | 625 |
-| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2194 |
+| Mod (TypeScript), `plugins/askaway-user/tests/` | 654 |
+| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2223 |
 
-Python count from `python3 -m pytest --collect-only -q` in `plugins/askaway-user/scripts`, at commit accdbc9 (the last feature commit of 2.3.0), 2026-11-20. The mod count is from a fresh run of `claude plugin test plugins/askaway-user` at the same commit (the runner has no collection mode).
+The counts come from a run of `claude plugin test plugins/askaway-user` (654 passed) and of `python3 -m pytest tests -q` in `plugins/askaway-user/scripts` (2223 passed), both on 2026-11-26 on the capture-modes change with the 2.4.0 port.
 
 ## 🔧 Development
 
@@ -857,6 +882,8 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 2.2.0 | 2026-11-17 | A question answered in the chat window can be withdrawn with `withdraw --id`, so its card stops waiting in the inbox; the card says it was answered in the chat and offers Dismiss only. |
 | 2.3.1 | 2026-11-20 | The daily prune always sweeps withdrawn questions, and the pane reads withdrawals from one source per folder. |
 | 2.3.0 | 2026-11-20 | A `/goal` session is never captured: `ask` files nothing and its `AskUserQuestion` is not denied. A question answered in the chat window leaves the inbox at once unless it holds a pause, and `prune` removes it. The desktop tree draws one continuous line for the derived sessions. |
+| 2.4.0 | 2026-11-25 | The run kind for scripts outside Claude Code and its environment detection are removed; a question with no session defaults to `main`, and stored entries of the removed kind stay readable. |
+| Unreleased | not yet released | Capture mode: `strict`, `auto` (the default) or `off` for new questions, set from the panel or with `/askaway mode`. `off` files nothing and the native question dialog goes through. |
 
 ## 🤝 Contributing
 

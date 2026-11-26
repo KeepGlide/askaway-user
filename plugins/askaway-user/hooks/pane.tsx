@@ -4,11 +4,11 @@
 // callback it receives is a handler; the register supplies them, and the held table keeps each Button's press handle.
 import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 
-import type { Question, QuestionOption } from '../types'
+import type { CaptureMode, CaptureModeState, Question, QuestionOption } from '../types'
 import { t, type Lang } from './i18n'
 import type { HeldButtons } from './held'
 import { DIVIDER_COLUMNS, DIVIDER_HEIGHT, DIVIDER_PX, HEADER_RULE_HEIGHT, HEADER_RULE_SVG, dividerSvg } from './divider'
-import { DETAILS_FILL, LINK_MARK, URGENCY_COLOR } from './look'
+import { DETAILS_FILL, LINK_MARK, URGENCY_COLOR, modeDotSvg } from './look'
 import { KEEPGLIDE_HEADER_SIZE, KEEPGLIDE_SUBMIT_SIZE, renderHistoryIcon, renderKeepGlide, renderLogo } from './logo-element'
 import {
   urgencyGradeOf,
@@ -41,6 +41,11 @@ import {
   type Leaving,
   type Section,
   OTHER_MIN_ROWS,
+  modeActionText,
+  modeDescribeText,
+  modeNameText,
+  modeSinceText,
+  otherModes,
 } from './model'
 import { reviewKeyOf, type Group, type Pick, type Screen, type Wizard } from './wizard'
 
@@ -76,6 +81,8 @@ export type PaneView = {
   damagedPauses?: readonly string[]
   // Away mode is on (away.json): the counter line says so. Optional: the register sets it.
   away?: boolean
+  // The capture mode for new questions (mode.json): absent means auto. Optional: the register sets it.
+  mode?: CaptureModeState
   // True until the person gave a name or skipped: the pane then asks for it above the card, once.
   askWho: boolean
   // The details block is open (the sticky per-user flag, register.tsx detailsOpenAtom); folded by default.
@@ -101,6 +108,8 @@ export type PaneActions = {
   next: () => void
   submit: () => void
   leaveReview: () => void
+  // A mode button's press: sets the capture mode for new questions.
+  setMode: (mode: CaptureMode) => void
 }
 
 // What one question card draws from: the question, the wizard state and whether it is fading out after a press.
@@ -138,6 +147,7 @@ export function renderPane(ui: Ui, view: PaneView, actions: PaneActions, lang: L
           {renderKeepGlide(ui, view.surface, 'keepglide-counter', KEEPGLIDE_HEADER_SIZE)}
         </Box>
       </Box>
+      {renderModeBlock(ui, lang, view, actions, held)}
       {renderHeaderRule(ui, view.surface)}
       {view.groups.length > 0 && renderTree(tree)}
       {view.askWho && view.questions.length > 0 && renderAskWho(ui, lang, actions, held)}
@@ -675,6 +685,36 @@ function renderDetailsToggle(ui: Ui, lang: Lang, actions: PaneActions, card: Car
   return held.hold(key, [label, isLeaving], onPress, press => (
     <Button key={key} label={label} variant="secondary" dimColor={isLeaving} onPress={press} />
   ))
+}
+
+// The side of the mode mark, in px.
+const MODE_DOT_SIZE = 10
+
+// The capture-mode control: the mode in effect with its description, then one button for each other mode. The current mode is never
+// a button, and no mode button takes a hotkey (a digit beside a mode name reads as a count). The colour is an Svg mark only.
+function renderModeBlock(ui: Ui, lang: Lang, view: PaneView, actions: PaneActions, held: HeldButtons): RenderElement {
+  const { Box, Text, Button } = ui
+  const { mode, since } = view.mode ?? { mode: 'auto' as const }
+  const sinceText = modeSinceText(lang, since, view.now)
+  return (
+    <Box key="mode" flexDirection="column">
+      <Box key="mode-line" flexDirection="row" flexWrap="wrap" alignItems="center" gap={1}>
+        {view.surface === 'desktop' && 'Svg' in ui && <ui.Svg key="mode-dot" source={modeDotSvg(mode, MODE_DOT_SIZE)} alt="" width={MODE_DOT_SIZE} height={MODE_DOT_SIZE} />}
+        <Text key="mode-label" dimColor>{t(lang, 'mode.label')}</Text>
+        <Text key="mode-name" bold>{modeNameText(lang, mode)}</Text>
+        {sinceText !== undefined && <Text key="mode-since" dimColor>{`· ${sinceText}`}</Text>}
+      </Box>
+      <Text key="mode-describe">{modeDescribeText(lang, mode)}</Text>
+      <Box key="mode-actions" flexDirection="row" flexWrap="wrap" alignItems="center" gap={1}>
+        <Text key="mode-change" dimColor>{t(lang, 'mode.changeTo')}</Text>
+        {otherModes(mode).map(token => {
+          const key = `mode-${token}`
+          const label = modeActionText(lang, token)
+          return held.hold(key, [label], () => actions.setMode(token), press => <Button key={key} label={label} variant="secondary" onPress={press} />)
+        })}
+      </Box>
+    </Box>
+  )
 }
 
 // The rule under the header (owner, 2026-11-08), as KeepAway Repo draws it: a 1px line across the pane on the desktop, a row of '─'
