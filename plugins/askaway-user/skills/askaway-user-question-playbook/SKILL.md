@@ -1,6 +1,6 @@
 ---
 name: askaway-user-question-playbook
-description: Files a question for the user in the AskAway User inbox with what it is, the problem, an analogy, options with does, pros and cons, a recommended option and a risk level. Use when a decision is needed and the user may be away, such as in bypass permissions, away mode or an unattended run. Loaded on demand by the main session and by any agent that files a question.
+description: Files a question for the user in the AskAway User inbox with what it is, the problem, an analogy, options with does, pros and cons, a recommended option and a risk level. Use when a decision is needed and the user may be away, such as in bypass permissions or an unattended run, or when a native AskUserQuestion is denied. Loaded on demand by the main session and by any agent that files a question.
 metadata:
   domain: agentic
   owner: sophia-phillipa
@@ -15,8 +15,8 @@ answers later in the AskAway User panel, and the answer comes back into your ses
 
 ## When to file
 
-- The user may be away: permission mode is `bypassPermissions`, away mode is on
-  (`away.json` has `on: true`), or the session is unattended (`CLAUDE_CODE_SESSION_ATTENDED=0`).
+- The user may be away, for example in `bypassPermissions` or in an unattended
+  run. This is a hint for you only: the capture rule below does not read it.
 - A decision the user would make (scope, a trade-off, a lasting consequence)
   would otherwise be a guess.
 - Any question you would write in the reply and then wait for: a handoff pause,
@@ -24,7 +24,14 @@ answers later in the AskAway User panel, and the answer comes back into your ses
   option, and you may repeat the question in the reply. Chat text alone never
   reaches the panel.
 - Do not file facts you can check yourself, or routine steps.
-- An away-mode AskUserQuestion with `multiSelect: true` is denied with a note: the pane takes one pick per question, so file one question per independent choice in the same group, or use Other.
+- A native AskUserQuestion with `multiSelect: true` is denied with a note: the pane takes one pick per question, so file one question per independent choice in the same group, or use Other.
+
+## Capture modes
+
+The capture mode (`strict`, `auto` or `off`, set by the user) is the only control over capture. There is no separate away switch.
+
+- A native AskUserQuestion is denied in every session, attended or not, and handed back as `ask --json` skeleton commands. The exceptions: the mode is `off`, the session runs under `/goal`, or the call has no questions. The deny reason starts with "AskAway User captures questions for the user's panel". Fill each skeleton and file it, as the reason says.
+- In mode `off`, `ask` files nothing (see `"reason":"off"` under After filing), and the native question dialog shows in its own window in every session, bypass permissions included.
 
 ## Briefing order
 
@@ -98,8 +105,8 @@ The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","ac
 - While a pause holds your calls, the pause guard denies the heredoc and passes only
   `ask --json '<JSON>'`, which also works without a pause. Keep the JSON in single
   quotes, write an apostrophe as the JSON escape `\u0027`, and never write `<<` in
-  it: the guard then reads the whole command as code, and a plain word such as away
-  denies it.
+  it: the guard then reads the whole command as code, and a quoted word such as
+  `"answer"`, or a quoted file name ending in `mode.json`, denies it.
 
   ```bash
   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title": "Cache", "lang": "en", "question": "Don\u0027t drop the cache?", "what": "Every request reads the database. A cache could answer the repeated reads.", "problem": "Without a choice, every worker queries the database for the same rows.", "context": "Sizing the API for three workers.", "why": "Shared hits remove repeated reads.", "how": "Redis runs next to the API.", "gains": "Repeated reads come from memory.", "losses": "One more service to run.", "analogy": "A note by the phone instead of looking the number up each time.", "urgency": "Can wait", "undo": "changing later ≈ 10 min", "risk": "low", "options": [{"key": "A", "label": "Redis", "tradeoff": "One more service to run", "fit": 88, "does": "Redis runs next to the API and holds the cache.", "pros": "Repeated reads come from memory.", "cons": "One more service to run."}, {"key": "B", "label": "No cache", "tradeoff": "Every request reads the database", "fit": 30, "does": "The API keeps querying the database.", "pros": "Nothing new to run.", "cons": "Slower reads under load."}], "recommended": "A"}'
@@ -177,7 +184,7 @@ The CLI prints one JSON line: `{"id":"q-...","recommended":"A","title":"...","ac
   backticks, such as `software-test-engineer` or `hooks/pane.tsx`. The panel
   draws these names in bold and does not draw the backticks.
   A slash command may stand bare (`/reload-plugins`).
-- Never wrap the `askaway.py` script with `answer`, `away on`, `away off` or `prune --force`
+- Never wrap the `askaway.py` script with `answer` or `prune --force`
   in backticks or `$(...)` inside the JSON, in either filing form: the guard reads that
   span as a command and denies the call. Name the subcommand alone, such as `answer`.
 
