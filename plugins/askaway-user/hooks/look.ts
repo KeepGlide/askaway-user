@@ -1,4 +1,4 @@
-import type { UrgencyGrade } from '../types'
+import type { CaptureMode, UrgencyGrade } from '../types'
 
 // The AskAway User palette. The pane takes the theme's own text colours and background, with no fill of its own, except the
 // details block of a card: it takes the engine's user-message background (DETAILS_FILL). The accent is never a text colour; no
@@ -14,6 +14,12 @@ export const DIVIDER_COLOR = '#D1D5DB' as const
 // The mark before a clickable row or link: a small square, drawn dim. With the Desktop's own link look (dotted,
 // underlined text after it), a clickable row reads as a link, as a native one does.
 export const LINK_MARK = '▪' as const
+// The mark of each capture mode, a non-text Svg mark (never a text colour; the accent rule above holds). Measured WCAG 2.x
+// contrast, on #FFFFFF, #111827 and the Desktop's dark surface #0b0b0b (the bar is 3:1, WCAG 2.2 1.4.11):
+//   strict #DC2626: 4.83, 3.67, 4.08
+//   auto   #3566C8: 5.40, 3.28, 3.64
+//   off    #6B7280: 4.83, 3.67, 4.07
+export const MODE_COLOR: Readonly<Record<CaptureMode, string>> = { strict: '#DC2626', auto: '#3566C8', off: '#6B7280' }
 // The fill of the details block: the engine's theme key for the surface of the user's message. The engine resolves it for
 // the effective theme, including `auto` (resolved by the Desktop to its system theme), so the mod names no theme and reads
 // no theme row.
@@ -32,3 +38,8 @@ export const TEXT_CONTRAST: Readonly<Record<'light' | 'dark', Readonly<Record<st
   light: { text: 21, success: 5.32, warning: 4.71, error: 6.67, desktopDim: 5.17, inactive: 5.74 },
   dark: { text: 17.74, success: 7.21, warning: 10.88, error: 6.48, desktopDim: 7.26, inactive: 6.23 },
 }
+
+// The Svg source of the mode mark in the pane: a filled circle in the mode's colour (a non-text mark; see MODE_COLOR).
+export const modeDotSvg = (mode: CaptureMode, size: number): string =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+  `<circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${MODE_COLOR[mode]}"/></svg>`

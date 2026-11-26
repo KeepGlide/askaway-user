@@ -49,6 +49,13 @@ import {
   withDesktopGroup,
   otherRowsOf,
   OTHER_MIN_ROWS,
+  CAPTURE_MODES,
+  captureModeFile,
+  modeChangedText,
+  modeCommandText,
+  parseCaptureMode,
+  type CaptureMode,
+  type CaptureModeState,
   type DesktopGroups,
   type EndedQuestion,
 } from './model'
@@ -67,6 +74,8 @@ const DRAFT_LOCK_STALE_FIND_ARG = `+${DRAFT_LOCK_STALE_MINUTES}`
 // A move (a pick, Next or Back) drops a repeat of the same action for this long: a second press of that action inside the window
 // (a double click) does nothing. A different action goes through at once.
 const MOVE_LOCK_MS = 350
+// A mode press within this long of the last accepted mode change is ignored (the buttons shift under the pointer).
+const MODE_PRESS_GUARD_MS = 700
 // A card's fade older than this is a press a reload cut off (its reply never ended the fade): a press ignores it (issue #46).
 const LEAVING_MAX_AGE_MS = 60_000
 // The `list --open` run that finds the ended sessions repeats at most this often while the linked open questions do not change.
@@ -105,6 +114,8 @@ const LANG_NAMES: Readonly<Record<Lang, string>> = { en: 'English', pt: 'Portugu
 // reads them.
 const board = atom({ plugin: 'askaway-user', key: 'board' } as const, EMPTY_BOARD)
 const isAway = atom({ plugin: 'askaway-user', key: 'away' } as const, false)
+// The capture mode for new questions (mode file); `since` is the time it was set.
+const captureMode = atom({ plugin: 'askaway-user', key: 'mode' } as const, { mode: 'auto' } as CaptureModeState)
 const clockTick = atom({ plugin: 'askaway-user', key: 'tick' } as const, 0)
 // Question ids already seen. The first poll only primes them, so a session start does not toast what is there.
 const seen = atom({ plugin: 'askaway-user', key: 'seen' } as const, { isPrimed: false, ids: [] as string[] })
@@ -175,6 +186,8 @@ let withdrawnFolder: { home: string; ids: string[] } = { home: '', ids: [] }
 const pressing = new Set<string>()
 const handing = new Set<string>()
 const submitting = new Set<string>()
+// True while a pane mode press is writing: a second press and an overlapping poll do nothing (pressMode, pollInbox).
+let isModePressing = false
 // The Buttons each site (a pane or the band, on one surface) drew last, so a redraw keeps their press handles (held.ts).
 const heldTables = new Map<string, HeldButtons>()
 
@@ -230,6 +243,14 @@ async function readAway($: EngineInterface, home: string, kept: boolean): Promis
   const text = await $.fs.read(path).catch(() => undefined)
   if (text === undefined && (await $.fs.exists(path).catch(() => true))) return kept
   return parseAway(parseJsonText(text))
+}
+
+// The mode file's state: auto when the file is missing, the state kept when it exists but cannot be read.
+async function readMode($: EngineInterface, home: string, kept: CaptureModeState): Promise<CaptureModeState> {
+  const path = `${home}/mode.json`
+  const text = await $.fs.read(path).catch(() => undefined)
+  if (text === undefined && (await $.fs.exists(path).catch(() => true))) return kept
+  return parseCaptureMode(parseJsonText(text))
 }
 
 // A random lowercase hex string of `bytes` random bytes.
@@ -572,6 +593,56 @@ async function mergeEnded($: EngineInterface, ended: EndedQuestion[]): Promise<s
   return ids
 }
 
+// The pane's mode press: sets the mode and toasts once. Presses inside MODE_PRESS_GUARD_MS of the last change are ignored,
+// because the buttons shift under the pointer (the pressed mode leaves the list).
+async function pressMode($: EngineInterface, mode: CaptureMode): Promise<void> {
+  // Taken before the first await, like `pressing`: an overlapping press is dropped, and released when this one settles.
+  if (isModePressing) return
+  isModePressing = true
+  try {
+    await applyModePress($, mode)
+  } finally {
+    isModePressing = false
+  }
+}
+
+// The count of open questions the pane lists: the fades it draws are the live ones, so the toast's number equals the list.
+async function openCountNow($: EngineInterface): Promise<number> {
+  const fading = liveLeaving(await read($, leaving), await $.clock.now())
+  return openQuestions(await read($, board), fading).length
+}
+
+async function applyModePress($: EngineInterface, mode: CaptureMode): Promise<void> {
+  const lang = await read($, langAtom)
+  const { since } = await read($, captureMode)
+  // A `since` ahead of the clock (a file written by another machine's clock) never locks the buttons.
+  const elapsed = since === undefined ? MODE_PRESS_GUARD_MS : (await $.clock.now()) - since
+  if (elapsed >= 0 && elapsed < MODE_PRESS_GUARD_MS) return
+  const saved = await withFolder($, async folder => {
+    await setCaptureMode($, folder, mode)
+    return true
+  })
+  if (!saved) {
+    $.ui.toast(t(lang, 'command.modeUnavailable'))
+    return
+  }
+  $.ui.toast(modeChangedText(lang, mode, await openCountNow($)))
+}
+
+// `/askaway mode [value]`: no value says the mode in effect; a new value sets it; the same value changes nothing.
+async function modeReply($: EngineInterface, lang: Lang, value: string): Promise<string> {
+  const wanted = value.toLowerCase()
+  const mode = CAPTURE_MODES.find(candidate => candidate === wanted)
+  if (wanted !== '' && mode === undefined) return t(lang, 'command.modeInvalid')
+  const reply = await withFolder($, async folder => {
+    const current = await readMode($, folder, await read($, captureMode))
+    if (mode === undefined || mode === current.mode) return modeCommandText(lang, current.mode)
+    await setCaptureMode($, folder, mode)
+    return modeChangedText(lang, mode, await openCountNow($))
+  })
+  return reply ?? t(lang, 'command.modeUnavailable')
+}
+
 // Dismiss on an ended or a damaged card: the CLI removes the question (prune --id), then the board is read again. An ended card may still
 // hold a pause (a high-risk repeat can pause a withdrawn twin), and the person pressing Dismiss is the user, so its prune runs with --force, whatever the risk. A damaged card's prune does not:
 // a file the CLI reads as a question (a stored NaN literal) is refused, not deleted (Should-4).
@@ -629,6 +700,10 @@ async function pollInbox($: EngineInterface, home: string, ownSession?: string):
   await retryDraft($, home)
   await refreshEnded($, home, next, now)
   if ((await read($, isAway)) !== away) await update($, isAway, () => away)
+  // Read right before the compare, and not while a pane press is writing, so a press landing meanwhile is not shown reverted.
+  const shownMode = await read($, captureMode)
+  const mode = await readMode($, home, shownMode)
+  if (!isModePressing && (shownMode.mode !== mode.mode || shownMode.since !== mode.since)) await update($, captureMode, () => mode)
   await tickClock($, now)
   await announceNew($, next)
   await pruneWizardState($)
@@ -1035,6 +1110,14 @@ async function toggleAway($: EngineInterface, home: string): Promise<boolean> {
   await writeAtomic($, `${home}/away.json`, `${JSON.stringify({ on, ts: await $.clock.now() })}\n`)
   await update($, isAway, () => on)
   return on
+}
+
+// Writes the mode file, then shows the mode: a failed write leaves the shown mode as it was.
+async function setCaptureMode($: EngineInterface, home: string, mode: CaptureMode): Promise<void> {
+  const now = await $.clock.now()
+  await writeAtomic($, `${home}/mode.json`, captureModeFile(mode, now))
+  await update($, captureMode, () => ({ mode, since: now }))
+  $.ui.invalidate('ui.render')
 }
 
 // ASKAWAY_HOME overrides the folder (the CLI and the tests use it; kept so existing data keeps working); otherwise it
@@ -1585,6 +1668,7 @@ const actionsFor = ($: EngineInterface): PaneActions => ({
   leaveReview: () => moveOnce($, 'back', () => report($, afterPendingOther($, () => leaveReview($)))),
   saveWho: text => report($, saveWho($, text)),
   skipWho: () => report($, saveWho($, '')),
+  setMode: mode => report($, pressMode($, mode)),
 })
 
 export const register: Register = on => {
@@ -1652,6 +1736,7 @@ export const register: Register = on => {
     if (verb === 'quiet') return { text: await quietReply($, lang, value) }
     if (verb === 'who') return { text: await whoReply($, lang, rest) }
     if (verb === 'away') return { text: await awayText($, lang) }
+    if (verb === 'mode') return { text: await modeReply($, lang, value) }
     if (verb !== '') return { text: t(lang, 'command.verbsHelp') }
     const opened = await openPane($)
     if (opened.isPlaced) return { text: t(lang, 'command.opened') }
@@ -1684,6 +1769,7 @@ export const register: Register = on => {
       leaving: fading,
       footer: folder === undefined ? t(lang, 'command.awayUnavailable') : footerText(lang, current, now, hidden),
       away: await read($, isAway),
+      mode: await read($, captureMode),
       // A withdrawn question that holds a pause stays with its card: the chat notice and Dismiss, which lift the pause.
       ended: [...new Set([...(await read($, endedAtom)), ...pausedWithdrawnIds(current)])],
       endedChat: [...new Set([...(await read($, endedChatAtom)), ...pausedWithdrawnIds(current)])],

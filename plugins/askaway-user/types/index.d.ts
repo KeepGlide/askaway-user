@@ -111,6 +111,14 @@ export type PromptMarker = {
   via: 'prompt'
 }
 
+// The capture mode of new questions, read from mode.json in the state folder: `strict` holds the session until the person
+// answers, `auto` goes on with the recommended option (only a high-risk question pauses), `off` captures nothing. The
+// reserved token `mirror` is not a mode yet.
+export type CaptureMode = 'strict' | 'auto' | 'off'
+
+// The mode and the time it was set (`since`, ms); `since` is absent when the file has no finite time.
+export type CaptureModeState = { mode: CaptureMode; since?: number }
+
 // Everything the mod has read from the state folder at the last poll.
 export type Board = {
   questions: Question[]
@@ -158,6 +166,8 @@ declare module 'claude-code' {
       quiet: boolean
       // The language in use: the stored choice, else the environment's. Set at session start and by /askaway lang.
       lang: 'en' | 'pt'
+      // The capture mode of new questions (mode.json, see CaptureModeState); open questions keep the mode they were filed with.
+      mode: CaptureModeState
       // Whether the details block is open (store key "details-open", the details toggle): one flag per user, folded when absent,
       // read at session start and kept across sessions and restarts.
       detailsOpen: boolean

@@ -4,6 +4,8 @@ import type {
   Answer,
   AnswerBy,
   Board,
+  CaptureMode,
+  CaptureModeState,
   Delivery,
   DeliveryReason,
   Question,
@@ -801,8 +803,81 @@ export const clearableIdsOf = (history: readonly HistoryGroup[]): string[] =>
     group.sessions.flatMap(session => session.entries.map(entry => entry.id)),
   )
 
-// An open question pauses its session when it is high-risk: the card's "Paused since" line and the paused count both read this.
-export const pausesSession = (question: Question): boolean => question.risk === 'high'
+// An open question pauses its session when it holds a pause (the CLI's flag: a strict question, or a high-risk one) or when it
+// is high-risk. The card's "Paused since" line and the paused count both read this.
+export const pausesSession = (question: Question): boolean => question.pause === true || question.risk === 'high'
+
+export type { CaptureMode, CaptureModeState }
+
+// The capture modes in the order the pane and the command list them. `mirror` is reserved for a later version: it is not here.
+export const CAPTURE_MODES: readonly CaptureMode[] = ['strict', 'auto', 'off']
+const DEFAULT_CAPTURE_MODE: CaptureMode = 'auto'
+// Under this age, in ms, a mode reads "in effect now". The raw difference is compared, not ageLabel's rounded minutes.
+const MODE_NOW_MS = 60_000
+const MODE_NAME_KEYS: Readonly<Record<CaptureMode, MessageKey>> = {
+  strict: 'mode.name.strict',
+  auto: 'mode.name.auto',
+  off: 'mode.name.off',
+}
+const MODE_DESCRIBE_KEYS: Readonly<Record<CaptureMode, MessageKey>> = {
+  strict: 'mode.describe.strict',
+  auto: 'mode.describe.auto',
+  off: 'mode.describe.off',
+}
+const MODE_ACTION_KEYS: Readonly<Record<CaptureMode, MessageKey>> = {
+  strict: 'mode.action.strict',
+  auto: 'mode.action.auto',
+  off: 'mode.action.off',
+}
+const MODE_CHANGED_KEYS: Readonly<Record<CaptureMode, MessageKey>> = {
+  strict: 'mode.changed.strict',
+  auto: 'mode.changed.auto',
+  off: 'mode.changed.off',
+}
+
+const isCaptureMode = (value: unknown): value is CaptureMode => CAPTURE_MODES.some(mode => mode === value)
+
+// The mode read from mode.json (the parsed `{"mode","ts"}`). Anything else (not an object, an unknown token, `mirror`) is auto.
+export function parseCaptureMode(value: unknown): CaptureModeState {
+  if (!isRecord(value)) return { mode: DEFAULT_CAPTURE_MODE }
+  const mode = value.mode
+  if (!isCaptureMode(mode)) return { mode: DEFAULT_CAPTURE_MODE }
+  const timestamp = value.ts
+  return typeof timestamp === 'number' && Number.isFinite(timestamp) ? { mode, since: timestamp } : { mode }
+}
+
+// The modes other than the given one, in the list order.
+export function otherModes(mode: CaptureMode): readonly CaptureMode[] {
+  return CAPTURE_MODES.filter(other => other !== mode)
+}
+
+// The exact text the mod writes to mode.json: the mode and the time it was set, as one JSON line.
+export function captureModeFile(mode: CaptureMode, now: number): string {
+  return JSON.stringify({ mode, ts: now }) + '\n'
+}
+
+// The "in effect" note of a mode: "now" under a minute, else the age the question card draws (ageLabel).
+export function modeSinceText(lang: Lang, since: number | undefined, now: number): string | undefined {
+  if (since === undefined) return undefined
+  if (now - since < MODE_NOW_MS) return t(lang, 'mode.sinceNow')
+  return t(lang, 'mode.since', { age: ageLabel(lang, since, now) })
+}
+
+// The line after a mode change: the mode's sentence, then how many open questions stay where they are.
+export function modeChangedText(lang: Lang, mode: CaptureMode, openCount: number): string {
+  const changed = t(lang, MODE_CHANGED_KEYS[mode])
+  return openCount > 0 ? `${changed} ${plural(lang, openCount, 'mode.openStay.one', 'mode.openStay.many')}` : changed
+}
+
+// The name, the description and the change-to button label of a mode, for the pane (the key tables stay private here).
+export const modeNameText = (lang: Lang, mode: CaptureMode): string => t(lang, MODE_NAME_KEYS[mode])
+export const modeDescribeText = (lang: Lang, mode: CaptureMode): string => t(lang, MODE_DESCRIBE_KEYS[mode])
+export const modeActionText = (lang: Lang, mode: CaptureMode): string => t(lang, MODE_ACTION_KEYS[mode])
+
+// The reply to `/askaway mode` with no value: the current mode's name and what it does.
+export function modeCommandText(lang: Lang, mode: CaptureMode): string {
+  return t(lang, 'command.modeShow', { name: t(lang, MODE_NAME_KEYS[mode]), describe: t(lang, MODE_DESCRIBE_KEYS[mode]) })
+}
 
 // The paused segment of the band and of the header counter: "N paused" for the open questions that pause their session, else undefined.
 export function pausedText(lang: Lang, questions: readonly Question[]): string | undefined {
@@ -904,7 +979,7 @@ function clockOf(ts: number): string {
   return `${padTwoDigits(date.getHours())}:${padTwoDigits(date.getMinutes())}`
 }
 
-// The bold line under the card's question: the recommended key the agent already follows, or "paused" for a high-risk question.
+// The bold line under the card's question: the recommended key the agent already follows, or "paused" for a question that pauses its session.
 // Its time is timeOf's: the clock time, with the date when the question was asked on an earlier day than `now`.
 export function leadOf(lang: Lang, question: Question, now: number): string {
   const time = timeOf(question.ts, now)
