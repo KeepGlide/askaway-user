@@ -33,7 +33,7 @@
 - [🧭 Uso](#-uso)
 - [🎛️ Configuração](#%EF%B8%8F-configuração)
 - [🧠 Como os agentes registram perguntas](#-como-os-agentes-registram-perguntas)
-- [🧩 Pelo Codex](#-pelo-codex)
+- [🧩 Por um script fora do Claude Code](#-por-um-script-fora-do-claude-code)
 - [🗂️ Pasta de estado](#%EF%B8%8F-pasta-de-estado)
 - [🧾 Decisões](#-decisões)
 - [🔀 Escolhas e renúncias](#-escolhas-e-renúncias)
@@ -52,7 +52,7 @@
 
 ## 📌 Status
 
-**Estável** (`1.1.8`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
+**Estável** (`2.4.0`). O AskAway User segue o [SemVer](https://semver.org/): a partir da `1.0.0`, uma mudança que quebre o contrato JSON da CLI ou o formato das perguntas guardadas só vem numa nova versão major. As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar ([Problemas conhecidos](#-problemas-conhecidos)).
@@ -104,7 +104,7 @@ O AskAway User não:
 - **Alternador do modo ausente.** `/askaway away` liga ou desliga o modo ausente e informa o estado (`away.json`).
 - **Modo de captura.** Uma configuração para todas as sessões: `strict` segura cada sessão em toda pergunta nova, `auto` (o padrão) segue com a opção recomendada, a não ser que a pergunta seja de risco alto, e `off` não captura nada novo. Troque no painel ou com `/askaway mode` ([Modo de captura](#modo-de-captura)).
 - **Primeiro clique no desktop.** Cada botão mantém o seu identificador de clique entre as redesenhas (`hooks/held.ts`), que era a causa do primeiro clique que o desktop perdia.
-- **Pausa conforme o risco.** Uma pergunta com `risk` alto pausa o agente que perguntou (a thread principal ou um subagente) na sessão cujo id ela traz, até a resposta ser entregue a essa sessão. Os outros agentes seguem trabalhando; uma pergunta sem autor registrado pausa a sessão inteira. Uma pergunta do Codex não tem id de sessão: ela responde `"action": "pause"`, mas nada segura uma execução do Codex, então o script dela espera a resposta sozinho ([Pelo Codex](#-pelo-codex)). No `auto`, perguntas de risco baixo e médio nunca pausam; no `strict`, toda pergunta pausa.
+- **Pausa conforme o risco.** Uma pergunta com `risk` alto pausa o agente que perguntou (a thread principal ou um subagente) na sessão cujo id ela traz, até a resposta ser entregue a essa sessão. Os outros agentes seguem trabalhando; uma pergunta sem autor registrado pausa a sessão inteira. Uma pergunta sem sessão (um script fora do Claude Code) responde `"action": "pause"`, mas nada segura essa execução, então o script dela espera a resposta sozinho ([Por um script fora do Claude Code](#-por-um-script-fora-do-claude-code)). No `auto`, perguntas de risco baixo e médio nunca pausam; no `strict`, toda pergunta pausa.
 - **Dois idiomas.** Inglês e português do Brasil, pelo seu locale ou com `/askaway lang`. Uma pergunta pode trazer as próprias `translations`, e `/askaway lang` troca o cartão inteiro.
 - **Uma CLI para agentes e scripts.** `scripts/askaway.py` tem oito comandos (`ask`, `answer`, `status`, `list`, `wait`, `export`, `away`, `prune`), cada um imprimindo uma linha JSON ([Comandos da CLI](#comandos-da-cli)).
 
@@ -189,7 +189,7 @@ Passo a passo:
    - **O guarda de Bash e de arquivos**, em toda sessão, ausente ou não: o leitor decide. Um comando que responde uma pergunta, troca o modo ausente, força uma poda ou grava na pasta de estado é negado. Um erro no leitor nega, um comando com mais de 64K caracteres é negado, um evento que o gancho não consegue ler é negado, e com o diretório de trabalho apagado todo alvo relativo de gravação é recusado.
    - **A retenção:** enquanto uma pergunta desta sessão que pausa (uma `high` no `auto`, qualquer uma no `strict`) espera a entrega a quem perguntou, as chamadas de ferramenta desse agente são negadas, exceto uma chamada simples de `ask`, `status`, `list`, `wait` ou `export`, as ferramentas de `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, as de lista de tarefas e de plano) e as ferramentas MCP só de leitura. Toda outra ferramenta é retida, incluindo `Skill`, `WebFetch` e `WebSearch`, e também uma ferramenta que o Claude Code adicionar depois, até ser listada em `READ_ONLY_TOOLS`. Sem pausa em arquivo, o gancho sai antes dos imports pesados. Uma sessão rodando `/goal` não é retida por uma pausa, já que não pode parar para esperar; o guarda de Bash e de arquivos acima continua valendo.
 5. **Resposta.** As escolhas são compartilhadas pelo `draft.json`. No Enviar tudo ou no Enviar resposta de uma linha, o painel gera um token de uso único em `panel-tokens/` (32 caracteres hex, modo 600, válido por 120 s) e roda `answer <id> <key> --by panel --strict` com ele em `ASKAWAY_PANEL_TOKEN`. A CLI publica `a/<id>.json` com um link exclusivo, então vale a primeira resposta, e o cartão fica esmaecido até a resposta ser gravada.
-6. **Entrega, uma cópia por destinatário.** O gancho `deliver` (SessionStart, UserPromptSubmit e PostToolUse) lê e julga todas as respostas primeiro, depois reivindica cada cópia devida com um link que não sobrescreve e imprime a linha da resposta, em inglês, como contexto do gancho. A thread principal reivindica `d/<id>.json` (`"recipient": "main"`); um subagente reivindica só as respostas das perguntas que o próprio `ask` registrou, em `s/<id>.json`, e a pausa dele só termina com essa cópia ou um vencimento. Uma sessão ociosa recebe as respostas pelo painel: ele grava as marcas `d/` (`via: "prompt"`) e envia um prompt por sessão que perguntou. Uma execução do Codex lê a resposta com `wait --strict` ([Pelo Codex](#-pelo-codex)).
+6. **Entrega, uma cópia por destinatário.** O gancho `deliver` (SessionStart, UserPromptSubmit e PostToolUse) lê e julga todas as respostas primeiro, depois reivindica cada cópia devida com um link que não sobrescreve e imprime a linha da resposta, em inglês, como contexto do gancho. A thread principal reivindica `d/<id>.json` (`"recipient": "main"`); um subagente reivindica só as respostas das perguntas que o próprio `ask` registrou, em `s/<id>.json`, e a pausa dele só termina com essa cópia ou um vencimento. Uma sessão ociosa recebe as respostas pelo painel: ele grava as marcas `d/` (`via: "prompt"`) e envia um prompt por sessão que perguntou. Um script sem sessão lê a resposta com `wait --strict` ([Por um script fora do Claude Code](#-por-um-script-fora-do-claude-code)).
 7. **Liberação.** Uma resposta não lida vence quando o Claude Desktop liberou a sessão dela (`session-ended`) ou depois de 7 dias (`ttl`). No máximo uma vez por dia, o gancho deliver remove itens fechados mais antigos que `ASKAWAY_PRUNE_DAYS` (30 dias), e uma pergunta retirada que não tem pausa, seja qual for a janela.
 
 ## 📋 Pré-requisitos
@@ -453,7 +453,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `pause` | não | Só é verificado quanto ao tipo; não pausa nada. Uma pergunta pausa o agente que perguntou quando `risk` é `high` ou quando o modo de captura é `strict` (a sessão inteira quando ainda não tem autor). No modo padrão `auto`, nunca em outro caso. |
 | `urgency_level` | não | `low`, `medium` ou `high` (qualquer caixa): o grau pelo qual o painel colore a urgência. Sem ele, o texto da urgência não tem grau: é desenhado na cor padrão. Qualquer outro valor volta como `refile`. |
 | `translations` | não | O texto da pergunta no outro idioma do painel, com a chave `en` ou `pt-BR` (nunca o `lang` da própria entrada; outra chave volta como `refile`), para que `/askaway lang` troque o cartão inteiro. Um idioma vem completo ou não vem: todos os campos de texto obrigatórios, e `label`, `does`, `pros`, `cons` e `tradeoff` de cada opção; uma falta volta como `translations.<chave>: missing <nomes>`. |
-| `run_kind` | não | `main`, `subagent`, `goal`, `loop`, `bash` ou `codex`. |
+| `run_kind` | não | `main`, `subagent`, `goal`, `loop` ou `bash`. |
 
 Não passe `session` nem `project`: a CLI os preenche a partir do ambiente e do diretório de trabalho. Texto acima do limite é recusado, não cortado: a resposta de refile traz `too long (n/limit)`; encurte o texto e registre a entrada de novo.
 
@@ -483,12 +483,12 @@ O estado `damaged` quer dizer que o arquivo da pergunta não lê como objeto JSO
 
 `<quando>` é uma duração como `30m`, `12h` ou `7d`, ou um horário ISO (sem fuso, vale UTC). O guarda de pausa deixa passar `ask`, `status`, `list`, `wait` e `export`, então uma sessão pausada pode esperar pela resposta.
 
-## 🧩 Pelo Codex
+## 🧩 Por um script fora do Claude Code
 
-Uma execução do Codex não tem id de sessão do Claude Code, então nenhum gancho a alcança. O script dela busca a resposta por conta própria.
+Um script que roda fora do Claude Code não tem id de sessão do Claude Code, então nenhum gancho o alcança, e nada segura essa execução. O script busca a resposta por conta própria.
 
 1. Registre a pergunta com a mesma entrada `ask --json` de cima, mais `--strict`. Código 0 quer dizer que foi registrada. Código 1 quer dizer que foi recusada: a saída traz `"action": "refile"` ou um `error`, então complete a entrada e registre de novo.
-2. Para uma pergunta de risco `high`, ou qualquer pergunta no modo `strict`, a saída traz `"action": "pause"`. Nada segura uma execução do Codex, então o script precisa esperar a resposta antes de agir na opção recomendada:
+2. Para uma pergunta de risco `high`, ou qualquer pergunta no modo `strict`, a saída traz `"action": "pause"`. Nada segura essa execução, então o script precisa esperar a resposta antes de agir na opção recomendada:
 
 ```bash
 python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
@@ -640,7 +640,7 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 | Decisão | Em vez de | Por quê | Desde |
 |---|---|---|---|
 | As respostas registram a sessão, e uma resposta `cli` de outra sessão é recusada. | Um comando local confiável | Os scripts seguem funcionando, e as respostas entre sessões param. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
-| Uma resposta de shell a uma pergunta sem sessão (Codex) continua aceita. | Exigir o token do painel | Mantém o caminho dos scripts. | 2026-10-19 |
+| Uma resposta de shell a uma pergunta sem sessão continua aceita. | Exigir o token do painel | Mantém o caminho dos scripts. | 2026-10-19 |
 | Uma resposta `cli` da própria sessão é marcada `by: agent`, e a linha de entrega diz quem respondeu, em cinco redações. | Só documentar o limite | A resposta de um agente não pode parecer a do usuário. | [beta.10](CHANGELOG.md#040-beta10---2026-10-18) |
 | Um token de uso único do painel protege `--by panel`, `accept_all` e `accept_recommended`, como segunda camada, não isolamento. | Sem token | Uma chamada `--by panel` crua deve falhar. | [beta.11](CHANGELOG.md#040-beta11---2026-10-18) |
 | Uma pausa dura até a resposta ser entregue, não gravada. | Terminar na gravação | Um agente agiu sobre A antes de ler B. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
@@ -649,7 +649,7 @@ As escolhas por trás do comportamento do AskAway User, agrupadas por área. Cad
 | Uma cópia é reivindicada antes de a linha ser impressa: uma linha pode se perder uma vez, nunca ser enviada duas. | Imprimir primeiro | Uma resposta duplicada depois é pior que uma linha perdida. | [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
 | A linha de entrega cita `who`, o título e os rótulos como JSON, e marca o texto de Outra como dado, não instrução. | Texto cru | Impede injeção de prompt e linhas forjadas. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18) |
 | As linhas para o modelo são sempre em inglês, idênticas em Python e TypeScript (um fixture compartilhado). | Linhas traduzidas | Um contrato estável para os agentes. | [beta.29](CHANGELOG.md#040-beta29---2026-10-20) |
-| Codex: nenhum gancho o alcança, então o script dele roda `wait --strict` num `pause`. | Nenhuma regra | Nada segura uma execução do Codex. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
+| Pergunta sem sessão: nenhum gancho a alcança, então o script dela roda `wait --strict` num `pause`. | Nenhuma regra | Nada segura essa execução. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
 
 </details>
 
@@ -752,7 +752,7 @@ O que o AskAway User não faz ou não consegue garantir. As limitações que tê
 - **O guarda é um freio, não uma garantia.** Ele não cobre `env -S`, `uv run`, `unset ASKAWAY_HOME`, uma cópia do script em outro caminho, um comando de PowerShell ou uma ferramenta MCP que grave arquivos fora de uma pausa, uma palavra de comando guardada numa variável, um alvo de gravação guardado numa variável que um comando anterior definiu, uma lista de nomes lida de um arquivo (`xargs -a`, `tar -T`), o código de um arquivo de script, um nome de script montado na execução, um caminho `~user`, uma lista entre chaves, `eval "$X"`, nem uma cópia recursiva, `chmod`, `chown` ou `setfacl` num ancestral da pasta de estado. O shell do próprio usuário não é vigiado.
 - **O token do painel não é isolamento.** Qualquer processo do mesmo usuário que consiga gravar a pasta de estado pode gerar um.
 - **Detecção de ausência.** `CLAUDE_CODE_SESSION_ATTENDED=0` é um sinal não oficial; um host que o define faz toda sessão contar como ausente.
-- **Quem fica retido.** Uma pausa da thread principal não segura subagentes que já estão rodando, e uma pergunta de risco alto sem sessão (Codex) não segura nenhuma sessão: o agente precisa parar sozinho.
+- **Quem fica retido.** Uma pausa da thread principal não segura subagentes que já estão rodando, e uma pergunta de risco alto sem sessão não segura nenhuma sessão: o agente precisa parar sozinho.
 - **Limites do motor.** O campo Outra não tem nome acessível, e não existe evento de janela oculta para registrar o texto de Outra ao ocultar.
 
 **Resíduos aceitos**
@@ -792,7 +792,7 @@ Nenhuma issue aberta traz o rótulo `bug` em 2026-11-20 (`gh issue list -R KeepG
 - **Grupos do Desktop no macOS podem precisar do caminho da configuração.** O caminho padrão da configuração é `~/.config/Claude/claude_desktop_config.json` em todas as plataformas (`desktopConfigPathOf`, `hooks/register.tsx`). Se os grupos do Desktop faltarem no macOS, defina `ASKAWAY_DESKTOP_CONFIG` com o caminho do arquivo de configuração. As perguntas continuam agrupadas por família ou projeto.
 - **O painel no macOS não foi conferido à mão.** Desde a 1.1.3, as gravações de estado e a checagem de trava usam opções POSIX ou documentadas pelo BSD, e os testes simulam o shell no Linux. Uma trava que uma janela deixou para trás é removida depois de cerca de um minuto no macOS e de dois minutos no Linux, então os salvamentos do rascunho podem esperar esse tempo; as escolhas ficam pendentes até lá. Contorno: nenhum.
 - **API de acesso antecipado.** A API de mods muda entre as versões do Claude Code, então um Claude Code mais novo pode mudar o painel antes de o AskAway User acompanhar. Contorno: fique no Claude Code 2.1.296, que foi testado, ou volte a uma versão com tag ([Fixar e voltar a versão](#fixar-e-voltar-a-versão)).
-- **Uma execução do Codex não pode ser pausada.** Nada segura uma execução do Codex, então o script dela precisa esperar a resposta por conta própria. Contorno: [Pelo Codex](#-pelo-codex).
+- **Um script sem sessão não pode ser pausado.** Nada segura essa execução, então o script dela precisa esperar a resposta por conta própria. Contorno: [Por um script fora do Claude Code](#-por-um-script-fora-do-claude-code).
 - **O guarda de Bash é um desestímulo.** Ele nega `askaway.py answer` na chamada de Bash do próprio agente, mas a chamada de CLI do painel não é uma chamada de ferramenta, e o hook não a vê. A CLI também confia em `CLAUDE_CODE_SESSION_ID`, e um processo do mesmo usuário que consiga gravar a pasta de estado pode gerar um token do painel ([SECURITY.md](SECURITY.md#known-limits)). Contorno: um login por pasta de estado.
 - **O nome `who` é declarado, não verificado.** Quem puder digitar um nome pode assinar uma resposta com ele ([Configuração](#%EF%B8%8F-configuração)). Contorno: dê a cada pessoa o seu próprio login.
 - **Gravações depois de `cd "$VAR"` são recusadas por decisão.** O guarda de Bash recusa um alvo de gravação relativo ou `$VAR` depois de `cd "$VAR"` num comando que cita askaway (`cd "$SRC" && cp $P/askaway.py $P/b/`); essa recusa fica por decisão ([#9](https://github.com/KeepGlide/askaway-user/issues/9)). Contorno: grave arquivos com a ferramenta Write ou Edit, faça `cd` para um caminho literal, ou passe a mensagem de commit com `git commit -F - <<'EOF'` ou por um arquivo (`git commit -F msg.txt`).
@@ -805,9 +805,9 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 | Categoria | Testes |
 |---|---|
 | Mod (TypeScript), `plugins/askaway-user/tests/` | 654 |
-| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2222 |
+| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2223 |
 
-As contagens vêm de uma execução de `claude plugin test plugins/askaway-user` (654 passaram) e de `python3 -m pytest tests -q` em `plugins/askaway-user/scripts` (2222 passaram), ambas em 2026-11-26 sobre a mudança de modos de captura, no commit e435a6e (`feat(pane)`).
+As contagens vêm de uma execução de `claude plugin test plugins/askaway-user` (654 passaram) e de `python3 -m pytest tests -q` em `plugins/askaway-user/scripts` (2223 passaram), ambas em 2026-11-26 sobre a mudança de modos de captura, com o port da 2.4.0.
 
 ## 🔧 Desenvolvimento
 
@@ -882,6 +882,7 @@ As mudanças de cada versão estão em [CHANGELOG.md](CHANGELOG.md), no formato 
 | 2.2.0 | 2026-11-17 | Uma pergunta respondida na janela do chat pode ser retirada com `withdraw --id`, para o cartão deixar de esperar na caixa de entrada; o cartão diz que foi respondida no chat e oferece só Dispensar. |
 | 2.3.1 | 2026-11-20 | A limpeza diária sempre remove as perguntas retiradas, e o painel lê as retiradas de uma só fonte por pasta. |
 | 2.3.0 | 2026-11-20 | Uma sessão rodando `/goal` nunca é capturada: o `ask` não registra nada e o `AskUserQuestion` não é negado. Uma pergunta respondida na janela do chat sai da caixa de entrada na hora, a não ser que tenha pausa, e o `prune` a remove. A árvore do Desktop desenha uma linha contínua para as sessões derivadas. |
+| 2.4.0 | 2026-11-25 | O tipo de execução para scripts fora do Claude Code e a detecção de ambiente dele saem; uma pergunta sem sessão assume `main`, e as entradas guardadas do tipo removido continuam legíveis. |
 | Não lançada | ainda não lançada | Modo de captura: `strict`, `auto` (o padrão) ou `off` para perguntas novas, definido pelo painel ou com `/askaway mode`. O `off` não registra nada, e o diálogo nativo de perguntas passa. |
 
 ## 🤝 Contribuição

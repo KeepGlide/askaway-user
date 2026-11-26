@@ -33,7 +33,7 @@
 - [🧭 Usage](#-usage)
 - [🎛️ Configuration](#%EF%B8%8F-configuration)
 - [🧠 How agents file questions](#-how-agents-file-questions)
-- [🧩 From Codex](#-from-codex)
+- [🧩 From a script outside Claude Code](#-from-a-script-outside-claude-code)
 - [🗂️ State folder](#%EF%B8%8F-state-folder)
 - [🧾 Decisions](#-decisions)
 - [🔀 Trade-offs](#-trade-offs)
@@ -52,7 +52,7 @@
 
 ## 📌 Status
 
-**Stable** (`1.1.8`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
+**Stable** (`2.4.0`). AskAway User follows [SemVer](https://semver.org/): from `1.0.0` on, a change that breaks the CLI's JSON contract or the stored question format comes only in a new major version. The changes of each version are in [CHANGELOG.md](CHANGELOG.md).
 
 > [!WARNING]
 > The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows ([Known issues](#-known-issues)).
@@ -104,7 +104,7 @@ AskAway User does not:
 - **Away mode switch.** `/askaway away` turns away mode on or off and reports the state (`away.json`).
 - **Capture mode.** One setting for every session: `strict` holds each session on every new question, `auto` (the default) goes on with the recommended option unless the question is high risk, and `off` captures nothing new. Switch it in the panel or with `/askaway mode` ([Capture mode](#capture-mode)).
 - **First click on the desktop.** Each button keeps its press handle across redraws (`hooks/held.ts`), which is the cause of the first click the desktop used to drop.
-- **Risk-aware pausing.** A question with `risk` high pauses the agent that asked it (the main thread, or one subagent) in the session whose id it carries, until the answer is delivered to that session. The other agents keep working; a question with no recorded asker pauses the whole session. A question from Codex has no session id: it replies `"action": "pause"`, but nothing holds a Codex run, so its script waits for the answer itself ([From Codex](#-from-codex)). In `auto`, low and medium questions never pause; in `strict`, every question pauses.
+- **Risk-aware pausing.** A question with `risk` high pauses the agent that asked it (the main thread, or one subagent) in the session whose id it carries, until the answer is delivered to that session. The other agents keep working; a question with no recorded asker pauses the whole session. A question with no session (a script outside Claude Code) replies `"action": "pause"`, but nothing holds such a run, so its script waits for the answer itself ([From a script outside Claude Code](#-from-a-script-outside-claude-code)). In `auto`, low and medium questions never pause; in `strict`, every question pauses.
 - **Two languages.** English and Brazilian Portuguese, from your locale or with `/askaway lang`. A question may carry its own `translations`, so `/askaway lang` switches the whole card.
 - **A CLI for agents and scripts.** `scripts/askaway.py` has eight commands (`ask`, `answer`, `status`, `list`, `wait`, `export`, `away`, `prune`), each printing one JSON line ([CLI commands](#cli-commands)).
 
@@ -189,7 +189,7 @@ Step by step:
    - **The Bash and file guard**, in every session, away or not: the scanner decides, so a command that answers a question, switches away mode, forces a prune or writes the state folder is denied. An error in the scanner denies, a command over 64K characters is denied, an event the hook cannot read is denied, and with a deleted working directory every relative write target is refused.
    - **The hold:** while a question of this session that pauses (a `high` one in `auto`, any one in `strict`) waits for delivery to its asker, the asker's tool calls are denied, except one simple `ask`, `status`, `list`, `wait` or `export` call, the tools of `READ_ONLY_TOOLS` (`Read`, `Grep`, `Glob`, the task-list and plan tools) and read-only MCP tools. Every other tool is held, `Skill`, `WebFetch` and `WebSearch` included, and so is a tool that Claude Code adds later until it is listed in `READ_ONLY_TOOLS`. With no pause on file, the hook exits before its heavy imports. A session running `/goal` is not held by a pause, since it cannot stop to wait; the Bash and file guard above still applies.
 5. **Answer.** Picks are shared through `draft.json`. On Submit all or a row's Submit Answer, the pane mints a one-shot token in `panel-tokens/` (32 hex characters, mode 600, valid for 120 s) and runs `answer <id> <key> --by panel --strict` with it in `ASKAWAY_PANEL_TOKEN`. The CLI publishes `a/<id>.json` with an exclusive link, so the first answer wins, and the card stays dimmed until the reply is written.
-6. **Deliver, one copy per recipient.** The `deliver` hook (SessionStart, UserPromptSubmit and PostToolUse) reads and judges every answer first, then claims each due copy with a no-clobber link and prints the English answer line as hook context. The main thread claims `d/<id>.json` (`"recipient": "main"`); a subagent claims only the answers to the questions its own `ask` filed, in `s/<id>.json`, and its pause ends only on that copy or a lapse. An idle session gets its answers from the pane: it writes the `d/` markers (`via: "prompt"`) and submits one prompt per asking session. A Codex run reads its answer with `wait --strict` ([From Codex](#-from-codex)).
+6. **Deliver, one copy per recipient.** The `deliver` hook (SessionStart, UserPromptSubmit and PostToolUse) reads and judges every answer first, then claims each due copy with a no-clobber link and prints the English answer line as hook context. The main thread claims `d/<id>.json` (`"recipient": "main"`); a subagent claims only the answers to the questions its own `ask` filed, in `s/<id>.json`, and its pause ends only on that copy or a lapse. An idle session gets its answers from the pane: it writes the `d/` markers (`via: "prompt"`) and submits one prompt per asking session. A script with no session reads its answer with `wait --strict` ([From a script outside Claude Code](#-from-a-script-outside-claude-code)).
 7. **Release.** An unread answer lapses when Claude Desktop has released its session (`session-ended`) or after 7 days (`ttl`). At most once a day, the deliver hook removes closed items older than `ASKAWAY_PRUNE_DAYS` (30 days), and a withdrawn question that holds no pause, whatever the window.
 
 ## 📋 Prerequisites
@@ -453,7 +453,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/askaway.py" ask --json '{"title":"Cache b
 | `pause` | no | Type-checked only; it does not pause anything. A question pauses the agent that asked when `risk` is `high`, or in every case when the capture mode is `strict` (the whole session when it has no asker yet). In the default `auto` mode, never otherwise. |
 | `urgency_level` | no | `low`, `medium` or `high` (any case): the grade the panel colours the urgency by. Without it the urgency text has no grade: it is drawn in the default colour. Any other value is refiled. |
 | `translations` | no | The question's text in the other panel language, keyed by `en` or `pt-BR` (never the entry's own `lang`; another key is refiled), so `/askaway lang` switches the whole card. A language is complete or absent: every required text field, and `label`, `does`, `pros`, `cons` and `tradeoff` for every option; a gap is refiled as `translations.<key>: missing <names>`. |
-| `run_kind` | no | `main`, `subagent`, `goal`, `loop`, `bash` or `codex`. |
+| `run_kind` | no | `main`, `subagent`, `goal`, `loop` or `bash`. |
 
 Do not pass `session` or `project`: the CLI fills them from the environment and the working directory. Text longer than its limit is refused, not cut: the refile reply carries `too long (n/limit)`, so shorten the text and file the entry again.
 
@@ -483,12 +483,12 @@ The `damaged` status means the question file does not read as a JSON object; `da
 
 `<when>` is a duration such as `30m`, `12h` or `7d`, or an ISO time (without a zone it is UTC). The pause guard lets `ask`, `status`, `list`, `wait` and `export` through, so a paused session can wait for its answer.
 
-## 🧩 From Codex
+## 🧩 From a script outside Claude Code
 
-A Codex run has no Claude Code session id, so no hook reaches it. Its script fetches the answer itself.
+A script that runs outside Claude Code has no Claude Code session id, so no hook reaches it, and nothing holds such a run. The script fetches the answer itself.
 
 1. File the question with the same `ask --json` entry as above, plus `--strict`. Exit 0 means it is filed. Exit 1 means it was refused: the output has `"action": "refile"` or an `error`, so complete the entry and file it again.
-2. For a `high` risk question, or any question in `strict` mode, the output has `"action": "pause"`. Nothing holds a Codex run, so the script must wait for the answer before it acts on the recommended option:
+2. For a `high` risk question, or any question in `strict` mode, the output has `"action": "pause"`. Nothing holds such a run, so the script must wait for the answer before it acts on the recommended option:
 
 ```bash
 python3 "<askaway>/scripts/askaway.py" wait <id> --timeout 110 --strict
@@ -640,7 +640,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | Decision | Over | Why | Since |
 |---|---|---|---|
 | Answers record their session, and a `cli` answer from another session is refused. | A trusted local command | Scripts keep working, and cross-session answers stop. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
-| A shell answer to a question with no session (Codex) stays accepted. | Requiring the panel token | Keeps the scripting path. | 2026-10-19 |
+| A shell answer to a question with no session stays accepted. | Requiring the panel token | Keeps the scripting path. | 2026-10-19 |
 | An own-session `cli` answer is stamped `by: agent`, and the delivery line names who answered, in five wordings. | Documenting the limit | An agent's answer must not read as the user's. | [beta.10](CHANGELOG.md#040-beta10---2026-10-18) |
 | A one-shot panel token guards `--by panel`, `accept_all` and `accept_recommended`, as a second layer, not isolation. | No token | A bare `--by panel` call should fail. | [beta.11](CHANGELOG.md#040-beta11---2026-10-18) |
 | A pause lasts until the answer is delivered, not written. | Ending at the write | An agent acted on A before it read B. | [beta.7](CHANGELOG.md#040-beta7---2026-10-17) |
@@ -649,7 +649,7 @@ The choices behind AskAway User's behaviour, grouped by area. Each row says what
 | A copy is claimed before its line is printed: a line can be lost once, never sent twice. | Printing first | A duplicate answer later is worse than a lost line. | [beta.32](CHANGELOG.md#040-beta32---2026-10-21) |
 | The delivery line quotes `who`, the title and the labels as JSON, and marks Other text as data, not instructions. | Raw text | Stops prompt injection and forged lines. | [beta.15](CHANGELOG.md#040-beta15---2026-10-18) |
 | Model-facing lines are always English, identical in Python and TypeScript (one shared fixture). | Translated lines | A stable contract for agents. | [beta.29](CHANGELOG.md#040-beta29---2026-10-20) |
-| Codex: no hook reaches it, so its script runs `wait --strict` on a `pause`. | No rule | Nothing holds a Codex run. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
+| A question with no session: no hook reaches it, so its script runs `wait --strict` on a `pause`. | No rule | Nothing holds such a run. | [beta.9](CHANGELOG.md#040-beta9---2026-10-18) |
 
 </details>
 
@@ -752,7 +752,7 @@ What AskAway User does not do or cannot guarantee. The limitations that have a w
 - **The guard is a deterrent, not a guarantee.** It does not model `env -S`, `uv run`, `unset ASKAWAY_HOME`, a copy of the script at another path, a PowerShell command or an MCP tool that writes files outside a pause, a command word held in a variable, a write target held in a variable that an earlier command set, a list of names read from a file (`xargs -a`, `tar -T`), a script file's own code, a script name built at run time, a `~user` path, a brace list, `eval "$X"`, or a recursive copy, `chmod`, `chown` or `setfacl` on an ancestor of the state folder. The user's own shell is not guarded.
 - **The panel token is not isolation.** Any process of the same user that can write the state folder can mint one.
 - **Away detection.** `CLAUDE_CODE_SESSION_ATTENDED=0` is an unofficial signal; a host that sets it makes every session count as away.
-- **Who is held.** A main-thread pause does not hold subagents already running, and a high-risk question with no session (Codex) holds no session: the agent must stop on its own.
+- **Who is held.** A main-thread pause does not hold subagents already running, and a high-risk question with no session holds no session: the agent must stop on its own.
 - **Engine limits.** The Other field has no accessible name, and no window-hide event exists to record Other text on hide.
 
 **Accepted residuals**
@@ -792,7 +792,7 @@ No open issue carries the `bug` label as of 2026-11-20 (`gh issue list -R KeepGl
 - **Desktop Groups on macOS may need the config path set.** The default config path is `~/.config/Claude/claude_desktop_config.json` on every platform (`desktopConfigPathOf`, `hooks/register.tsx`). If Desktop Groups are missing on macOS, set `ASKAWAY_DESKTOP_CONFIG` to the config file's path. Questions still group by family or project.
 - **The panel on macOS is not checked by hand.** Since 1.1.3 its state writes and stale-lock check use POSIX or BSD-documented options, and the tests fake the shell on Linux. A lock that a window left behind is removed after about one minute on macOS and two minutes on Linux, so draft saves can wait that long; picks stay pending until then. Workaround: none.
 - **Early access API.** The mod API moves between Claude Code releases, so a newer Claude Code can change the panel before AskAway User follows. Workaround: stay on the tested Claude Code 2.1.296, or roll back to a tagged version ([Pin and roll back](#pin-and-roll-back)).
-- **A Codex run cannot be paused.** Nothing holds a Codex run, so its script must wait for the answer itself. Workaround: [From Codex](#-from-codex).
+- **A script with no session cannot be paused.** Nothing holds such a run, so its script must wait for the answer itself. Workaround: [From a script outside Claude Code](#-from-a-script-outside-claude-code).
 - **The Bash guard is a deterrent.** It denies `askaway.py answer` in an agent's own Bash call, but the panel's CLI call is not a tool call and the hook does not see it. The CLI also trusts `CLAUDE_CODE_SESSION_ID`, and a process of the same user that can write the state folder can mint a panel token ([SECURITY.md](SECURITY.md#known-limits)). Workaround: one login per state folder.
 - **The `who` name is declared, not verified.** Anyone who can type a name can sign an answer with it ([Configuration](#%EF%B8%8F-configuration)). Workaround: give each person their own login.
 - **Writes after `cd "$VAR"` are refused by design.** The Bash guard refuses a relative or `$VAR` write target after `cd "$VAR"` in a command that names askaway (`cd "$SRC" && cp $P/askaway.py $P/b/`); this stays by design ([#9](https://github.com/KeepGlide/askaway-user/issues/9)). Workaround: write files with the Write or Edit tool, `cd` to a literal path, or pass a commit message with `git commit -F - <<'EOF'` or from a file (`git commit -F msg.txt`).
@@ -805,9 +805,9 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 | Category | Tests |
 |---|---|
 | Mod (TypeScript), `plugins/askaway-user/tests/` | 654 |
-| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2222 |
+| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2223 |
 
-The counts come from a run of `claude plugin test plugins/askaway-user` (654 passed) and of `python3 -m pytest tests -q` in `plugins/askaway-user/scripts` (2222 passed), both on 2026-11-26 on the capture-modes change, at commit e435a6e (`feat(pane)`).
+The counts come from a run of `claude plugin test plugins/askaway-user` (654 passed) and of `python3 -m pytest tests -q` in `plugins/askaway-user/scripts` (2223 passed), both on 2026-11-26 on the capture-modes change with the 2.4.0 port.
 
 ## 🔧 Development
 
@@ -882,6 +882,7 @@ The changes of each version are in [CHANGELOG.md](CHANGELOG.md), in the [Keep a 
 | 2.2.0 | 2026-11-17 | A question answered in the chat window can be withdrawn with `withdraw --id`, so its card stops waiting in the inbox; the card says it was answered in the chat and offers Dismiss only. |
 | 2.3.1 | 2026-11-20 | The daily prune always sweeps withdrawn questions, and the pane reads withdrawals from one source per folder. |
 | 2.3.0 | 2026-11-20 | A `/goal` session is never captured: `ask` files nothing and its `AskUserQuestion` is not denied. A question answered in the chat window leaves the inbox at once unless it holds a pause, and `prune` removes it. The desktop tree draws one continuous line for the derived sessions. |
+| 2.4.0 | 2026-11-25 | The run kind for scripts outside Claude Code and its environment detection are removed; a question with no session defaults to `main`, and stored entries of the removed kind stay readable. |
 | Unreleased | not yet released | Capture mode: `strict`, `auto` (the default) or `off` for new questions, set from the panel or with `/askaway mode`. `off` files nothing and the native question dialog goes through. |
 
 ## 🤝 Contributing
