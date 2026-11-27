@@ -791,9 +791,9 @@ Encontrou um? [Abra uma issue](https://github.com/KeepGlide/askaway-user/issues/
 | Categoria | Testes |
 |---|---|
 | Mod (TypeScript), `plugins/askaway-user/tests/` | 653 |
-| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2223 |
+| CLI e ganchos (Python), `plugins/askaway-user/scripts/tests/` | 2272 |
 
-As contagens vêm de uma execução de `claude plugin test plugins/askaway-user` (653 passaram) e de `python3 -m pytest tests -q` em `plugins/askaway-user/scripts` (2223 passaram), ambas em 2026-11-26 sobre a mudança em que o modo de captura substitui o modo ausente.
+As contagens vêm de uma execução de `claude plugin test plugins/askaway-user` (653 passaram) em 2026-11-26, sobre a mudança em que o modo de captura substitui o modo ausente, e de `python3 -m pytest tests -q` em `plugins/askaway-user/scripts` (2272 passaram) em 2026-11-27, sobre a correção que deixa de negar como resposta os scripts rodados por subagentes.
 
 ## 🔧 Desenvolvimento
 

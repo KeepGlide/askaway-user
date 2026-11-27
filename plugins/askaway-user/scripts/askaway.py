@@ -528,6 +528,13 @@ EXTGLOB_HEADS: Final = ("@", "+", "!")  # @(...), +(...), !(...): the ? and * he
 PY_VALUE_OPTIONS: Final = frozenset({"-W", "-X"})
 MKTEMP_HOME: Final = re.compile(r"\$\(mktemp(?:\s[^()]*)?\)")
 EXPANSION: Final = re.compile(r"[$`*?\[{]")
+QUOTED_DIR_SCRIPT: Final = re.compile(  # "$D/name", "${D}/a/name" or "$D"/name: one variable, then a literal path
+    r'"\$(?:\w+|\{\w+\})(?:(/[\w.+@%=,:-]+)+"|"(/[\w.+@%=,:-]+)+)')
+SETTLED_VALUE: Final = re.compile(r"[\w./@%+=:,~-]+")  # a value that word splitting and globs leave whole
+SETTLED_ASSIGNMENT: Final = re.compile(r"[A-Za-z_]\w*=[^'\\`]*")  # no single quote, backslash or backquote
+VARIABLE_READ: Final = re.compile(r"\$(?:(\w+)|\{(\w+)\})")  # a plain $NAME or ${NAME}
+TEXT_RUNNERS: Final = re.compile(r"(?<![\w-])(?:eval|source)(?![\w-])")  # their text may set any variable
+SETTLED_SEPARATORS: Final = frozenset({";", "&&", "\n"})  # after a plain assignment, the next command always runs
 GLOB: Final = re.compile(r"[*?\[]")  # the expansion a write above a state folder is judged by (any one only when deleting)
 STATE_PIECES: Final = re.compile(  # the words state and askaway as one path, split only by quotes or separators
     r"/[\"']*(?:state\W{0,3}askaway|askaway\W{0,3}state)|(?:state\W{0,3}askaway|askaway\W{0,3}state)[\"']*/")
@@ -2972,6 +2979,44 @@ def _assignments(words: Sequence[str]) -> dict[str, str]:
     return found
 
 
+def _named_apart(command: str, name: str) -> int:
+    """How many times a line names a variable other than in a plain $NAME or ${NAME} read: each assignment, a for,
+    read or printf -v that sets it, a ${NAME:-...} form, and any word that is the name itself."""
+    every = len(re.findall(rf"(?<![\w$]){re.escape(name)}(?!\w)", command))
+    return every - len(re.findall(rf"\$\{{{re.escape(name)}\}}", command))
+
+
+def _settled_variables(tokens: Sequence[tuple[str, str]], simple_commands: Sequence[_Simple]) -> dict[str, str]:
+    """The variables a line sets once, plainly, to a literal value, so the answer check reads S=/tmp/x; python3 $S/a.py
+    as the script /tmp/x/a.py instead of a variable that could be askaway.py.
+
+    Only the assignments that open the line count: commands made of NAME=value words alone, each followed by ;, && or
+    a newline, before any other command, so each one runs (a later one may follow a test that fails, or sit in a
+    branch, a loop, a function, a pipe or a & job, where the shell leaves the variable unset or as inherited). The value
+    is literal text, or reads of variables settled before it ($R/x), with no space, quote, backslash or glob, and the
+    line's words name the variable nowhere else but in plain $NAME and ${NAME} reads. A line that names IFS, holds a
+    $'...' word, or runs eval, source or . settles nothing."""
+    settled: dict[str, str] = {}
+    text = " ".join(word for simple in simple_commands for word in [*simple.words, *simple.here])
+    names = [_command_name(_strip_prefix(simple.words)[1]) for simple in simple_commands]
+    if ("$'" in text or TEXT_RUNNERS.search(text) or _named_apart(text, "IFS")
+            or any(name in {"eval", *SOURCE_NAMES} or re.search(r"[$`]", name) for name in names)):
+        return settled  # a command named at run time, $(printf ev)al, may be eval too
+    opening: list[str] = []  # the assignment words of the command being read
+    for kind, value in tokens:
+        if kind == "word" and SETTLED_ASSIGNMENT.fullmatch(value):
+            opening.append(value)
+        elif kind == "op" and value in SETTLED_SEPARATORS:
+            for name, raw in _strip_prefix(opening)[0].items():
+                literal = VARIABLE_READ.sub(lambda read: settled.get(read[1] or read[2], read[0]), raw)
+                if _named_apart(text, name) == 1 and SETTLED_VALUE.fullmatch(literal):
+                    settled[name] = literal
+            opening = []
+        elif kind != "comment":
+            break
+    return settled
+
+
 def _substitutions(raw: str) -> list[str]:
     """The text of each $(...), <(...), >(...), `...` and ((...)) in a word: the text is read as a command too (an
     arithmetic body only runs the substitutions inside it, but a ((a)(b)) of two subshells is one the shell does
@@ -3070,6 +3115,11 @@ def _is_askaway_name(name: str) -> bool:
 
 
 def _maybe_script(raw: str) -> bool:
+    """Could this word run the askaway script? A word that may expand could, except one double-quoted variable followed
+    by a literal path ("$W/stage.py"), whose last name is the same whatever the variable holds."""
+    tail = QUOTED_DIR_SCRIPT.fullmatch(raw)
+    if tail is not None and (name := (tail[1] or tail[2])[1:]) not in (".", ".."):
+        return _is_askaway_name(name)
     return _has_expansion(raw) or _is_askaway_name(os.path.basename(_unquote(raw)))
 
 
@@ -3082,7 +3132,7 @@ def _python_args(args: Sequence[str]) -> list[str] | None:
     index = 0
     while index < len(args):
         word = _unquote(args[index])
-        if word == "-c":
+        if word in ("-c", "-"):  # - runs the script stdin feeds: a heredoc's code is read by the code scan
             return None
         if word == "-m":
             module = args[index + 1] if index + 1 < len(args) else ""
@@ -3532,6 +3582,7 @@ class _LineFacts:
         # to, or "" when that path cannot be placed. A link made in the line is not on disk yet when the line is read.
         self.links: dict[str, str] = {}
         self.aliases: dict[str, str] = {}  # alias name -> its text
+        self.settled: dict[str, str] = {}  # variable name -> the literal value the line sets it to once (_settled_variables)
 
 
 class _ShellScan:
@@ -3576,6 +3627,8 @@ class _ShellScan:
         if self.hinted is None:
             self.hinted = STATE_HINT.search(command) is not None
         simple_commands = _simple_commands(tokens, bodies)
+        if self.depth == 0:
+            self.line.settled = _settled_variables(tokens, simple_commands)
         self._mark_reached(simple_commands, command)
         self._record_fed([word for simple in simple_commands for word in simple.words])
         self._record_read_input(command, bodies, simple_commands)
@@ -3782,15 +3835,29 @@ class _ShellScan:
     def _checks(self, simple: _Simple, argv: Sequence[str], env: Mapping[str, str], home: str) -> str | None:
         sandboxed = bool(home) and (self.cwd_known or os.path.isabs(home)) and _sandbox_value(home, self.cwd, self.written)
         askaway_home = home if sandboxed else str(DEFAULT_HOME)
-        checks = [_answer_reason(argv, sandboxed), _forced_prune_reason(argv),
+        # only this shell reads the line's variables: a child shell (bash -c, a heredoc fed to bash) has its own
+        words = [self._settled_word(word) for word in argv] if self.depth == 0 else argv
+        checks = [_answer_reason(words, sandboxed), _forced_prune_reason(words),
                   self._write_reason(simple, argv, askaway_home), self._nested(simple, env, argv),
                   self._find_reason(env, argv)]
-        code = _inline_code(argv)
+        code = _inline_code(words)  # the resolved words: O=-c; python3 $O "..." runs code too
         if code is not None:
             checks.append(_code_reason(code, sandboxed=sandboxed))
         checks.append(self._placed_code_reason(simple, argv, code))
         checks.append(self._unplaced_reason(simple, argv, askaway_home))  # last: the nested scans mark what they reach
         return next((reason for reason in checks if reason is not None), None)
+
+    def _settled_word(self, word: str) -> str:
+        """A word with each read of a settled variable that the line has set by now replaced by its value. A word with a
+        single quote or a backslash, where a $ may be literal, stays as written."""
+        if "'" in word or "\\" in word:
+            return word
+
+        def value(read: re.Match[str]) -> str:
+            name = read[1] or read[2]
+            return self.line.settled[name] if name in self.line.settled and name in self.variables else read[0]
+
+        return VARIABLE_READ.sub(value, word)
 
     def _placed_code_reason(self, simple: _Simple, argv: Sequence[str], code: str | None) -> str | None:
         """Code that writes with no folder named in it, where the line itself places the write: the working directory
