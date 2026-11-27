@@ -132,6 +132,12 @@ def test_unreadable_or_unknown_mode_reads_as_auto(text, home, capsys):
     assert stored(home, high["id"])["pause"] is True
 
 
+@pytest.mark.parametrize("text", ['{"mode": "mirror", "ts": 1}', '{"mode": "loud", "ts": 1}', "not json"])
+def test_ask_guard_denies_on_a_damaged_or_unknown_mode(text, home, capsys, monkeypatch):
+    write_mode(home, text)
+    assert denied(hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")))
+
+
 def test_off_ask_files_nothing_and_replies_continue(home, capsys):
     write_mode(home, mode_json("off"))
     assert askaway.capture_mode() == "off"
@@ -149,9 +155,8 @@ def test_off_invalid_entry_is_not_validated_and_files_nothing(home, capsys):
     assert not (home / "q").is_dir() or not any((home / "q").iterdir())
 
 
-def test_off_ask_guard_stays_silent_while_away(home, capsys, monkeypatch):
+def test_off_ask_guard_stays_silent(home, capsys, monkeypatch):
     write_mode(home, mode_json("off"))
-    cli(capsys, "away", "on")
     assert hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")) == ""
 
 
@@ -199,11 +204,53 @@ def test_question_filed_in_auto_does_not_hold_after_the_mode_becomes_strict(home
     assert hook_output(capsys, monkeypatch, "pause-guard", bash_event("rm -rf build")) == ""
 
 
-def test_strict_ask_guard_still_denies_while_away(home, capsys, monkeypatch):
+def test_strict_ask_guard_still_denies(home, capsys, monkeypatch):
     write_mode(home, mode_json("strict"))
     assert askaway.capture_mode() == "strict"
-    cli(capsys, "away", "on")
     assert denied(hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")))
+
+
+def deny_reason(out: str) -> str:
+    return json.loads(out.splitlines()[0])["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("text", [None, mode_json("auto")], ids=["no-file", "auto"])
+def test_ask_guard_denies_an_attended_session_when_no_strict_mode_is_set(text, home, capsys, monkeypatch):
+    if text is not None:
+        write_mode(home, text)
+    out = hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default"))
+    assert denied(out)
+    assert deny_reason(out).count(" ask --json '") == 1
+    assert nothing_filed(home)
+
+
+def test_ask_guard_denies_an_attended_session_in_strict_mode(home, capsys, monkeypatch):
+    write_mode(home, mode_json("strict"))
+    assert denied(hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")))
+
+
+def test_off_ask_guard_stays_silent_for_an_attended_session(home, capsys, monkeypatch):
+    write_mode(home, mode_json("off"))
+    assert hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")) == ""
+
+
+def test_a_leftover_away_file_that_is_off_does_not_let_a_question_through(home, capsys, monkeypatch):
+    write_mode(home, mode_json("auto"))  # creates the state folder
+    (home / "away.json").write_text(json.dumps({"on": False, "ts": 1}), encoding="utf-8")
+    assert denied(hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")))
+
+
+@pytest.mark.parametrize("value", ["0", "1"])
+def test_claude_code_session_attended_changes_nothing_for_the_ask_guard(value, home, capsys, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", value)
+    assert denied(hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")))
+
+
+@pytest.mark.parametrize("mode", ["auto", "strict"])
+def test_goal_session_stays_silent_in_every_capture_mode_that_holds(mode, home, capsys, monkeypatch):
+    monkeypatch.setattr(askaway, "goal_active", lambda session, project: True)
+    write_mode(home, mode_json(mode))
+    assert hook_output(capsys, monkeypatch, "ask-guard", askuser_event("default")) == ""
 
 
 GOAL_TEXT = ("This session runs under /goal and cannot stop: nothing was filed. Continue with the recommended "

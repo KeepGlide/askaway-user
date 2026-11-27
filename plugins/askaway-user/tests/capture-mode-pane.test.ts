@@ -51,8 +51,9 @@ const cliReply = (stdout: string, exitCode = 0) => ({
 
 // The engine's file, process and clock calls, answered from an in-memory folder: the mode file, the questions, and the shell
 // calls the atomic write makes (test -d, mv, rm). Only what these tests reach is modelled.
-// `gate` holds every move (`mv`) until it resolves, `failMove` makes the move fail, `moves` and `directWrites` record what ran.
-type Hold = { gate?: Promise<void>; failMove?: boolean }
+// `gate` holds every move (`mv`) until it resolves, `failMove` makes the move fail, `failReadOf` makes the next read of that
+// path fail, `moves` and `directWrites` record what ran.
+type Hold = { gate?: Promise<void>; failMove?: boolean; failReadOf?: string }
 function stubHost(on: On, files: Map<string, string>, env: Record<string, string> = {}) {
   const toasts: string[] = []
   const hold: Hold = {}
@@ -79,6 +80,10 @@ function stubHost(on: On, files: Map<string, string>, env: Record<string, string
     return { value: names.map(file => ({ name: file.slice(prefix.length), kind: 'file' as const, size: 0, mtimeMs: 0, isLink: false })) }
   })
   on('fs.read', (_$, e) => {
+    if (hold.failReadOf === e.path) {
+      hold.failReadOf = undefined
+      throw new Error(`EIO: cannot read ${e.path}`)
+    }
     const text = files.get(e.path)
     if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
     return { value: text }
@@ -445,5 +450,41 @@ test('the mode colours are never a text colour on the drawn pane, in each mode',
     expect(texts.length).toBeGreaterThan(0)
     for (const text of texts) expect(colours.has((text.props as Record<string, unknown> | undefined)?.color)).toBe(false)
   }
+  await pane.unmount()
+})
+
+test('/askaway away is no longer a verb: it gets the verbs help and writes no away.json', async ($, on) => {
+  const files = new Map<string, string>()
+  stubHost(on, files)
+  await $.session.start(SESSION)
+  const reply = await run($, 'away')
+  expect(reply.text).toBe(t('en', 'command.verbsHelp'))
+  expect(files.has(`${STATE}/away.json`)).toBe(false)
+})
+
+test('a leftover away.json is never read: the pane counter line carries no away mark, on both surfaces', async ($, on) => {
+  const files = new Map<string, string>([[`${STATE}/away.json`, '{"on":true,"ts":1}']])
+  const { clock } = stubHost(on, files)
+  await $.session.start(SESSION)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const pane = await mountPane($, surface)
+    await clock.advance(POLL_MS)
+    expect(await counterOf(pane)).toBe('Nothing pending')
+    await pane.unmount()
+  }
+})
+
+test('a failed read of mode.json keeps the mode the pane shows: the poll does not flip a strict pane to auto', async ($, on) => {
+  const files = new Map<string, string>()
+  const { clock, hold } = stubHost(on, files)
+  await $.session.start(SESSION)
+  const pane = await mountPane($)
+  files.set(MODE_FILE, `${JSON.stringify({ mode: 'strict', ts: 1 })}\n`)
+  await clock.advance(POLL_MS)
+  expect(await modeNameOf(pane)).toBe('Strict')
+  hold.failReadOf = MODE_FILE
+  await clock.advance(POLL_MS)
+  expect(hold.failReadOf).toBeUndefined()
+  expect(await modeNameOf(pane)).toBe('Strict')
   await pane.unmount()
 })

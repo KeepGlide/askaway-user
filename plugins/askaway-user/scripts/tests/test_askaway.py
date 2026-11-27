@@ -1094,16 +1094,6 @@ def test_status_and_list_show_who_only_for_answered_items(home, capsys):
     assert "who" not in rows[open_item]
 
 
-# ---- away --------------------------------------------------------------
-
-def test_away_toggles_and_reports(home, capsys):
-    assert cli(capsys, "away", "status") == {"away": False}
-    assert cli(capsys, "away", "on") == {"away": True}
-    assert json.loads((home / "away.json").read_text(encoding="utf-8"))["on"] is True
-    assert cli(capsys, "away", "status") == {"away": True}
-    assert cli(capsys, "away", "off") == {"away": False}
-
-
 def test_the_state_folder_and_its_folders_are_created_private_to_the_user(tmp_path, capsys, monkeypatch):
     fresh = tmp_path / "fresh-inbox"
     monkeypatch.setenv("ASKAWAY_HOME", str(fresh))
@@ -1135,34 +1125,15 @@ def test_the_delivery_folder_is_private_and_an_existing_folder_keeps_its_mode(tm
     assert stat.S_IMODE(kept.stat().st_mode) == 0o750
 
 
-def test_away_file_keeps_its_mode(home, capsys):
-    home.mkdir(parents=True)
-    path = home / "away.json"
-    path.write_text('{"on": false, "ts": 1}', encoding="utf-8")
-    os.chmod(path, 0o640)
-    cli(capsys, "away", "on")
-    assert stat.S_IMODE(path.stat().st_mode) == 0o640
-
-
-def test_away_signals(home, monkeypatch, capsys):
-    assert askaway.is_away("default") is False
-    assert askaway.is_away("bypassPermissions") is True
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "0")
-    assert askaway.is_away("default") is True
-    monkeypatch.delenv("CLAUDE_CODE_SESSION_ATTENDED")
-    cli(capsys, "away", "on")
-    assert askaway.is_away("default") is True
-
-
 # ---- ask-guard ---------------------------------------------------------
 
-def test_ask_guard_when_not_away_is_silent(home, capsys, monkeypatch):
-    assert run_hook(capsys, monkeypatch, "ask-guard", askuser_payload()) == ""
+def test_ask_guard_denies_an_attended_session(home, capsys, monkeypatch):
+    out = hook_json(capsys, monkeypatch, "ask-guard", askuser_payload())
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert not (home / "q").exists()
 
 
-def test_ask_guard_when_away_stores_nothing(home, capsys, monkeypatch):
-    cli(capsys, "away", "on")
+def test_ask_guard_stores_nothing(home, capsys, monkeypatch):
     hook_json(capsys, monkeypatch, "ask-guard", askuser_payload())
     assert not (home / "q").exists() or list((home / "q").iterdir()) == []
 
@@ -1178,7 +1149,6 @@ def skeletons(reason: str) -> dict[str, dict]:
 
 
 def guard_skeletons(capsys, monkeypatch, payload: dict | None = None) -> dict[str, dict]:
-    cli(capsys, "away", "on")
     out = hook_json(capsys, monkeypatch, "ask-guard", payload or askuser_payload())
     return skeletons(out["hookSpecificOutput"]["permissionDecisionReason"])
 
@@ -1222,7 +1192,6 @@ def test_ask_guard_command_runs_its_json_as_one_argument_under_sh(home, capsys, 
     option = payload["tool_input"]["questions"][0]["options"][0]
     option["label"] = f"Don't $(touch {marker})"
     option["description"] = f"it's $(touch {marker})"
-    cli(capsys, "away", "on")
     reason = hook_json(capsys, monkeypatch, "ask-guard", payload)["hookSpecificOutput"]["permissionDecisionReason"]
     line = next(text for text in reason.splitlines() if '"title":"Cache"' in text)
     command = line.split(". ", 1)[1]
@@ -1240,7 +1209,6 @@ def test_ask_guard_command_runs_its_json_as_one_argument_under_sh(home, capsys, 
 
 
 def test_ask_guard_denial_carries_one_fillable_command_per_question(home, capsys, monkeypatch):
-    cli(capsys, "away", "on")
     out = hook_json(capsys, monkeypatch, "ask-guard", askuser_payload())
     decision = out["hookSpecificOutput"]
     assert decision["hookEventName"] == "PreToolUse"
@@ -1255,22 +1223,20 @@ def test_ask_guard_denial_carries_one_fillable_command_per_question(home, capsys
 
 
 def test_ask_guard_reason_speaks_of_the_user_and_names_this_script(capsys, monkeypatch):
-    cli(capsys, "away", "on")
     out = hook_json(capsys, monkeypatch, "ask-guard", askuser_payload())
     reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-    assert reason.startswith("The user is away, so these AskUserQuestion calls are NOT")
+    assert reason.startswith("AskAway User captures questions for the user's panel, so these AskUserQuestion calls are NOT")
     assert askaway.SCRIPT_PATH == SCRIPT.resolve()
     assert f'python3 "{askaway.SCRIPT_PATH}" ask --json \'' in reason
     assert not set(reason.split()) & {"her", "she"}
 
 
-def test_ask_guard_bypass_mode_counts_as_away(home, capsys, monkeypatch):
+def test_ask_guard_denies_a_bypass_mode_session(home, capsys, monkeypatch):
     out = hook_json(capsys, monkeypatch, "ask-guard", askuser_payload("bypassPermissions"))
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_ask_guard_invalid_question_files_nothing_and_stays_silent(home, capsys, monkeypatch):
-    cli(capsys, "away", "on")
     payload = askuser_payload()
     payload["tool_input"]["questions"][1]["options"] = [{"label": "info"}]
     assert run_hook(capsys, monkeypatch, "ask-guard", payload) == ""
@@ -1302,7 +1268,6 @@ def multi_select_payload() -> dict:
 
 
 def test_ask_guard_names_a_multi_select_question_and_only_that_one(capsys, monkeypatch):
-    cli(capsys, "away", "on")
     out = hook_json(capsys, monkeypatch, "ask-guard", multi_select_payload())
     reason = out["hookSpecificOutput"]["permissionDecisionReason"]
     assert "Question 1: the original question was multi-select" in reason
@@ -2371,10 +2336,10 @@ def test_hook_fails_open_on_bad_stdin(home):
 
 def test_script_prints_one_json_line(home):
     env = {**os.environ, "ASKAWAY_HOME": str(home)}
-    proc = subprocess.run([sys.executable, str(SCRIPT), "away", "status"],
+    proc = subprocess.run([sys.executable, str(SCRIPT), "list"],
                           capture_output=True, text=True, env=env, timeout=20, check=False)
     assert proc.returncode == 0
-    assert json.loads(proc.stdout) == {"away": False}
+    assert json.loads(proc.stdout) == {"items": []}
 
 
 # ---- review fixes ------------------------------------------------------
@@ -3376,43 +3341,6 @@ def test_bash_cannot_answer_an_inbox_question_even_with_no_pause_pending(command
 
 
 @pytest.mark.parametrize("command", [
-    f"python3 {SCRIPT} away off",
-    f"python3 {SCRIPT} away on",
-    f"python3 {SCRIPT} --strict away off",
-    f'python3 "{SCRIPT}" away on',
-    "python3 /x/askaway.py away off",
-    f"cd /tmp && python3 {SCRIPT} away off",
-    f"python3 {SCRIPT} away $S",
-    f'python3 {SCRIPT} "away" on',
-    f"bash -c 'python3 {SCRIPT} away on'",
-])
-def test_bash_cannot_switch_away_mode_on_or_off(command, capsys, monkeypatch):
-    assert bash_denial(capsys, monkeypatch, command) == askaway.AWAY_DENIED
-
-
-@pytest.mark.parametrize("command", [
-    f"ASKAWAY_HOME={TMP_INBOX} python3 {SCRIPT} away on",
-    f"ASKAWAY_HOME={TMP_INBOX} python3 {SCRIPT} --strict away off",
-])
-def test_bash_may_switch_away_mode_in_a_sandbox_home(command, capsys, monkeypatch):
-    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
-
-
-@pytest.mark.parametrize("command", [
-    f"python3 {SCRIPT} away on # it's",
-    f"python3 {SCRIPT} away off # it's",
-    f"python3 {SCRIPT} away on \\\n",
-])
-def test_an_unreadable_command_that_switches_away_mode_is_denied(command, capsys, monkeypatch):
-    assert bash_denial(capsys, monkeypatch, command) == askaway.AWAY_DENIED
-
-
-def test_an_unreadable_away_status_read_stays_allowed(capsys, monkeypatch):
-    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(f"python3 {SCRIPT} away status # it's")) == ""
-
-
-@pytest.mark.parametrize("command", [
-    f"ASKAWAY_HOME={TMP_INBOX} python3 {SCRIPT} away on 'it",
     f"ASKAWAY_HOME={TMP_INBOX} python3 {SCRIPT} answer q-1-abcdef A 'it",
 ])
 def test_an_unreadable_command_naming_a_sandbox_home_is_denied_as_the_state_folder(command, capsys, monkeypatch):
@@ -4002,12 +3930,6 @@ def test_an_mcp_merge_commit_or_archive_write_tool_is_not_read_only(tool):
     assert not askaway.is_read_only_mcp(f"mcp__x__{tool}")
 
 
-def test_bash_may_read_away_mode_and_the_cli_still_switches_it_for_the_user(home, capsys):
-    assert askaway.bash_tamper_reason(f"python3 {SCRIPT} away status") is None
-    assert cli(capsys, "away", "on") == {"away": True}
-    assert cli(capsys, "away", "off") == {"away": False}
-
-
 @pytest.mark.parametrize("command", [
     f"echo '{{}}' > {STATE_FOLDER}/a/q-1-abcdef.json",
     f"echo '{{}}' >> {STATE_FOLDER}/a/q-1-abcdef.json",
@@ -4109,24 +4031,106 @@ def test_code_that_runs_the_cli_with_a_word_built_at_run_time_is_denied(command,
     assert "panel" in bash_denial(capsys, monkeypatch, command)
 
 
+def test_the_away_subcommand_is_gone(capsys):
+    assert askaway.main(["away", "status"]) == 1
+    assert "error" in json.loads(capsys.readouterr().out)
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -c \"import askaway; askaway.write_atomic(askaway.mode_path(), {'mode': 'off', 'ts': 1})\"",
+    "python3 - <<'EOF'\nimport askaway\naskaway.write_atomic(askaway.mode_path(), {'mode': 'off', 'ts': 1})\nEOF",
+])
+def test_code_that_writes_the_capture_mode_through_the_module_is_denied(command, capsys, monkeypatch):
+    assert bash_denial(capsys, monkeypatch, command) == askaway.MODE_DENIED
+
+
+def test_code_that_writes_the_capture_mode_in_a_sandbox_home_is_allowed(capsys, monkeypatch):
+    command = (f"ASKAWAY_HOME={TMP_INBOX} python3 -c \"import askaway; "
+               "askaway.write_atomic(askaway.mode_path(), {'mode': 'off', 'ts': 1})\"")
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+
+
+def test_code_that_only_reads_the_capture_mode_is_allowed(capsys, monkeypatch):
+    command = "python3 -c \"import askaway; print(askaway.capture_mode())\""
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+
+
+def test_an_unreadable_command_naming_the_state_folder_path_and_the_capture_mode_is_denied_as_state(capsys, monkeypatch):
+    command = f"python3 {SCRIPT} status # it's {STATE_FOLDER}/mode.json"
+    assert bash_denial(capsys, monkeypatch, command) == askaway.STATE_DENIED
+
+
+def test_an_unreadable_command_naming_askaway_and_a_quoted_capture_mode_file_is_denied(capsys, monkeypatch):
+    command = "python3 -c \"import askaway; print(open('mode.json').read()) # it's"
+    assert bash_denial(capsys, monkeypatch, command) == askaway.MODE_DENIED
+
+
+@pytest.mark.parametrize("command", [
+    "python3 -c \"import askaway as a; a.write_atomic(a.state_home()/'mode'+'.json', {'mode':'off'})\"",
+    "python3 -c \"import askaway; print(askaway.state_home())\"",
+    "python3 -c \"import askaway; from pathlib import Path; Path(x)/'mode.json'\"",
+])
+def test_code_that_reaches_the_capture_mode_by_another_route_is_denied(command, capsys, monkeypatch):
+    assert bash_denial(capsys, monkeypatch, command) == askaway.MODE_DENIED
+
+
+def test_prose_naming_askaway_and_the_capture_mode_file_is_allowed(capsys, monkeypatch):
+    command = "cat > notes.md <<'EOF'\naskaway.py reads mode.json\nEOF"
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+
+
+@pytest.mark.parametrize("command", [
+    "cat > notes.md <<'EOF'\naskaway.py doesn't read mode.json twice\nEOF",
+    "cat > notes.md <<'EOF'\naskaway.py names `mode_path`, `state_home` and `write_atomic`\nEOF",
+])
+def test_prose_with_a_quote_before_the_file_name_or_a_helper_name_is_denied_as_code(command, capsys, monkeypatch):
+    # The guard fails closed: it cannot tell this prose from code that reaches the capture mode.
+    assert bash_denial(capsys, monkeypatch, command) == askaway.MODE_DENIED
+
+
+ASK_ABOUT_THE_MODE = ('{"lang": "en", "question": "Keep \\"mode.json\\" as it is?", '
+                             '"what": "The file mode.json holds the capture mode. write_atomic writes it."}')
+
+
+@pytest.mark.parametrize("command", [
+    f"python3 {SCRIPT} ask --json '{ASK_ABOUT_THE_MODE}'",
+    f"python3 {SCRIPT} ask --json - <<'JSON'\n{ASK_ABOUT_THE_MODE}\nJSON",
+])
+def test_an_ask_whose_text_names_the_capture_mode_is_allowed(command, capsys, monkeypatch):
+    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
+
+
+def test_write_atomic_keeps_the_mode_bits_of_an_existing_file(home):
+    home.mkdir(parents=True)
+    path = home / "kept.json"
+    path.write_text('{"a": 1}', encoding="utf-8")
+    os.chmod(path, 0o640)
+    askaway.write_atomic(path, {"a": 2})
+    assert json.loads(path.read_text(encoding="utf-8")) == {"a": 2}
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+def test_a_leftover_away_file_survives_prune(home, capsys):
+    home.mkdir(parents=True)
+    leftover = home / "away.json"
+    leftover.write_text('{"on": true, "ts": 1}', encoding="utf-8")
+    cli(capsys, "prune")
+    assert json.loads(leftover.read_text(encoding="utf-8")) == {"on": True, "ts": 1}
+
+
 def test_code_that_starts_a_process_without_naming_askaway_is_allowed(capsys, monkeypatch):
     command = "python3 -c \"import subprocess; subprocess.run(['git', 'status'])\""
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
 
 
 @pytest.mark.parametrize(("code", "reason"), [
-    ("import sys,runpy; sys.argv=['a','away','on']; runpy.run_path('{script}', run_name='__main__')", askaway.AWAY_DENIED),
-    ("from askaway import away_path; away_path().write_text('')", askaway.AWAY_DENIED),
+    ("from askaway import mode_path; mode_path().write_text('')", askaway.MODE_DENIED),
     ("import runpy; runpy.run_path('{script}', run_name='__main__')", askaway.ANSWER_DENIED),
     ("exec(open('{script}').read())", askaway.ANSWER_DENIED),
 ])
-def test_code_that_runs_or_names_the_away_switch_next_to_askaway_is_denied(code, reason, capsys, monkeypatch):
+def test_code_that_runs_or_names_the_capture_mode_next_to_askaway_is_denied(code, reason, capsys, monkeypatch):
     command = f"python3 -c \"{code.format(script=SCRIPT)}\""
     assert bash_denial(capsys, monkeypatch, command) == reason
-
-
-def test_code_that_only_prints_the_word_away_is_allowed(capsys, monkeypatch):
-    assert run_hook(capsys, monkeypatch, "pause-guard", bash_event("python3 -c \"print('away')\"")) == ""
 
 
 @pytest.mark.parametrize("command", [
@@ -4412,7 +4416,7 @@ def test_mcp_tools_outside_the_exact_read_prefixes_are_denied_in_a_pause(tool, c
 # ---- gauntlet 4, package P1: per-command help, pause-guard inbox calls, ask reply and fit, tables,
 # ---- prune --force, retried high-risk writes and the clock-jump guard of the daily prune
 
-HELP_COMMANDS = ("ask", "answer", "status", "list", "away", "prune", "wait", "export", "withdraw", "hook")
+HELP_COMMANDS = ("ask", "answer", "status", "list", "prune", "wait", "export", "withdraw", "hook")
 
 
 @pytest.mark.parametrize("flag", ["--help", "-h"])
@@ -4743,14 +4747,6 @@ def test_ask_refiles_when_risk_is_missing_and_files_nothing(home, capsys):
     out = cli(capsys, "ask", "--json", json.dumps(entry))
     assert out == refile_reply("missing fields: risk, analogy", missing=["risk", "analogy"])
     assert not (home / "q").exists() or list((home / "q").glob("*.json")) == []
-
-
-def test_bypass_mode_stays_away_even_when_away_is_off(home, capsys, monkeypatch):
-    cli(capsys, "away", "off")
-    assert askaway.is_away("default") is False
-    assert askaway.is_away("bypassPermissions") is True
-    out = hook_json(capsys, monkeypatch, "ask-guard", askuser_payload("bypassPermissions"))
-    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 # ---- beta.8 review fixes: wait --strict, usage exits, refile grouping, placeholders, duplicates,
@@ -5688,11 +5684,11 @@ def test_a_non_ask_command_on_a_read_only_folder_names_the_os_cause(home, capsys
     home.mkdir(parents=True)
     home.chmod(0o500)
     try:
-        assert askaway.main(["away", "on"]) == 1
+        assert askaway.main(["prune"]) == 1
         out = json.loads(capsys.readouterr().out)
     finally:
         home.chmod(0o700)
-    assert out["error"].startswith("Permission denied: .away.json.")
+    assert out["error"].startswith("Permission denied: .ask.lock")
     assert str(home) not in out["error"]
 
 
@@ -6087,15 +6083,13 @@ def test_the_scanner_allows_an_ask_json_whose_single_quotes_hold_a_backquote_or_
 
 @pytest.mark.parametrize(("command", "reason"), [
     (f"python3 {SCRIPT} answer q-abc A", "ANSWER_DENIED"),
-    (f"python3 {SCRIPT} away on", "AWAY_DENIED"),
     (f"{ASK_BACKQUOTE} && python3 {SCRIPT} answer q-abc A", "ANSWER_DENIED"),
-    (f"{ASK_HEREDOC_SIGN}; python3 {SCRIPT} away on", "AWAY_DENIED"),
     (f"echo \"it's `python3 {SCRIPT} answer q-abc A`\"", "ANSWER_DENIED"),
     (f"echo 'it' `python3 {SCRIPT} answer q-abc A`", "ANSWER_DENIED"),
     (f"echo $'a\\'b' `python3 {SCRIPT} answer q-abc A` 'x'", "ANSWER_DENIED"),
     ("python3 - <<'EOF'\nimport askaway\naskaway.cmd_answer('q-1-abcdef', 'A', 'panel', None)\nEOF", "ANSWER_DENIED"),
 ])
-def test_the_scanner_still_denies_an_answer_or_away_switch_beside_a_quoted_backquote_or_heredoc_sign(command, reason, capsys, monkeypatch):
+def test_the_scanner_still_denies_an_answer_beside_a_quoted_backquote_or_heredoc_sign(command, reason, capsys, monkeypatch):
     assert bash_denial(capsys, monkeypatch, command) == getattr(askaway, reason)
 
 
@@ -6457,7 +6451,6 @@ SHELL_STDIN_SCRIPTS = {
     "answer-cat-pipe-bash": (f"cat <<'EOF' | bash\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
     "state-cat-pipe-sh": ("cat <<'EOF' | sh\ncd ~/.claude/state\nrm -r askaway\nEOF", STATE),
     "answer-here-string": (f"bash <<< 'python3 {SCRIPT} answer q-1-abcdef A'", ANSWER),
-    "away-quoted": (f"bash <<'EOF'\npython3 {SCRIPT} away on\nEOF", askaway.AWAY_DENIED),
     # a $'...' or $"..." here-string word, read as bash runs it, C escapes decoded
     "answer-here-string-ansi-c": (f"bash <<< $'python3 {SCRIPT} answer q-1-abcdef A'", ANSWER),
     "answer-here-string-ansi-c-escaped": (f"bash <<< $'python3 {SCRIPT} \\x61nswer q-1-abcdef A'", ANSWER),
@@ -6520,7 +6513,7 @@ SHELL_STDIN_SCRIPTS = {
         f"builtin . /dev/stdin <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
     "answer-dot-double-slash-here-string": (f". //dev/stdin <<< 'python3 {SCRIPT} answer q-1-abcdef A'", ANSWER),
     "answer-dot-double-slash-heredoc": (f". //dev/stdin <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
-    "away-source-dev-stdin": (f". /dev/stdin <<'EOF'\npython3 {SCRIPT} away on\nEOF", askaway.AWAY_DENIED),
+    "answer-source-dev-stdin": (f". /dev/stdin <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF", ANSWER),
     "state-source-dev-stdin": ("source /dev/stdin <<'EOF'\ncd ~/.claude/state\nrm -r askaway\nEOF", STATE),
     "state-expanded-glob": ("ba*sh <<'EOF'\ncd ~/.claude/state\nrm -r askaway\nEOF", STATE),
     # eval or -c runs what a substitution printed from a heredoc or here-string (issue #14)
@@ -6532,7 +6525,6 @@ SHELL_STDIN_SCRIPTS = {
     "answer-eval-cat-here-string": (f"eval \"$(cat <<< 'python3 {SCRIPT} answer q-1-abcdef A')\"", ANSWER),
     "answer-eval-nested-substitution": (
         f"eval \"$(echo \"$(cat <<'EOF'\npython3 {SCRIPT} answer q-1-abcdef A\nEOF\n)\")\"", ANSWER),
-    "away-eval-cat-heredoc": (f"eval \"$(cat <<'EOF'\npython3 {SCRIPT} away on\nEOF\n)\"", askaway.AWAY_DENIED),
     "state-eval-cat-heredoc": ("eval \"$(cat <<'EOF'\ncd ~/.claude/state\nrm -r askaway\nEOF\n)\"", STATE),
     # -c -- runs the word after the --; a substitution as the command word, or piped to a shell, runs what it printed;
     # an eval in a function or loop may run before the assignment it reads in the line
@@ -7552,13 +7544,11 @@ def test_goal_detection_fails_open_on_a_session_id_that_is_not_text(home):
 
 def test_ask_guard_lets_a_goal_session_keep_its_question_in_its_window(home, capsys, monkeypatch):
     write_transcript(home, [goal_status_row(False)])
-    cli(capsys, "away", "on")
     assert run_hook(capsys, monkeypatch, "ask-guard", askuser_payload()) == ""
 
 
 def test_ask_guard_still_denies_a_session_whose_goal_is_met(home, capsys, monkeypatch):
     write_transcript(home, [goal_status_row(False), goal_status_row(True)])
-    cli(capsys, "away", "on")
     out = hook_json(capsys, monkeypatch, "ask-guard", askuser_payload())
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 

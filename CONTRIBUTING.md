@@ -31,7 +31,7 @@ biome lint plugins/askaway-user
 |---|---|
 | `plugins/askaway-user/.claude-plugin/plugin.json` | The plugin manifest; it points to the command hooks |
 | `plugins/askaway-user/hooks/` | The mod: `register.tsx` (wiring, polling, commands), `model.ts`, `wizard.ts`, `i18n.ts`, `pane.tsx`, `band.tsx`, `held.ts`, `look.ts`, `logo.ts` (the logo's SVG paths and `LOGO_GLYPH`), `logo-element.tsx` (the logo as one element for the band and the pane heading), `divider.ts` (the 1px rule above the nav row), `keepglide.ts` (the KeepGlide mark in the pane); `hooks.json` loads the mod, `command-hooks.json` holds the command hooks |
-| `plugins/askaway-user/scripts/askaway.py` | The CLI (`ask`, `answer`, `status`, `list`, `wait`, `export`, `away`, `prune`) and the hook modes (`hook ask-guard`, `hook pause-guard`, `hook deliver`, `hook stamp-asker`) |
+| `plugins/askaway-user/scripts/askaway.py` | The CLI (`ask`, `answer`, `status`, `list`, `wait`, `export`, `prune`) and the hook modes (`hook ask-guard`, `hook pause-guard`, `hook deliver`, `hook stamp-asker`) |
 | `plugins/askaway-user/skills/askaway-user-question-playbook/SKILL.md` | The skill (`askaway-user:askaway-user-question-playbook`) that tells an agent how to file a question |
 | `plugins/askaway-user/SPEC.md` | The spec: state folder contract, CLI, hooks and panel |
 | `plugins/askaway-user/tests/` | TypeScript tests |

@@ -79,8 +79,6 @@ export type PaneView = {
   // The damaged q/ files that pause their session (register: damagedPauses): each draws a notice with its id and Dismiss.
   // Optional: the register sets it.
   damagedPauses?: readonly string[]
-  // Away mode is on (away.json): the counter line says so. Optional: the register sets it.
-  away?: boolean
   // The capture mode for new questions (mode.json): absent means auto. Optional: the register sets it.
   mode?: CaptureModeState
   // True until the person gave a name or skipped: the pane then asks for it above the card, once.
@@ -143,7 +141,7 @@ export function renderPane(ui: Ui, view: PaneView, actions: PaneActions, lang: L
           <Text key="heading" bold>{t(lang, 'pane.heading')}</Text>
         </Box>
         <Box key="header-end" flexDirection="row" alignItems="center" gap={1}>
-          <Text key="counter">{`${counterText(lang, view.questions)}${view.away ? t(lang, 'list.awayOn') : ''}`}</Text>
+          <Text key="counter">{counterText(lang, view.questions)}</Text>
           {renderKeepGlide(ui, view.surface, 'keepglide-counter', KEEPGLIDE_HEADER_SIZE)}
         </Box>
       </Box>

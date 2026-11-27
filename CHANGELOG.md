@@ -11,10 +11,15 @@ Commit hashes name the change in `git log`.
 ### Added
 - **Capture mode: one setting for new questions**: `strict`, `auto` (the default) or `off`, shared by every session on the machine. Set it from the panel's **New questions** block or with `/askaway mode strict|auto|off`; `/askaway mode` shows the current one. Switching changes no open question and removes nothing from the list.
 - **`strict` holds every session**: each new question holds its session until you answer it, whatever its risk; the risk label on the card is unchanged.
-- **`off` captures nothing new**: `askaway.py ask` files nothing and tells the agent to ask in its own window or continue with the recommended option. The native question dialog is no longer intercepted, also in away mode and under `bypassPermissions`; `off` overrides away mode. A `/goal` session is never captured, in any mode.
+- **`off` captures nothing new**: `askaway.py ask` files nothing and tells the agent to ask in its own window or continue with the recommended option. The native question dialog is no longer intercepted, also under `bypassPermissions`; `off` is the only mode in which the native question shows in its own window, in every session. A `/goal` session is never captured, in any mode.
 
 ### Changed
 - **A question's pause follows the capture mode too**: in `strict` the CLI replies `"action": "pause"` for every question, and the stored question has `pause: true` with its risk unchanged. In `auto`, only a `high` risk question pauses, as before.
+- **Native questions are filed in every session**: `hook ask-guard` denies a native `AskUserQuestion` and hands back the `ask --json` skeleton commands in every session, attended or not and in any permission mode, unless the capture mode is `off`, the session runs a `/goal`, or the call has no questions. Behaviour change: with the default mode `auto`, a native question in an attended session used to show in its own window; it now goes to the panel. Switch the mode to `off` to keep native questions in the window.
+- **Shell and file writes cannot switch the capture mode**: a shell command that names the askaway script or module and also names `mode_path`, `state_home`, `write_atomic` or a quoted file name ending in `mode.json` is denied ("Denied: the AskAway User capture mode is switched only by the user, in the AskAway User panel or with /askaway mode."). Writes into the state folder by a shell command or a file tool stay denied, `mode.json` included.
+
+### Removed
+- **Away mode**: `/askaway away`, the `askaway.py away on|off|status` subcommand, the "away mode on" mark on the pane counter and the `away.json` file in the state folder are removed; the capture mode is the only switch. A leftover `away.json` from an older version is ignored: it is never read, written or deleted. `/askaway away` now gets the list of valid verbs.
 
 ## [2.4.0] - 2026-11-25
 
