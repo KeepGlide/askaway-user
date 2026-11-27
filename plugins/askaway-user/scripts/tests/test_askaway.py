@@ -4220,6 +4220,91 @@ def test_bash_text_that_only_mentions_an_answer_or_a_copy_is_allowed(command, ca
     assert run_hook(capsys, monkeypatch, "pause-guard", bash_event(command)) == ""
 
 
+STAGE_SCRIPT_COMMAND = """W=/tmp/claude-carlinkit-retro-InqYtn; mkdir -p "$W/stage" && cat > "$W/stage.py" <<'EOF'
+import json, pathlib, shutil, sys
+TV = pathlib.Path("/home/user/project/retroarch/tv")
+OUT = pathlib.Path(sys.argv[1])
+SD = "/storage/A6E0-1601/RetroArch"
+games = {"snes": ("Super Mario World (USA).zip#Super Mario World (USA).sfc", "Super Mario World", "Super Nintendo")}
+OUT.mkdir(parents=True, exist_ok=True)
+for system, (tv_path, shown, plist) in games.items():
+    src = json.loads((TV / "playlists" / f"{plist}.lpl").read_text(encoding="utf-8"))
+    (OUT / "playlists" / f"{plist}.lpl").write_text(json.dumps(src, indent=2) + "\\n", encoding="utf-8")
+shutil.copytree(TV / "shaders", OUT / "shaders", dirs_exist_ok=True)
+EOF
+python3 -I "$W/stage.py" "$W/stage" && cd "$W/stage" && find . -type f | sort && du -sh . && cat playlists/*.lpl | head -40"""
+
+
+@pytest.mark.parametrize("command", [
+    STAGE_SCRIPT_COMMAND,
+    ('W=/tmp/claude-carlinkit-retro-InqYtn; python3 -I "$W/stage.py" "$W/stage" && cd "$W/stage" && find . -type f '
+     "| sort && du -sh . && grep -n rgui_browser_directory retroarch.cfg"),
+    'W=$(mktemp -d /tmp/claude-x-XXXXXX); python3 "$W/a.py" "$W/out"',
+    'python3 "$W"/s.py "$W/out"',
+    'python3 "${W}/tools/s.py" "$CMD"',
+    "S=/tmp/a; python3 $S/x.py $S/out",
+    "R=/home/u/p; S=$R/tools/t.py; python3 $S --root $R x",
+    'S=~/x/scripts; python3 -I $S/check.py "$PWD"',
+    "S=/tmp/a; cat > $S/m.sh <<'EOF'\nS=/tmp/a\nEOF\npython3 $S/x.py $S/y",
+    "D=/tmp/a && cd /home/u/p && python3 $D/x.py $D/out",
+    "python3 - \"$R\" \"$W\" <<'EOF'\nimport sys\nprint(sys.argv)\nEOF",
+])
+def test_bash_script_whose_name_is_known_is_no_answer(command, capsys, monkeypatch):
+    """A subagent's script run is no answer once the script's own name is known: "$W/name.py" names it whatever W holds,
+    a variable the line sets once to a literal reads as that value, and python3 - runs the heredoc."""
+    event = {**bash_event(command), "agent_id": "a5c21e573738e9be1"}
+    assert run_hook(capsys, monkeypatch, "pause-guard", event) == ""
+
+
+@pytest.mark.parametrize("command", [
+    'D=$(mktemp -d); python3 "$D/askaway.py" answer q-1-abcdef A',
+    'python3 "$D/askaway.py" "$CMD" q-1-abcdef A',
+    'python3 "$D" "$CMD" q-1-abcdef A',
+    'python3 "$D/$N" "$CMD" q-1-abcdef A',
+    'python3 "${D:-x/}askaway.py" answer q-1-abcdef A',
+    'python3 "$(echo x/)askaway.py" answer q-1-abcdef A',
+    'python3 "$D"/ask*.py answer q-1-abcdef A',
+    'python3 "$D/." answer q-1-abcdef A',
+    'python3 $D/x.py "$CMD" q-1-abcdef A',
+    "S=/p/askaway.py; python3 $S answer q-1-abcdef A",
+    'S=/tmp/a; python3 "$S"/askaway.py answer q-1-abcdef A',
+    "A=answer; python3 x/askaway.py $A q-1-abcdef B",
+    "S=/tmp/a; for S in /p/askaway.py; do python3 $S answer q-1-abcdef A; done",
+    "S=/tmp/a; read S <<< /p/askaway.py; python3 $S answer q-1-abcdef A",
+    'S=/tmp/a; printf -v S /p/askaway.py; python3 "$S" answer q-1-abcdef A',
+    "S=/tmp/a; eval 'S=/p/askaway.py'; python3 $S answer q-1-abcdef A",
+    "S=/tmp/a; . ./set.sh; python3 $S answer q-1-abcdef A",
+    "S=/tmp/a; export S=/p/askaway.py; python3 $S answer q-1-abcdef A",
+    "S=/tmp/a; f(){ S=/p/askaway.py; }; f; python3 $S answer q-1-abcdef A",
+    "S=/tmp/a; python3 ${S:-x} answer q-1-abcdef A",
+    "env S=/tmp/a; python3 $S answer q-1-abcdef A",
+    "(S=/tmp/a); python3 $S answer q-1-abcdef A",
+    "S='$R'; python3 $S answer q-1-abcdef A",
+    'S="/tmp/a b"; python3 $S answer q-1-abcdef A',
+    "S=/tmp/*; python3 $S answer q-1-abcdef A",
+    # the shell does not hold the value the line assigned: a child shell, a branch, a pipe, a & job, IFS, eval
+    "W=/tmp/x; bash <<'EOF'\nW=answer\npython3 x/askaway.py \"$W\" q-1-abcdef A\nEOF",
+    "W=/tmp/x; bash -c 'python3 x/askaway.py $W answer q-1-abcdef A'",
+    "false && W=/tmp/x; python3 x/askaway.py $W answer q-1-abcdef A",
+    "if true; then\nW=/tmp/x\nfi; python3 x/askaway.py $W answer q-1-abcdef A",
+    "W=/tmp/x | true; python3 x/askaway.py $W answer q-1-abcdef A",
+    "W=/tmp/x & python3 x/askaway.py $W answer q-1-abcdef A",
+    "W=answer/; IFS=/; python3 x/askaway.py $W q-1-abcdef A",
+    "W=/tmp/x; e\"v\"al 'W=answer'; python3 x/askaway.py \"$W\" q-1-abcdef A",
+    "W=/tmp/x; $'\\x65val' $'\\x57=answer'; python3 x/askaway.py \"$W\" q-1-abcdef A",
+    "O=-c; python3 $O \"import askaway; askaway.main(['answer', 'q-1-abcdef', 'A'])\"",
+    "M=-m; python3 $M askaway answer q-1-abcdef A",
+    "W=/tmp/x; $(printf ev)al \"$(printf 'W=answer')\"; python3 x/askaway.py \"$W\" q-1-abcdef A",
+])
+def test_bash_script_that_may_still_be_askaway_stays_an_answer(command, capsys, monkeypatch):
+    assert "panel" in bash_denial(capsys, monkeypatch, command)
+
+
+def test_bash_settled_variable_reveals_a_forced_prune(capsys, monkeypatch):
+    command = "F=--force; python3 x/askaway.py prune --id q-1-abcdef $F"
+    assert "user's own terminal" in bash_denial(capsys, monkeypatch, command)
+
+
 @pytest.mark.parametrize("command", [
     f"python3 {SCRIPT} prune --id q-1-abcdef --force",
     f"python3 {SCRIPT} prune --force --id q-1-abcdef",
