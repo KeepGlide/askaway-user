@@ -21,6 +21,11 @@ Commit hashes name the change in `git log`.
 ### Removed
 - **Away mode**: `/askaway away`, the `askaway.py away on|off|status` subcommand, the "away mode on" mark on the pane counter and the `away.json` file in the state folder are removed; the capture mode is the only switch. A leftover `away.json` from an older version is ignored: it is never read, written or deleted. `/askaway away` now gets the list of valid verbs.
 
+## [2.4.1] - 2026-11-27
+
+### Fixed
+- **Subagent script runs are no longer denied as answers**: the guard denied ordinary commands that run a script from a folder kept in a shell variable, such as a stage script in a temporary folder, with "an AskAway User question is answered only by the user", even with no question open, because a script path built from a variable could have been the AskAway User script. The guard now reads the script's name when it is known: a quoted variable followed by a literal path names the script at the end of that path, a variable that the command line sets once at its start to a plain path reads as that path, and a Python script fed from a heredoc is read as code. A script that may still be the AskAway User script stays denied, and so does a variable set twice, in a loop, by read or inside eval, set after a test or in a branch, or read by a child shell.
+
 ## [2.4.0] - 2026-11-25
 
 ### Removed

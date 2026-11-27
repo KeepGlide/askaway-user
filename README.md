@@ -791,9 +791,9 @@ Found one? [Open an issue](https://github.com/KeepGlide/askaway-user/issues/new)
 | Category | Tests |
 |---|---|
 | Mod (TypeScript), `plugins/askaway-user/tests/` | 653 |
-| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2223 |
+| CLI and hooks (Python), `plugins/askaway-user/scripts/tests/` | 2272 |
 
-The counts come from a run of `claude plugin test plugins/askaway-user` (653 passed) and of `python3 -m pytest tests -q` in `plugins/askaway-user/scripts` (2223 passed), both on 2026-11-26 on the change that makes the capture mode replace away mode.
+The counts come from a run of `claude plugin test plugins/askaway-user` (653 passed) on 2026-11-26, on the change that makes the capture mode replace away mode, and of `python3 -m pytest tests -q` in `plugins/askaway-user/scripts` (2272 passed) on 2026-11-27, on the fix that stops denying subagent script runs as answers.
 
 ## 🔧 Development
 
